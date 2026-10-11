@@ -70,7 +70,7 @@ Every request is one `claude -p` run. The run decides at the end whether it is w
 
 **Decision (differs from the spec):** the spec says ephemeral runs set `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`. That variable must be set before the run starts, but the run only decides keep/discard at the end, and a run started with it can never be resumed. So every run starts persisted with a launcher-chosen `--session-id <uuid>`, and the launcher deletes the transcript when keep=false. The transcript exists on disk only for the length of the run plus the librarian pass. `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1` is still used for the librarian and for any run the launcher knows in advance is throwaway (e.g. reminder firing). If the result has no valid `structured_output`, the launcher treats it as keep=true so nothing is lost silently, and logs the failure.
 
-The launcher captures the stream-json output to `~/Jarvis/runs/<session-id>.jsonl`. That file, not Claude Code's internal transcript, is what the librarian reads; it is deleted along with the transcript for ephemeral runs.
+The launcher captures the stream-json output to `~/Jarvis/runs/<session-id>.jsonl` (a follow-up to a saved run writes `<session-id>.followup-<ms>.jsonl`, so the original log stays untouched). That file, not Claude Code's internal transcript, is what the librarian reads; it is deleted along with the transcript for ephemeral runs. The transcript is `<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<cwd-derived>/<session-id>.jsonl` plus a `<session-id>/` folder beside it; the launcher removes both, matching the session id in every project folder.
 
 **Code tab:** CLI sessions do not appear in Claude Desktop's Code tab; Desktop keeps its own list. So "nothing new in my Code tab" holds for every run. A saved run is named with `-n "Jarvis: <title>"`, appears in `claude --resume`, and is logged in the notch. Opening it in the Code tab is `claude --desktop --resume <session-id>` (from the notch row, or Jarvis does it when Leo says "open it"). Jarvis does **not** auto-open Desktop after a saved run (Leo's decision, section 13).
 
@@ -82,8 +82,8 @@ claude -p "<transcribed request>" \
   --session-id <uuid> \
   -n "Jarvis: <short title>" \
   --settings <repo>/guard/settings.json \
-  --mcp-config <repo>/launcher/jarvis.json \
-  --append-system-prompt-file ~/Jarvis/briefing.md \
+  --mcp-config ~/Jarvis/runs/<uuid>.mcp.json \
+  --append-system-prompt-file ~/Jarvis/state/system-prompt.md \
   --permission-mode auto \
   --permission-prompts none \
   --chrome \
@@ -93,25 +93,30 @@ claude -p "<transcribed request>" \
 
 Notes:
 
-- `--mcp-config` adds the bridge server; Leo's own MCP servers and claude.ai connectors still load. No `--strict-mcp-config`. The bridge needs the run's session id as a literal argument, so the launcher writes the config per run (`{"mcpServers":{"jarvis":{"command":"bun","args":["<repo>/bridge/src/server.ts","--session-id","<uuid>"]}}}`); see 8.1.
+- `--mcp-config` adds the bridge server; Leo's own MCP servers and claude.ai connectors still load. No `--strict-mcp-config`. The bridge needs the run's session id as a literal argument, so the launcher writes the config per run (`{"mcpServers":{"jarvis":{"command":"<bun>","args":["<repo>/bridge/src/server.ts","--session-id","<uuid>"],"env":{"JARVIS_REPO":…,"JARVIS_HOME":…}}}}`, absolute bun path) and deletes it when the run ends; see 8.1. (`${VAR}` expansion does work in `--mcp-config` files on v2.1.296, tested 2026-10-11, but the literal config needs no undocumented behaviour.)
+- `~/Jarvis/state/system-prompt.md` is rebuilt before every run: `launcher/prompt.md` (Jarvis's standing instructions: spoken style, needs-access, guard relay, the keep rule) followed by the librarian's `~/Jarvis/briefing.md`, or a placeholder when there is none yet. One file because `--append-system-prompt-file` takes one.
 - Never `--bare`: it skips skills, hooks, MCP servers and CLAUDE.md, and doesn't use the claude.ai login, which Chrome needs.
 - `-n` is set only when the request matches an explicit saved intent ("start a research session on…", "write a brief…"). Other runs that end with keep=true stay unnamed in Claude Code; the notch log labels them with `summary` and they resume by ID.
 - Skills load from `~/Jarvis/.claude/skills/<name>`, symlinks into `<repo>/skills/` (symlinked skill folders are supported in the project location). `-p` runs load skills and hooks the same way interactive sessions do unless `--bare` is passed.
-- The launcher reads `system/init` and fails loudly if `permissionMode` isn't `auto` (auto mode falls back to Manual when unavailable, which under `--permission-prompts none` would deny every risky action), if the bridge isn't in `mcp_servers`, or if `mcp_server_errors` is non-empty.
-- Minimum Claude Code version: v2.1.295 (guard hook `onFailure: "block"`; `claude --desktop --resume` needs v2.1.285). The launcher checks `claude --version` at startup.
+- The launcher reads `system/init` and fails loudly if `permissionMode` isn't `auto` (auto mode falls back to Manual when unavailable, which under `--permission-prompts none` would deny every risky action), if the `jarvis` server's status in `mcp_servers` isn't `connected`, or if `mcp_server_errors` is present. It stops the run (SIGTERM), says why, and deletes the transcript. `claude-in-chrome` not connected is only a warning event.
+- The launcher refuses to start without `guard/settings.json` or `bridge/src/server.ts`: no run is ever unguarded.
+- Minimum Claude Code version: v2.1.295 (guard hook `onFailure: "block"`; `claude --desktop --resume` needs v2.1.285). The launcher checks `claude --version` before a run, cached against the binary's path and mtime.
 - The launcher exports `JARVIS_REPO=<repo>` and makes sure `bun` is on `PATH`; the guard hook command is `bun "$JARVIS_REPO/guard/hook.ts"`. See `guard/README.md`.
 - Model: inherits Leo's default. If the ~4 s target is missed, the first lever is `--model sonnet` for ephemeral-intent runs; measured in the launcher thread.
 
 ### 4.3 Speaking while streaming
 
-The launcher parses `stream_event` text deltas, cuts at the first sentence boundary, and sends it to the bridge `speak` immediately; the rest is spoken as complete sentences arrive. The final `result` event carries `structured_output` and `session_id`.
+The launcher parses `stream_event` text deltas from the main conversation (`parent_tool_use_id` null), cuts at the first sentence boundary, strips markdown and speaks it immediately; the rest is spoken as complete sentences arrive. It speaks through the bridge's `Speaker` library (`bridge/src/speech.ts`), so it shares the speech lock with Claude's `speak` calls and sends `speak_start`/`speak_end` captions to the app. The final `result` event carries `structured_output` and `session_id` (confirmed with stream-json, section 10). `structured_output` arrives as a `StructuredOutput` tool call, so its `input_json_delta`s are never spoken.
 
 ### 4.4 Follow-ups
 
 "Jarvis, and also…" within 2 minutes of the last run:
 
 - Last run saved: `claude -p "<request>" --resume <session-id>` (same flags). Resume by ID works from any directory; since v2.1.223 Claude Code searches every project on the machine. The original system prompt (briefing) is reused on resume until compaction, which is fine within 2 minutes.
-- Last run ephemeral: a new run whose prompt is prefixed with the last request and reply, held by the launcher in memory for 2 minutes and then dropped.
+- Last run ephemeral: a new run whose prompt is prefixed with the last request and reply, then dropped after 2 minutes.
+- Follow-up phrases: "and also", "and then", "also" at the start (after an optional "Jarvis,"). Outside the window they are ordinary requests.
+- The launcher is one process per request, so "in memory" is `~/Jarvis/state/last-run.json` (mode 600). The exchange text is stored only for ephemeral runs and deleted on the first read after the window closes.
+- A follow-up to a saved run is always kept, whatever its `keep` says: it is the same session.
 
 ### 4.5 Needs-you
 
@@ -120,6 +125,22 @@ Under `-p` with `--permission-prompts none` there is no permission prompt for th
 1. The bridge `ask(question)` tool (blocks until Leo answers in the notch or the timeout returns "no answer").
 2. `permission_denied` events in the stream and `permission_denials` in the result, which the launcher turns into a spoken one-liner.
 3. The `needs-access` skill, which Claude uses when a connector, login, permission or key is missing, producing exactly one ask (e.g. "I need the Notion connector for that, connect it at claude.ai/customize/connectors and ask again"), then ends the run.
+
+### 4.6 Launcher interface
+
+`launcher/run.sh` sets `JARVIS_REPO` and a PATH with bun and claude, then runs `launcher/src/cli.ts`:
+
+- `run.sh run "<request>"` (or the request on stdin): one run. NDJSON events on stdout, exit 0, or 1 on error.
+- `run.sh open <session-id>`: `claude --desktop --resume <id>` from `~/Jarvis`, for the notch row or "open it".
+- `bun launcher/src/reminders.ts schedule | fire <id> | list | cancel <id>`: the reminder scheduler (section 8.3).
+
+Events, one JSON object per line: `{"event":"state","state":"working"|"done"|"needs-you"|"error"}`, `{"event":"speak","text"}`, `{"event":"denied","tool","rule","reason"}` (`rule` is a guard rule id, absent for other denials), `{"event":"warning","message"}`, `{"event":"done","sessionId","keep","summary","reply","name"}`, `{"event":"error","message"}`. A run with any denial ends in `needs-you`. The same milestones go to the app as `run_event` frames when it is running (section 8.2).
+
+After a run the launcher appends a `run` row (`saved` = keep) and a `guard` row per guard denial with `appendAction` (section 8.4), runs the librarian's `enqueue` (section 5) and waits for it, then, if keep is false, deletes the transcript and run log. A failing or missing librarian is logged to `~/Jarvis/logs/launcher.log` and never keeps an ephemeral run on disk.
+
+Reminder scheduling: `schedule` validates `at` (not past, at most a year ahead), rounds up to the next whole minute (launchd's resolution), writes `~/Jarvis/reminders/<id>.json`, stages the plist there, copies it to `~/Library/LaunchAgents/com.jarvis.reminder.<id>.plist` and `launchctl bootstrap gui/<uid>`s it. The agent has `RunAtLoad` and a `StartCalendarInterval` in the Mac's local time, and runs `reminders.ts fire <id>`, which exits quietly until the reminder is due. So a reminder missed while the Mac was off fires at next login instead of being lost. When due it runs `bridge/src/cli.ts reminder --text`, then deletes its files and boots itself out; if the bridge fails, the agent stays and retries at next login.
+
+Environment overrides (tests and odd setups): `JARVIS_HOME`, `JARVIS_MEMORY`, `JARVIS_CLAUDE_BIN`, `JARVIS_MODEL`, `JARVIS_LAUNCHCTL`, `JARVIS_LAUNCH_AGENTS`, `CLAUDE_CONFIG_DIR`.
 
 ## 5. Memory
 
@@ -238,7 +259,7 @@ If the socket closes while an `ask` is open, the bridge treats it as no answer. 
 
 - `when` accepts ISO 8601 (no offset means London time), relative times ("in 20 minutes", "in an hour and a half", "in 1h30m") and clock times with an optional day ("6pm", "18:00", "at 5", "tonight at 8", "tomorrow at 9am", "monday 14:30", "noon", "midnight"). Times are Europe/London, across clock changes. A clock time with no day is its next occurrence; an ambiguous hour with no day is the next future h:00 or (h+12):00 (section 6). On an explicit later day, an ambiguous 1 to 6 is pm and 7 to 11 am. "today at 9am" after 9am is an error, not tomorrow. At most a year ahead.
 - The bridge runs `bun <repo>/launcher/src/reminders.ts schedule` with stdin `{"at": "<ISO 8601 UTC>", "text": "…", "session_id": "<uuid>|null"}` and expects exit 0 with stdout (last line) `{"id": "<id>", "at": "<ISO>"}`. Non-zero exit: the last stderr line is relayed to Leo and nothing is claimed. `JARVIS_REMIND_SCHEDULER` overrides the command (tests).
-- When the launchd job fires, the launcher runs `bun <repo>/bridge/src/cli.ts reminder --text "<text>"` (or calls `fireReminder` from `bridge/src/notch.ts`): notch reminder via the socket, else a macOS notification plus `say`. It also logs a `reminder` row.
+- When the launchd job fires (section 4.6), the launcher runs `bun <repo>/bridge/src/cli.ts reminder --text "<text>"` (or calls `fireReminder` from `bridge/src/notch.ts`): notch reminder via the socket, else a macOS notification plus `say`. It also logs a `reminder` row.
 
 ### 8.4 Action log
 
@@ -311,17 +332,18 @@ Lane names `Not Started`, `In-progress`, `Completed` are Leo's; the script reads
 | Item | Result | Notes | Source |
 | - | - | - | - |
 | `CLAUDE_CODE_SKIP_PROMPT_HISTORY` stops transcript saving | **Confirmed** | Skips prompt history and transcripts in any mode; such sessions can't be resumed. `--no-session-persistence` is the `-p`-only equivalent. Conflicts with "run decides keep", see 4.1. | [env-vars](https://code.claude.com/docs/en/env-vars), [cli-reference](https://code.claude.com/docs/en/cli-reference) |
-| `--json-schema` with `--output-format json` | **Confirmed** | Result has `structured_output`. Failure modes: subtype `error_max_structured_output_retries`, or `success` with no `structured_output`; both handled as keep=true. With `stream-json` the final `result` event is the same result message, so it should carry `structured_output`; the docs only show `json`, so the launcher thread smoke-tests this first. | [headless](https://code.claude.com/docs/en/headless#get-structured-output), [structured outputs](https://code.claude.com/docs/en/agent-sdk/structured-outputs) |
+| `--json-schema` with `--output-format json` | **Confirmed** | Result has `structured_output`. Failure modes: subtype `error_max_structured_output_retries`, or `success` with no `structured_output`; both handled as keep=true. **With `stream-json`: confirmed by a live run on v2.1.296 (2026-10-11)**: the final `result` event carries `structured_output`, and `--session-id` is honoured. Claude produces it through a `StructuredOutput` tool call, so the run takes an extra turn. | [headless](https://code.claude.com/docs/en/headless#get-structured-output), [structured outputs](https://code.claude.com/docs/en/agent-sdk/structured-outputs) |
 | `--append-system-prompt-file` | **Confirmed** | Works in `-p`. On `--resume` the recorded system prompt is reused until compaction. | [cli-reference](https://code.claude.com/docs/en/cli-reference#system-prompt-flags) |
 | `--resume` by session id from any directory | **Confirmed** (v2.1.223+) | ID search covers the current project, then every project on the machine. | [cli-reference](https://code.claude.com/docs/en/cli-reference) |
 | How skills and hooks load for `-p` | **Confirmed** | `-p` loads the same as interactive (user, project, `--settings`, plugins) unless `--bare`. `--settings` hooks merge with others. | [headless](https://code.claude.com/docs/en/headless#start-faster-with-bare-mode), [skills](https://code.claude.com/docs/en/skills), [hooks](https://code.claude.com/docs/en/hooks#hook-locations) |
 | PreToolUse can block and return a reason | **Confirmed** | `hookSpecificOutput.permissionDecision: "deny"` + `permissionDecisionReason` (shown to Claude), or exit 2 with stderr. | [hooks](https://code.claude.com/docs/en/hooks#pretooluse-decision-control) |
 | Notification hook event | **Confirmed, but not useful here** | Exists, can't block. Its `permission_prompt` type needs a prompt to exist; under `-p --permission-prompts none` requests are denied instead. Needs-you uses the bridge, see 4.5. | [hooks](https://code.claude.com/docs/en/hooks#notification) |
 | Deep-link URL format | **Wrong for this use** | `claude-cli://open?q=&cwd=&repo=` opens a new terminal session with a pre-filled prompt; it can't open an existing session. Use `claude --desktop --resume <id>` (v2.1.285+). | [deep-links](https://code.claude.com/docs/en/deep-links), [desktop](https://code.claude.com/docs/en/desktop#coming-from-the-cli) |
-| Claude in Chrome from a `-p` run | **Unverifiable from docs** | `--chrome` is a documented CLI flag; the docs neither confirm nor rule out `-p`. Requires claude.ai login (not an API key or `setup-token`), a direct Anthropic plan, extension v1.0.36+. Launcher thread smoke-tests it; if it fails, the Moodle skill says so instead of working around it. | [chrome](https://code.claude.com/docs/en/chrome) |
+| Claude in Chrome from a `-p` run | **Half confirmed** | `--chrome` is a documented CLI flag. Live `-p` run on v2.1.296 (2026-10-11): `system/init` lists `claude-in-chrome` as `connected` with its 22 tools (`navigate`, `read_page`, `get_page_text`, `form_input`, `tabs_create_mcp`, …), and a call works. With no browser attached, `list_connected_browsers` returns `[]`. Driving a real page still needs Leo's Mac with Chrome, the extension (v1.0.36+) and a claude.ai login; the Moodle skill should call `list_connected_browsers` first and use needs-access when it is empty. | [chrome](https://code.claude.com/docs/en/chrome) |
 | Obsidian Kanban file format | **Confirmed, with additions** | Leo's description is right; the file also has `kanban-plugin: board` frontmatter, an optional `**Complete**` lane marker, an archive section, and a trailing settings block. See section 9. | [obsidian-kanban source](https://github.com/mgmeyers/obsidian-kanban/blob/main/src/parsers/formats/list.ts) |
 | "Named session in my Code tab" (implied by the spec) | **Wrong** | CLI sessions don't appear in Desktop's Code tab; Desktop keeps its own list. See 4.1. | [desktop](https://code.claude.com/docs/en/desktop#coming-from-the-cli) |
 | Hook `onFailure: "block"`, `matcher: "*"`, deny-rule tool-name globs (`mcp__*__slack_send_message`) | **Confirmed** | `onFailure` needs v2.1.295. Deny globs must match the whole tool name and remove the tool from context. `mcp__` rules with parentheses are skipped in settings files. Checked 2026-10-11 for guard/. | [hooks](https://code.claude.com/docs/en/hooks), [permissions](https://code.claude.com/docs/en/permissions#tool-name-wildcards) |
+| Launcher end to end | **Confirmed** | 2026-10-11, v2.1.296, real `claude` with guard/, bridge/ and librarian/ from main: a question ran in auto mode, was spoken through the bridge Speaker, logged and deleted; "remind me to stretch in 20 minutes" went Claude → bridge `remind` → `reminders.ts schedule` → plist; a WebFetch to barclays.co.uk was denied with `guard:no-money` and reported; a saved run resumed with "and also" by session id. |
 | `--permission-mode auto` in `-p` | **Confirmed** | Falls back to Manual if unavailable; launcher checks `system/init`. Pair with `--permission-prompts none` (v2.1.259+). | [permission-modes](https://code.claude.com/docs/en/permission-modes), [headless](https://code.claude.com/docs/en/headless#turn-off-permission-prompts-in-unattended-runs) |
 
 ## 11. Phase 1 build order
