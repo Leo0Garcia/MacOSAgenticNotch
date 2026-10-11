@@ -42,3 +42,16 @@ test("only explicit saved intents get a name", () => {
   expect(savedRunName("research the best headphones")).toBeUndefined();
   expect(savedRunName(`start a research session on ${"x".repeat(100)}`)!.length).toBeLessThanOrEqual(68);
 });
+
+test("quick asks get the fast model; research, writing and long requests the smart one", async () => {
+  const { modelFor, needsSmartModel } = await import("../src/args");
+  const cfg = configFromEnv({ HOME: "/h", JARVIS_REPO: "/r" });
+  for (const q of ["what's the time", "what's the weather in Southampton", "add buy chalk to my Kanban", "remind me to call Sue at 5", "what's my first lecture tomorrow", "pay my tuition"])
+    expect(modelFor(cfg, q)).toBe("sonnet");
+  for (const q of ["start a research session on heat pumps", "write me a cover letter for the Arm internship", "plan my revision for next week", "think carefully about whether I should switch modules", "debug the failing test in my repo"])
+    expect(needsSmartModel(q)).toBe(true);
+  expect(needsSmartModel("a ".repeat(30) + "question")).toBe(true);
+  expect(modelFor(cfg, "write a brief on the Amra launch")).toBeUndefined(); // Leo's default (Opus)
+  expect(modelFor(configFromEnv({ HOME: "/h", JARVIS_MODEL: "opus" }), "what's the time")).toBe("opus"); // pinned
+  expect(modelFor(configFromEnv({ HOME: "/h", JARVIS_FAST_MODEL: "" }), "what's the time")).toBeUndefined(); // routing off
+});

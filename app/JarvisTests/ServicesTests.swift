@@ -272,3 +272,13 @@ import Testing
         #expect(code == 0)
     }
 }
+
+@Suite struct ComputerContextTests {
+    @Test func screenshotOnlyForRequestsAboutTheScreen() {
+        #expect(ComputerContext.isAboutScreen("summarise this page"))
+        #expect(ComputerContext.isAboutScreen("what's on my screen"))
+        #expect(ComputerContext.isAboutScreen("reply to the email I'm looking at"))
+        #expect(!ComputerContext.isAboutScreen("what's the weather in Southampton"))
+        #expect(!ComputerContext.isAboutScreen("add buy chalk to my Kanban"))
+    }
+}

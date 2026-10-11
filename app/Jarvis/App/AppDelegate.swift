@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var wake: WakeListener?
     private var defaultsObserver: NSObjectProtocol?
 
-    /// Settings > General. Defaults: on, "Jarvis".
+    /// Settings > General. Defaults: off (Leo prefers ⌥ Space), "Jarvis".
     static let wakeEnabledKey = "WakeWordEnabled"
     static let wakeWordKey = "WakeWord"
     private let notifier = SystemNotifier()
@@ -56,6 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.snooze = { text, minutes in launcher.snooze(text: text, minutes: minutes) }
         model.postNotification = { [weak self] title, body in self?.notify(title: title, body: body) }
         model.announce = { [weak self] text in self?.notifier.announce(text) }
+        let context = ComputerContext(paths: paths)
+        model.captureContext = { context.capture() }
+        model.willSubmit = { context.write(for: $0) }
         let actions = paths.home.appendingPathComponent("actions.sqlite")
         model.loadRecent = { ActionsStore.newest(8, file: actions) }
 
@@ -63,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let voice = VoicePipeline(capture: capture, transcriber: transcriber, model: model)
         self.voice = voice
         model.voice = voice
-        UserDefaults.standard.register(defaults: [Self.wakeEnabledKey: true, Self.wakeWordKey: "Jarvis"])
+        UserDefaults.standard.register(defaults: [Self.wakeEnabledKey: false, Self.wakeWordKey: "Jarvis"])
         let phrase = UserDefaults.standard.string(forKey: Self.wakeWordKey) ?? "Jarvis"
         model.wakePhrase = phrase
         wake = WakeListener(capture: capture, transcriber: transcriber, model: model, phrase: phrase)

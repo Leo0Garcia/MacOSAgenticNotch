@@ -182,6 +182,9 @@ final class AppModel {
     @ObservationIgnored var postNotification: ((_ title: String, _ body: String) -> Void)?
     @ObservationIgnored var announce: ((String) -> Void)?
     @ObservationIgnored var loadRecent: (() -> [ActionItem])?
+    /// Notes what Leo was doing when listening starts, and writes it just before a request goes out.
+    @ObservationIgnored var captureContext: (() -> Void)?
+    @ObservationIgnored var willSubmit: ((String) -> Void)?
 
     @ObservationIgnored private var timers: [String: Scheduled] = [:]
     @ObservationIgnored private var speakingIDs: Set<String> = []
@@ -254,6 +257,7 @@ final class AppModel {
 
     private func beginListening(preroll: [Float]?) {
         if panel == .listening { return }
+        captureContext?()
         handsFree = preroll != nil
         if case let .question(ask) = panel { listenTarget = .answer(ask) } else { listenTarget = .request }
         transcript = Transcript()
@@ -338,6 +342,7 @@ final class AppModel {
             launcherFailed("The launcher isn't connected.")
             return
         }
+        willSubmit?(request)
         do {
             // A second request replaces the run on screen; the first one's events are dropped.
             try launcher.run(
@@ -370,7 +375,9 @@ final class AppModel {
             // audio). Without the socket, fall back to the launcher's stdout.
             stdoutSpeechCount += 1
             let n = stdoutSpeechCount
-            scheduler.after(0.3) { [weak self] in
+            // Kokoro takes about a second to render, so wait before assuming the
+            // socket is down.
+            scheduler.after(3) { [weak self] in
                 guard let self, let run = self.run, !run.socketSpeech else { return }
                 let id = "stdout-\(n)"
                 self.speechStarted(id: id, text: text)
@@ -436,6 +443,17 @@ final class AppModel {
     func speechStarted(id: String, text: String) {
         let now = scheduler.now
         if run != nil, !id.hasPrefix("stdout-") { run?.socketSpeech = true }
+        // The same sentence already shown from the stdout fallback: take it over
+        // instead of captioning it twice.
+        if !id.hasPrefix("stdout-"), let i = run?.captions.firstIndex(where: { $0.id.hasPrefix("stdout-") && $0.text == text }) {
+            let old = run!.captions[i]
+            let replacement = Caption(id: id, text: text, startedAt: old.startedAt)
+            run?.captions[i] = replacement
+            speakingIDs.remove(old.id)
+            speakingIDs.insert(id)
+            speaking = true
+            return
+        }
         speakingIDs.insert(id)
         speaking = true
         if run == nil {
