@@ -63,7 +63,7 @@ Every request is one `claude -p` run. The run decides at the end whether it is w
 
 The launcher captures the stream-json output to `~/Jarvis/runs/<session-id>.jsonl`. That file, not Claude Code's internal transcript, is what the librarian reads; it is deleted along with the transcript for ephemeral runs.
 
-**Code tab:** CLI sessions do not appear in Claude Desktop's Code tab; Desktop keeps its own list. So "nothing new in my Code tab" holds for every run. A saved run is named with `-n "Jarvis: <title>"`, appears in `claude --resume`, and is logged in the notch. Opening it in the Code tab is `claude --desktop --resume <session-id>` (from the notch row, or Jarvis does it when Leo says "open it"). Default: Jarvis does **not** auto-open Desktop after each saved run, because that steals focus.
+**Code tab:** CLI sessions do not appear in Claude Desktop's Code tab; Desktop keeps its own list. So "nothing new in my Code tab" holds for every run. A saved run is named with `-n "Jarvis: <title>"`, appears in `claude --resume`, and is logged in the notch. Opening it in the Code tab is `claude --desktop --resume <session-id>` (from the notch row, or Jarvis does it when Leo says "open it"). Jarvis does **not** auto-open Desktop after a saved run (Leo's decision, section 13).
 
 ### 4.2 Launch command
 
@@ -241,6 +241,6 @@ Each thread: branch from main, one draft PR named by area, `bun test` in bridge/
 
 Porcupine wake word ("Jarvis" built-in keyword), better TTS, hover action log, routing briefs into other projects by driving the project conversation in Claude Desktop or claude.ai/code, never by adding anything to those projects.
 
-## 13. Open questions for Leo
+## 13. Decisions from Leo
 
-- Auto-open saved runs in Desktop's Code tab when they finish? Default is no (it steals focus); the notch row and "open it" do it on demand.
+- 2026-10-11: saved runs do not auto-open in Desktop's Code tab. They open on demand from the notch row or when Leo says "open it".
