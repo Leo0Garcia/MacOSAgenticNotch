@@ -31,6 +31,7 @@
 		C360B5629CF11A1FA05A9F1B /* NotchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91164898664277B5D50905E6 /* NotchViews.swift */; };
 		D69E45C4400DEE5DBF937B33 /* Scheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6BE6B677B24B6A3ECD9766 /* Scheduler.swift */; };
 		DF6EC4DD8D8A029748F382AE /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8F0993EA9183644A00101A8E /* WhisperKit */; };
+		E31E8FF84FDC1487E74BB67C /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA201F15CBAE07957922C904 /* CalendarService.swift */; };
 		EE159A7E6418AAD0BDD57172 /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF730C9F89F0B4290CAA7FA /* AudioCapture.swift */; };
 		F458E80ADF7A0F0724BAC9EF /* Snapshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 701F7E02FB205441533705D3 /* Snapshots.swift */; };
 		FD1BD447C82FB4C545F41946 /* Launcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB30A56BEBAB614A9399B2D7 /* Launcher.swift */; };
@@ -68,6 +69,7 @@
 		D87F560B5D01E95B8EE62180 /* NotchServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchServer.swift; sourceTree = "<group>"; };
 		DAA2D9A96890795C2F02A32B /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		DF361CB78B96375DB41C47D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		EA201F15CBAE07957922C904 /* CalendarService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarService.swift; sourceTree = "<group>"; };
 		EB6BE6B677B24B6A3ECD9766 /* Scheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scheduler.swift; sourceTree = "<group>"; };
 		EC0B74F072FAB468DCADE6C2 /* VoicePipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicePipeline.swift; sourceTree = "<group>"; };
 		EF9B29D46C38BECE52C023D3 /* HotKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKey.swift; sourceTree = "<group>"; };
@@ -122,6 +124,7 @@
 			isa = PBXGroup;
 			children = (
 				24AFAF6BBE8E74A4E6FAEE22 /* ActionsStore.swift */,
+				EA201F15CBAE07957922C904 /* CalendarService.swift */,
 				EF9B29D46C38BECE52C023D3 /* HotKey.swift */,
 				AB30A56BEBAB614A9399B2D7 /* Launcher.swift */,
 				8658147A374608398F17A8A8 /* NotchProtocol.swift */,
@@ -300,6 +303,7 @@
 				25FE325CBE88F6666137AEFC /* AppModel.swift in Sources */,
 				EE159A7E6418AAD0BDD57172 /* AudioCapture.swift in Sources */,
 				2CB1CD9B2C41D50CCE7439C3 /* Aurora.swift in Sources */,
+				E31E8FF84FDC1487E74BB67C /* CalendarService.swift in Sources */,
 				B0D0DF4C3F2F7FC12AF64F74 /* DemoDriver.swift in Sources */,
 				7474AC611E9BF7039CB83D5A /* FlowText.swift in Sources */,
 				7133A0F99F8F1049A215CE02 /* HotKey.swift in Sources */,

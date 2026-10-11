@@ -186,3 +186,27 @@ import Testing
         #expect(throws: LauncherError.self) { try launcher.run("x", onEvent: { _ in }, exited: { _ in }) }
     }
 }
+
+@Suite struct CalendarProtocolTests {
+    @Test func decodesTheRequestAndEncodesTheResult() throws {
+        #expect(try NotchProtocol.decode(#"{"type":"calendar_events","id":"c1","from":"2026-10-12T00:00:00Z","to":"2026-10-13T00:00:00Z"}"#)
+            == .calendarEvents(id: "c1", from: "2026-10-12T00:00:00Z", to: "2026-10-13T00:00:00Z"))
+        let out = NotchProtocol.encode(.calendarEventsResult(id: "c1", events: [
+            .init(calendar: "Personal", title: "Dentist", start: "2026-10-12T14:30:00.000Z", end: "2026-10-12T15:00:00.000Z", allDay: false, location: nil),
+        ]))
+        let obj = try #require(try JSONSerialization.jsonObject(with: Data(out.utf8)) as? [String: Any])
+        #expect(obj["type"] as? String == "calendar_events_result")
+        let ev = try #require((obj["events"] as? [[String: Any]])?.first)
+        #expect(ev["title"] as? String == "Dentist")
+        #expect(ev["allDay"] as? Bool == false)
+        #expect(ev["location"] is NSNull)
+        let err = NotchProtocol.encode(.calendarEventsError(id: "c1", code: "denied", message: "off"))
+        #expect(err.contains(#""code":"denied""#))
+    }
+
+    @Test func parsesBothISOForms() {
+        #expect(CalendarService.date("2026-10-12T00:00:00Z") != nil)
+        #expect(CalendarService.date("2026-10-12T00:00:00.000Z") != nil)
+        #expect(CalendarService.date("tomorrow") == nil)
+    }
+}

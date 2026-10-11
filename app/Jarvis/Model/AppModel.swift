@@ -544,7 +544,7 @@ final class AppModel {
             if panel.isNeedsYou || panel == .listening { deferred.append(r) } else { present(r) }
         case let .runEvent(sessionId, event, text, keep, summary, rule):
             runEventFromSocket(sessionId: sessionId, event: event, text: text, keep: keep, summary: summary, rule: rule)
-        case .hello, .log, .unknown:
+        case .hello, .log, .unknown, .calendarEvents:
             break
         }
     }
