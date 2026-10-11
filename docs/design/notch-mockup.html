@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}[hidden]{display:none!important}</style></head><body>
+<title>Jarvis Notch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one review bench. Direction picker, a 1:1 slice of the MacBook menu bar with the notch, controls, then the spec for the state on screen. */
+:root{
+  --bg:#EDF0F3; --panel:#FFFFFF; --fg:#13171C; --muted:#5A6470; --line:#D7DDE3; --chip:#E3E8ED;
+  --accent:#245F7E; --accent-fg:#FFFFFF;
+  --sans:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sf:-apple-system,BlinkMacSystemFont,"Geist","Segoe UI",sans-serif;
+  --S:1;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0C0E11; --panel:#14171B; --fg:#E6EAEE; --muted:#929DA8; --line:#252A30; --chip:#1D2126;
+  --accent:#86BCD8; --accent-fg:#0C0E11; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0C0E11; --panel:#14171B; --fg:#E6EAEE; --muted:#929DA8; --line:#252A30; --chip:#1D2126;
+  --accent:#86BCD8; --accent-fg:#0C0E11; color-scheme:dark}
+@property --a{syntax:'<angle>';inherits:false;initial-value:0deg}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5}
+.wrap{max-width:1000px;margin:0 auto;padding-inline:16px;padding-block:28px 48px;display:grid;gap:20px}
+h1{font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.lede{margin:4px 0 0;color:var(--muted);max-width:68ch}
+h2{font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+.mono{font-family:var(--mono)}
+
+.dirs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.dir{all:unset;cursor:pointer;display:grid;gap:2px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel);min-width:0}
+.dir b{font-weight:600;font-size:15px}
+.dir span{color:var(--muted);font-size:13px;line-height:1.4}
+.dir[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.dir:focus-visible,.chip:focus-visible,.tog:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dir .k{font-family:var(--mono);font-size:11px;color:var(--accent)}
+
+.bench{display:grid;gap:10px}
+.desk{position:relative;height:300px;border-radius:12px;overflow:hidden;container-type:inline-size;
+  background:
+    radial-gradient(120% 90% at 18% 110%, #1E5A6E 0%, transparent 55%),
+    radial-gradient(90% 80% at 85% 100%, #3C2E66 0%, transparent 60%),
+    radial-gradient(70% 60% at 55% 40%, #17324A 0%, transparent 70%),
+    linear-gradient(180deg,#0B1622,#101C2B);}
+.menubar{position:absolute;inset:0 0 auto 0;height:32px;display:flex;justify-content:space-between;align-items:center;padding:0 14px;
+  color:#F2F5F8;font:500 13px/1 var(--sf);background:rgba(10,16,24,.28);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.mb-l,.mb-r{display:flex;gap:16px;align-items:center;white-space:nowrap}
+.mb-l b{font-weight:700}
+.mb-r{gap:14px;font-weight:400}
+.mb-r svg{width:16px;height:16px;fill:none;stroke:#F2F5F8;stroke-width:1.5}
+@container (max-width:760px){.mb-l .m:nth-child(n+5){display:none}}
+@container (max-width:600px){.mb-l .m:nth-child(n+3){display:none}.mb-r .ic{display:none}}
+@container (max-width:460px){.mb-l .m{display:none}.mb-r .day{display:none}}
+.deskfoot{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+
+/* ---------- the notch ---------- */
+.shell{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:3;
+  width:185px;height:32px;background:#000;color:#fff;font-family:var(--sf);
+  border-radius:0 0 var(--r,8px) var(--r,8px);
+  transition:width var(--d,.4s) var(--e,ease),height var(--d,.4s) var(--e,ease),border-radius var(--d,.4s) var(--e,ease);
+  cursor:default;-webkit-font-smoothing:antialiased}
+.ear{position:absolute;top:0;width:var(--ear,6px);height:var(--ear,6px);transition:width .3s,height .3s}
+.ear.l{right:100%;background:radial-gradient(circle at 0 100%,transparent calc(var(--ear,6px) - .5px),#000 var(--ear,6px))}
+.ear.r{left:100%;background:radial-gradient(circle at 100% 100%,transparent calc(var(--ear,6px) - .5px),#000 var(--ear,6px))}
+.clip{position:absolute;inset:0;overflow:hidden;border-radius:inherit}
+.strip{position:absolute;top:0;left:0;right:0;height:32px;display:flex}
+.wing{flex:1;display:flex;align-items:center;min-width:0;overflow:hidden}
+.wing.lead{justify-content:flex-start;padding-left:14px}
+.wing.trail{justify-content:flex-end;padding-right:14px}
+.cut{flex:0 0 185px}
+.body{position:absolute;top:32px;left:50%;width:340px;transform:translateX(-50%);padding:6px 16px 14px}
+.lead>*,.trail>*,.body>*{flex:none}
+.out{opacity:0;filter:blur(4px);transition:opacity calc(110ms*var(--S)) ease-in,filter calc(110ms*var(--S)) ease-in}
+.in{animation:cin calc(240ms*var(--S)) cubic-bezier(.2,.8,.2,1) calc(40ms*var(--S)) both}
+@keyframes cin{from{opacity:0;filter:blur(6px);transform:translateY(-4px) scale(.98)}to{opacity:1;filter:none;transform:none}}
+.body.in{animation-name:cinb}
+@keyframes cinb{from{opacity:0;filter:blur(6px);transform:translate(-50%,-4px) scale(.98)}to{opacity:1;filter:none;transform:translateX(-50%)}}
+
+.t{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.72);font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums}
+canvas.viz{width:40px;height:20px;display:block}
+canvas.viz.sm{width:22px;height:14px}
+
+.tx{font-size:15px;line-height:20px;font-weight:500;letter-spacing:-.01em;min-height:20px}
+.tx .w{display:inline;transition:color .2s}
+.tx .w.h{color:rgba(255,255,255,.45)}
+.tx .w.n{animation:win calc(180ms*var(--S)) ease-out both}
+@keyframes win{from{opacity:0;filter:blur(6px)}to{opacity:1;filter:none}}
+.caret{display:inline-block;width:2px;height:15px;margin-left:2px;vertical-align:-2px;background:rgba(255,255,255,.7);border-radius:1px;animation:blink calc(1s*var(--S)) steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.req{font-size:12px;line-height:16px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st{margin-top:4px;font-size:15px;line-height:20px;font-weight:500;letter-spacing:-.01em}
+.shimmer{background:linear-gradient(100deg,rgba(255,255,255,.5) 30%,#fff 45%,rgba(255,255,255,.5) 60%);background-size:300% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;animation:sh calc(1.6s*var(--S)) linear infinite}
+@keyframes sh{from{background-position:100% 0}to{background-position:0 0}}
+.st.chg{animation:cin calc(240ms*var(--S)) cubic-bezier(.2,.8,.2,1) both,sh calc(1.6s*var(--S)) linear infinite}
+.reply{font-size:15px;line-height:20px;font-weight:500;letter-spacing:-.01em}
+.reply span{opacity:.3;transition:opacity calc(160ms*var(--S)) ease-out}
+.reply span.on{opacity:1}
+.saved{margin-top:10px;display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;background:rgba(255,255,255,.1);font-size:12px;font-weight:500;color:rgba(255,255,255,.85);cursor:pointer}
+.saved:hover{background:rgba(255,255,255,.16)}
+.lbl{font-size:11px;line-height:14px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.amber{color:#FFB340}.yellow{color:#FFD60A}
+.q{margin-top:4px;font-size:15px;line-height:20px;font-weight:500;letter-spacing:-.01em}
+.sub{margin-top:4px;font-size:13px;line-height:18px;color:rgba(255,255,255,.6)}
+.opts{margin-top:10px;display:flex;gap:6px;align-items:center}
+.opt{all:unset;cursor:pointer;height:24px;padding:0 11px;border-radius:12px;background:rgba(255,255,255,.12);font:500 12px/24px var(--sf);color:#fff}
+.opt:hover{background:rgba(255,255,255,.2)}
+.opt.p{background:rgba(255,159,10,.24);color:#FFC266}
+.opt.p:hover{background:rgba(255,159,10,.34)}
+.opt:focus-visible{outline:2px solid #FFB340;outline-offset:1px}
+.hint{font-size:11.5px;color:rgba(255,255,255,.45);margin-left:4px;white-space:nowrap}
+.foot{margin-top:8px;font-size:10px;letter-spacing:.06em;color:rgba(255,255,255,.38)}
+
+.log{display:grid}
+.row{display:grid;grid-template-columns:38px 1fr auto;gap:8px;align-items:center;height:18px;font-size:12px;line-height:18px;border-radius:5px;padding:0 4px;margin:0 -4px}
+.row .tm{color:rgba(255,255,255,.4);font-variant-numeric:tabular-nums;font-size:11px}
+.row .tx2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.85)}
+.row .k{font-size:11px;color:rgba(255,255,255,.35)}
+.row.sv{cursor:pointer}.row.sv .k{color:#7FD1FF}
+.row.sv:hover{background:rgba(255,255,255,.08)}
+.row.bl .k{color:#FFB340}
+
+/* icons */
+.spin{width:14px;height:14px;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 20%,#fff);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2.2px),#000 calc(100% - 1.7px));mask:radial-gradient(farthest-side,transparent calc(100% - 2.2px),#000 calc(100% - 1.7px));
+  animation:rot calc(.9s*var(--S)) linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.orb{width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 32%,#fff 0 10%,var(--c1) 34%,var(--c2) 72%);
+  box-shadow:0 0 10px var(--c2);animation:breathe calc(1.8s*var(--S)) ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(.8);box-shadow:0 0 4px var(--c2)}}
+.leds{display:flex;gap:3px}.leds i{width:4px;height:4px;background:#9FD8FF;opacity:.2;animation:led calc(.9s*var(--S)) steps(1) infinite}
+.leds i:nth-child(2){animation-delay:calc(.3s*var(--S))}.leds i:nth-child(3){animation-delay:calc(.6s*var(--S))}
+@keyframes led{0%{opacity:1}33%{opacity:.2}}
+.dot{width:8px;height:8px;border-radius:50%;background:#FF9F0A;box-shadow:0 0 0 0 rgba(255,159,10,.6);animation:pulse calc(1.2s*var(--S)) ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 5px rgba(255,159,10,0);opacity:.65}}
+.chk{width:16px;height:16px;display:block}
+.chk circle{fill:#30D158}
+.chk path{fill:none;stroke:#000;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:12;stroke-dashoffset:12;animation:draw calc(350ms*var(--S)) cubic-bezier(.3,.7,.2,1) calc(120ms*var(--S)) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.bell{width:15px;height:15px;fill:#FFD60A;transform-origin:50% 10%;animation:ring calc(1.4s*var(--S)) ease-in-out 2}
+@keyframes ring{0%,60%,100%{transform:rotate(0)}10%{transform:rotate(14deg)}20%{transform:rotate(-12deg)}30%{transform:rotate(8deg)}40%{transform:rotate(-5deg)}}
+.mark{font:600 12px/1 var(--sf);letter-spacing:.02em;color:rgba(255,255,255,.8)}
+.bang{width:13px;height:13px;border:1.2px solid #FFB340;color:#FFB340;font:600 9px/11px var(--mono);text-align:center}
+.rec{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:rgba(255,255,255,.6)}
+.rec i{width:5px;height:5px;border-radius:50%;background:#FF453A;animation:blink calc(1s*var(--S)) steps(1) infinite}
+.rec b{font-weight:500;color:#fff}
+
+/* ---------- direction B: light rim ---------- */
+.rim,.glow{display:none;pointer-events:none}
+.dir-b .rim{display:block;position:absolute;inset:-2px 0 0 0;border-radius:inherit;padding:1.5px;
+  background:conic-gradient(from var(--a),var(--c1),var(--c2),var(--c3),var(--c1));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);
+  animation:spinA calc(var(--rimT,4s)*var(--S)) linear infinite;opacity:var(--rimO,0);transition:opacity calc(400ms*var(--S))}
+.dir-b .glow{display:block;position:absolute;left:8%;right:8%;bottom:-34px;height:60px;border-radius:50%;
+  background:radial-gradient(closest-side,var(--c2),transparent);filter:blur(12px);opacity:var(--glowO,0);transition:opacity calc(400ms*var(--S))}
+@keyframes spinA{to{--a:360deg}}
+.shell{--c1:#fff;--c2:#888;--c3:#fff}
+.shell[data-k="listening"]{--c1:#5AC8FA;--c2:#7D7AFF;--c3:#64D2FF;--rimO:.95;--glowO:.35;--rimT:3s}
+.shell[data-k="working"]{--c1:#7D7AFF;--c2:#BF5AF2;--c3:#5AC8FA;--rimO:.95;--glowO:.4;--rimT:1.5s}
+.shell[data-k="done"]{--c1:#30D158;--c2:#63E6BE;--c3:#5AC8FA;--rimO:.8;--glowO:.3;--rimT:5s}
+.shell[data-k="needs"]{--c1:#FF9F0A;--c2:#FF6B3D;--c3:#FFD60A;--rimO:.95;--glowO:.45;--rimT:2.4s}
+.shell[data-k="reminder"]{--c1:#FFD60A;--c2:#FF9F0A;--c3:#FFF3B0;--rimO:.9;--glowO:.3;--rimT:3s}
+.shell[data-k="log"]{--c1:#9AA4B2;--c2:#4B5563;--c3:#E5E7EB;--rimO:.4;--glowO:0;--rimT:8s}
+.dir-b .shell[data-k="needs"] .rim{animation:spinA calc(2.4s*var(--S)) linear infinite,rimP calc(1.2s*var(--S)) ease-in-out infinite}
+@keyframes rimP{50%{opacity:.45}}
+.dir-b .shimmer{background-image:linear-gradient(100deg,rgba(255,255,255,.5) 30%,#E4DBFF 42%,#fff 48%,rgba(255,255,255,.5) 62%)}
+
+/* ---------- direction C: instrument ---------- */
+.dir-c .shell{font-family:var(--sf)}
+.dir-c .strip::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:1px;background:rgba(255,255,255,.09);opacity:var(--hair,0);transition:opacity .2s}
+.dir-c .shell[data-x="1"]{--hair:1}
+.dir-c .tx{font-size:14.5px}
+.dir-c .opt{border-radius:4px;font-family:var(--mono);font-size:11px;letter-spacing:.02em}
+.dir-c .saved{border-radius:4px;font-family:var(--mono);font-size:11px}
+.dir-c .lbl{font-family:var(--mono);font-weight:500;letter-spacing:.08em;font-size:10.5px}
+.dir-c .chk circle{fill:none;stroke:#9FD8FF;stroke-width:1.3}
+.dir-c .chk path{stroke:#9FD8FF;stroke-width:1.6}
+.dir-c .row{font-family:var(--mono);font-size:11px}
+.dir-c .row.sv .k{color:#9FD8FF}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:1px;font-family:var(--mono);font-size:10.5px;line-height:16px}
+.steps li{display:grid;grid-template-columns:18px 72px 1fr 34px;gap:6px;color:rgba(255,255,255,.5);animation:cin calc(200ms*var(--S)) ease-out both}
+.steps li:last-child{color:#fff}
+.steps li:last-child .k{color:#9FD8FF}
+.steps .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.steps .ms{text-align:right;font-variant-numeric:tabular-nums}
+.ruler{position:relative;margin-top:8px;height:18px}
+.ruler .bar{position:absolute;left:0;right:64px;top:6px;height:6px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.22) 0 1px,transparent 1px calc(100%/8)),rgba(255,255,255,.05)}
+.ruler .bar::after{content:"";position:absolute;right:-1px;top:-3px;bottom:-3px;width:1px;background:rgba(255,255,255,.5)}
+.ruler .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:#9FD8FF;opacity:.85}
+.ruler .fill.over{background:#FF9F0A}
+.ruler .fs{position:absolute;top:-3px;bottom:-3px;width:2px;background:#fff;display:none}
+.ruler .rl{position:absolute;right:0;top:0;font:500 10.5px/18px var(--mono);color:rgba(255,255,255,.7);font-variant-numeric:tabular-nums}
+
+/* overlays */
+.limits{position:absolute;top:0;left:50%;transform:translateX(-50%);width:340px;height:200px;border:1px dashed rgba(255,255,255,.45);border-top:none;border-radius:0 0 24px 24px;z-index:4;pointer-events:none;display:none}
+.limits span{position:absolute;bottom:-18px;right:0;font:500 10.5px/1 var(--mono);color:rgba(255,255,255,.7)}
+.hw{position:absolute;top:0;left:50%;transform:translateX(-50%);width:185px;height:32px;border:1px dotted rgba(255,255,255,.75);border-top:none;border-radius:0 0 8px 8px;z-index:5;pointer-events:none;display:none}
+.show-limits .limits,.show-limits .hw{display:block}
+#measure{position:absolute;visibility:hidden;pointer-events:none;top:0;left:0}
+#measure .body{position:static;transform:none}
+
+/* controls */
+.ctl{display:grid;gap:14px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.row2{display:flex;flex-wrap:wrap;gap:6px}
+.chip{all:unset;cursor:pointer;padding:6px 11px;border-radius:7px;background:var(--chip);font-size:13px;line-height:18px;white-space:nowrap}
+.chip:hover{filter:brightness(.97)}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.chip.play{background:transparent;border:1px solid var(--line)}
+.chip.play::before{content:"▶ ";font-size:10px;color:var(--accent)}
+.chip .ph{font-size:11px;opacity:.7}
+.tg{display:flex;flex-wrap:wrap;gap:18px}
+.tog{display:inline-flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.tog input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+
+.info{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.card{padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--panel);min-width:0}
+.card h3{margin:0 0 10px;font-size:16px;font-weight:600;letter-spacing:-.01em}
+dl{margin:0;display:grid;grid-template-columns:96px minmax(0,1fr);gap:7px 12px;font-size:13.5px;line-height:1.45}
+dt{color:var(--muted)}dd{margin:0}
+dd code,td code{font-family:var(--mono);font-size:12px;background:var(--chip);padding:1px 4px;border-radius:4px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{text-align:left;padding:6px 8px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+td:first-child{white-space:nowrap;font-weight:500}
+td.m{font-family:var(--mono);font-size:12px}
+.note{color:var(--muted);font-size:13px;max-width:80ch;margin:0}
+
+@media (max-width:720px){.dirs,.info{grid-template-columns:minmax(0,1fr)}.desk{height:280px}}
+@media (prefers-reduced-motion:reduce){
+  .shimmer,.st.chg{animation:none;background:none;color:#fff;-webkit-background-clip:border-box;background-clip:border-box}
+  .spin,.orb,.leds i,.dot,.bell,.rim,.caret,.rec i{animation:none!important}
+  .in,.body.in,.tx .w.n,.steps li{animation-duration:1ms!important}
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Jarvis Notch</h1>
+    <p class="lede">Three visual directions for the notch app, drawn at true size: one CSS pixel is one macOS point, so this is how big it is on the MacBook. Every state is clickable, and the play buttons run a full request end to end.</p>
+  </header>
+
+  <section aria-label="Direction">
+    <h2>Pick a direction</h2>
+    <div class="dirs">
+      <button class="dir" id="dir-a" data-dir="a" aria-pressed="true"><span class="k">A</span><b>Obsidian</b><span>Reads as part of the hardware. Black, white type, colour only where a state needs it.</span></button>
+      <button class="dir" id="dir-b" data-dir="b" aria-pressed="false"><span class="k">B</span><b>Aurora</b><span>A thin band of light runs round the edge and changes colour with the state.</span></button>
+      <button class="dir" id="dir-c" data-dir="c" aria-pressed="false"><span class="k">C</span><b>Signal</b><span>An instrument readout: live trace, each tool step, and the 4 second budget.</span></button>
+    </div>
+  </section>
+
+  <section class="bench" aria-label="Preview">
+    <div class="desk dir-a" id="desk">
+      <div class="menubar">
+        <div class="mb-l"><svg width="14" height="16" viewBox="0 0 14 17" aria-hidden="true"><path fill="#F2F5F8" d="M11.6 9c0-2 1.7-3 1.8-3.1-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.1.8-.7 0-1.6-.7-2.7-.7C3.2 4.4 1.9 5.2 1.2 6.5c-1.5 2.6-.4 6.4 1 8.5.7 1 1.5 2.1 2.6 2.1 1 0 1.4-.7 2.7-.7 1.2 0 1.6.7 2.7.6 1.1 0 1.8-1 2.5-2 .8-1.1 1.1-2.2 1.1-2.3 0 0-2.2-.8-2.2-3.4zM9.6 3c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.5.6-1 1.6-.9 2.6 1 .1 1.9-.5 2.5-1.2z"/></svg><b class="m">Finder</b><span class="m">File</span><span class="m">Edit</span><span class="m">View</span><span class="m">Go</span><span class="m">Window</span><span class="m">Help</span></div>
+        <div class="mb-r"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6.2a8.5 8.5 0 0 1 12 0M4.2 8.6a5.3 5.3 0 0 1 7.6 0M6.4 11a2.2 2.2 0 0 1 3.2 0"/></svg><svg class="ic" viewBox="0 0 24 16" style="width:24px" aria-hidden="true"><rect x="1" y="3.5" width="19" height="9" rx="2.5"/><rect x="3" y="5.5" width="12" height="5" rx="1" fill="#F2F5F8" stroke="none"/><path d="M22 6.5v3"/></svg><span class="day">Sun 11 Oct</span><span>14:20</span></div>
+      </div>
+      <div class="shell" id="shell" data-k="idle">
+        <i class="ear l"></i><i class="ear r"></i>
+        <div class="clip">
+          <div class="glow"></div>
+          <div class="strip"><div class="wing lead" id="lead"></div><div class="cut"></div><div class="wing trail" id="trail"></div></div>
+          <div class="body" id="body"></div>
+          <div class="rim"></div>
+        </div>
+      </div>
+      <div class="limits"><span>max 340 × 200 pt</span></div>
+      <div class="hw"></div>
+      <div id="measure"><div class="body" id="mbody"></div></div>
+    </div>
+    <div class="deskfoot"><span>notch 185 × 32 pt (read from NSScreen at runtime)</span><span>compact 289 × 32</span><span>expanded 340 wide, height fits content, max 200</span><span id="szNow">now: 185 × 32</span></div>
+  </section>
+
+  <section class="ctl" aria-label="Controls">
+    <div>
+      <h2>Run a request</h2>
+      <div class="row2">
+        <button class="chip play" data-play="weather">“What's the weather in Southampton”</button>
+        <button class="chip play" data-play="research">“Start a research session on Southampton rents”</button>
+        <button class="chip play" data-play="guard">“Pay my tuition fee”</button>
+        <button class="chip play" data-play="reminder">Reminder fires at 18:00</button>
+      </div>
+    </div>
+    <div>
+      <h2>Jump to a state</h2>
+      <div class="row2" id="states">
+        <button class="chip" data-s="idle">Idle</button>
+        <button class="chip" data-s="listening">Listening</button>
+        <button class="chip" data-s="working">Working</button>
+        <button class="chip" data-s="workingCompact">Working, long run</button>
+        <button class="chip" data-s="done">Done</button>
+        <button class="chip" data-s="doneSaved">Done, saved</button>
+        <button class="chip" data-s="needsAsk">Needs you: question</button>
+        <button class="chip" data-s="needsAccess">Needs you: access</button>
+        <button class="chip" data-s="needsGuard">Needs you: blocked</button>
+        <button class="chip" data-s="reminder">Reminder</button>
+        <button class="chip" data-s="reminderCompact">Reminder pill</button>
+        <button class="chip" data-s="log">Hover log <span class="ph">phase 2</span></button>
+      </div>
+    </div>
+    <div class="tg">
+      <label class="tog"><input type="checkbox" id="slow"> Slow motion ×4</label>
+      <label class="tog"><input type="checkbox" id="lim"> Show size limits</label>
+    </div>
+  </section>
+
+  <section class="info">
+    <div class="card" aria-live="polite">
+      <h3 id="spName">Idle</h3>
+      <dl id="spList"></dl>
+    </div>
+    <div class="card">
+      <h3>Motion, shared by all three</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Token</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Expand</td><td class="m">spring(response: 0.42, damping: 0.80)</td></tr>
+          <tr><td>Collapse</td><td class="m">spring(response: 0.34, damping: 1.0)</td></tr>
+          <tr><td>Content in</td><td class="m">240ms ease-out, blur 6→0, y −4→0, delay 40ms</td></tr>
+          <tr><td>Content out</td><td class="m">110ms ease-in, blur 0→4</td></tr>
+          <tr><td>Word in</td><td class="m">180ms ease-out, blur 6→0</td></tr>
+          <tr><td>Shimmer</td><td class="m">1.6s linear loop</td></tr>
+          <tr><td>Attention</td><td class="m">1.2s ease-in-out pulse</td></tr>
+          <tr><td>Reduced motion</td><td class="m">160ms crossfades, no overshoot, no loops</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </section>
+  <p class="note">The written spec, with sizes, colours per direction and how each piece maps onto DynamicNotchKit and SwiftUI, is in <code class="mono">docs/NOTCH-DESIGN.md</code> in the repo. The hotkey shown here (⌥ Space) is a placeholder until the app is built.</p>
+</div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const desk=$('#desk'), shell=$('#shell'), lead=$('#lead'), trail=$('#trail'), body=$('#body'), mbody=$('#mbody');
+let dir='a', S=1, cur='idle', curOpts={}, run=0;
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* SwiftUI-style spring → CSS linear() easing */
+function spring(response, damping){
+  const k=Math.pow(2*Math.PI/response,2), c=4*Math.PI*damping/response, dt=1/1000;
+  let x=0,v=0,t=0,still=0; const xs=[];
+  while(t<2.5){const a=k*(1-x)-c*v; v+=a*dt; x+=v*dt; t+=dt; xs.push(x);
+    if(Math.abs(1-x)<.0015&&Math.abs(v)<.03){still+=dt; if(still>.04)break}else still=0}
+  const n=48, pts=[];
+  for(let i=0;i<=n;i++){const idx=Math.min(xs.length-1,Math.round(i/n*(xs.length-1))); pts.push(i===0?0:i===n?1:+xs[idx].toFixed(4))}
+  const ok=CSS.supports('transition-timing-function','linear(0, 1)');
+  return {e: ok?`linear(${pts.join(', ')})`:'cubic-bezier(.2,.9,.25,1.08)', ms: Math.round(t*1000)};
+}
+const SPR={expand:spring(.42,.8), collapse:spring(.34,1)};
+if(RM){SPR.expand={e:'ease',ms:160};SPR.collapse={e:'ease',ms:160}}
+
+/* ---------- copy ---------- */
+const TXT={
+  weather:{req:"What's the weather in Southampton", reply:"It's 14 degrees and cloudy in Southampton, with light rain from about 4pm.",
+    steps:[['WEBSEARCH','southampton weather today','Checking the forecast'],['WEBFETCH','bbc.co.uk/weather/2637487','Reading BBC Weather']]},
+  research:{req:"Start a research session on Southampton rents", reply:"I've started that. The first pass is in your vault under Southampton rents.",
+    steps:[['WEBSEARCH','southampton average rent 2026','Searching the web'],['WEBFETCH','zoopla.co.uk/market/southampton','Reading Zoopla'],['WRITE','Jarvis-Memory/Research/Southampton rents.md','Writing the notes']],
+    saved:'Research: Southampton rents'},
+  guard:{req:"Pay my tuition fee", steps:[['CHROME','navigate → fees portal','Opening the fees portal']]},
+};
+const LOG=[['14:20','Weather in Southampton',''],['14:05','Research: Southampton rents','sv'],['13:52','Added “COMP2211 lab 4” to Kanban',''],['13:40','Reminder set: call Sue, 18:00',''],['13:12','Slack #amra digest → Projects/Amra',''],['12:47','Blocked: tuition fee payment','bl'],['12:30','Moodle: 3 deadlines this week',''],['11:58','Renamed 14 screenshots','']];
+
+/* ---------- live model ---------- */
+const M={words:[],steps:[],status:'',reply:[],spoken:-1,t0:0,tEnd:0,mode:'',talking:false,speaking:false,firstSound:null,budget:false};
+
+/* ---------- pieces ---------- */
+const spinner=()=>dir==='a'?'<div class="spin"></div>':dir==='b'?'<div class="orb"></div>':'<div class="leds"><i></i><i></i><i></i></div>';
+const check='<svg class="chk" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7.3"/><path d="M4.7 8.3l2.2 2.2 4.4-4.7"/></svg>';
+const bell='<svg class="bell" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c-2.5 0-4.3 2-4.3 4.5v2.6L2.4 11c-.3.5 0 1.1.6 1.1h10c.6 0 .9-.6.6-1.1l-1.3-2.4V6c0-2.5-1.8-4.5-4.3-4.5zM6.2 13.2a1.9 1.9 0 0 0 3.6 0z"/></svg>';
+const needIcon=()=>dir==='a'?'<div class="dot"></div>':dir==='b'?'<div class="orb"></div>':'<div class="bang">!</div>';
+const ruler=()=>dir==='c'?'<div class="ruler"><div class="bar"><div class="fill" id="rf"></div><div class="fs" id="rfs"></div></div><span class="rl" id="rl">0.0s / 4s</span></div>':'';
+const tag=(s,cls='amber')=>dir==='c'?`<span class="mono ${cls}" style="font-size:10.5px;letter-spacing:.08em">${s.toUpperCase()}</span>`:`<span class="t ${cls}" style="font-size:12px">${s}</span>`;
+
+function render(s,o,meas){
+  const c=dir==='c';
+  switch(s){
+  case 'idle': return {lead:'',trail:'',body:''};
+  case 'listening': {
+    const tx = meas ? `<div class="tx">${o.req}</div>` : '<div class="tx" id="tx"></div>';
+    return {lead:'<canvas class="viz" data-viz="wave"></canvas>',
+      trail:c?'<span class="rec"><i></i>REC <b class="num" id="tm">0:00</b></span>':'<span class="t" id="tm">0:00</span>',
+      body:tx+(c?'<div class="foot mono">ON-DEVICE · WHISPERKIT · RELEASE TO SEND</div>':'')};
+  }
+  case 'working': case 'workingCompact': {
+    const tr=c?'<span class="t mono num" style="font-size:11px" id="tm">0.0s</span>':'<span class="t" id="tm">0.0s</span>';
+    if(s==='workingCompact') return {lead:spinner(),trail:tr,body:''};
+    if(c){
+      return {lead:spinner(),trail:tr,body:`<ol class="steps" id="steps">${meas?'<li>&nbsp;</li>'.repeat(3):''}</ol>${ruler()}`}}
+    return {lead:spinner(),trail:tr,body:`<div class="req">${o.req}</div><div class="st shimmer" id="st">${meas?'Checking the forecast':''}</div>`};
+  }
+  case 'done': case 'doneSaved': {
+    const rp = meas ? `<div class="reply">${o.reply}</div>` : '<div class="reply" id="rp"></div>';
+    const sv = s==='doneSaved' ? `<div class="saved" data-act="open">${c?'SAVED · ':'Saved · '}${o.saved||'Research: Southampton rents'} ↗</div>` : '';
+    return {lead:check,trail:'<canvas class="viz sm" data-viz="speak"></canvas>',body:rp+sv+ruler()};
+  }
+  case 'doneCompact': return {lead:check,trail:c?'<span class="t mono num" style="font-size:11px">'+(o.final||'')+'</span>':'',body:''};
+  case 'needsAsk': return {lead:needIcon(),trail:tag('Question'),body:
+    `<div class="lbl amber">Jarvis needs you</div><div class="q">Put “COMP2211 lab 4” in In-progress or Not Started?</div><div class="opts"><button class="opt p" data-act="answer">In-progress</button><button class="opt" data-act="answer">Not Started</button><span class="hint">or hold ⌥ Space</span></div>`};
+  case 'needsAccess': return {lead:needIcon(),trail:tag('Access'),body:
+    `<div class="lbl amber">Needs access</div><div class="q">I need the Notion connector for that.</div><div class="sub">Connect it at claude.ai/customize/connectors, then ask again.</div><div class="opts"><button class="opt" data-act="dismiss">Got it</button></div>`};
+  case 'needsGuard': return {lead:needIcon(),trail:tag('Blocked'),body:
+    `<div class="lbl amber">Blocked · no-real-consequences</div><div class="q">I can't pay your tuition fee. That one's for you to do.</div><div class="opts"><button class="opt p" data-act="remind">Remind me at 6pm</button><button class="opt" data-act="dismiss">Dismiss</button></div>`};
+  case 'reminder': return {lead:bell,trail:tag('18:00','yellow'),body:
+    `<div class="lbl yellow">Reminder</div><div class="q">Call Sue about the Amra brief</div>`};
+  case 'reminderCompact': return {lead:bell,trail:c?'<span class="t mono" style="font-size:11px">18:00 CALL SUE</span>':'<span class="t">Call Sue</span>',body:''};
+  case 'log': return {lead:c?'<span class="mono" style="font-size:10.5px;letter-spacing:.08em;color:rgba(255,255,255,.6)">RECENT</span>':'<span class="mark">Recent</span>',
+    trail:'<span class="t" style="font-size:11.5px">8</span>',
+    body:'<div class="log">'+LOG.map(r=>`<div class="row ${r[2]}"${r[2]==='sv'?' data-act="open"':''}><span class="tm">${r[0]}</span><span class="tx2">${r[1]}</span><span class="k">${r[2]==='sv'?'↗':r[2]==='bl'?'guard':''}</span></div>`).join('')+'</div>'};
+  }
+}
+const COMPACT=new Set(['workingCompact','doneCompact','reminderCompact']);
+const KIND={idle:'idle',listening:'listening',working:'working',workingCompact:'working',done:'done',doneSaved:'done',doneCompact:'done',needsAsk:'needs',needsAccess:'needs',needsGuard:'needs',reminder:'reminder',reminderCompact:'reminder',log:'log'};
+
+function size(s,o){
+  if(s==='idle') return {w:185,h:32,r:8,ear:6};
+  if(COMPACT.has(s)) return {w:289,h:32,r:dir==='c'?9:14,ear:6};
+  const p=render(s,o,true); mbody.innerHTML=p.body;
+  const h=Math.min(200,Math.ceil(32+mbody.offsetHeight));
+  return {w:340,h,r:dir==='c'?14:22,ear:10};
+}
+
+let lastArea=185*32;
+function swap(el,html,after){
+  if(el._h===html){after&&after();return}
+  el._h=html; clearTimeout(el._t);
+  el.classList.remove('in'); el.classList.add('out');
+  el._t=setTimeout(()=>{el.innerHTML=html; el.classList.remove('out'); void el.offsetWidth; el.classList.add('in'); after&&after()}, (el.innerHTML?110:0)*S);
+}
+function setState(s,o={}){
+  cur=s; curOpts=o;
+  const z=size(s,o), grow=z.w*z.h>lastArea; lastArea=z.w*z.h;
+  const sp=grow?SPR.expand:SPR.collapse;
+  shell.style.setProperty('--d',(sp.ms*S)+'ms'); shell.style.setProperty('--e',sp.e);
+  shell.style.width=z.w+'px'; shell.style.height=z.h+'px'; shell.style.setProperty('--r',z.r+'px'); shell.style.setProperty('--ear',z.ear+'px');
+  shell.dataset.k=KIND[s]; shell.dataset.x=(z.w===340)?'1':'0';
+  $('#szNow').textContent=`now: ${z.w} × ${z.h}`;
+  const p=render(s,o,false);
+  swap(lead,p.lead); swap(trail,p.trail); swap(body,p.body,syncLive);
+  showSpec(s,z);
+  document.querySelectorAll('#states .chip').forEach(b=>b.setAttribute('aria-pressed',b.dataset.s===s?'true':'false'));
+}
+
+/* ---------- live sync ---------- */
+function syncLive(){
+  const tx=$('#tx');
+  if(tx){
+    let caret=tx.querySelector('.caret'); if(!caret){caret=document.createElement('span');caret.className='caret';tx.appendChild(caret)}
+    const ws=[...tx.querySelectorAll('.w')];
+    M.words.forEach((w,i)=>{
+      let el=ws[i];
+      if(!el){el=document.createElement('span');el.className='w n';tx.insertBefore(el,caret)}
+      const txt=(i?' ':'')+w.t;
+      if(el.textContent!==txt){el.textContent=txt; if(ws[i]){el.classList.remove('n');void el.offsetWidth;el.classList.add('n')}}
+      el.classList.toggle('h',!w.c);
+    });
+    caret.style.display=M.talking?'':'none';
+  }
+  const st=$('#st');
+  if(st && st.textContent!==M.status){st.textContent=M.status; st.classList.remove('chg'); void st.offsetWidth; st.classList.add('chg')}
+  const ol=$('#steps');
+  if(ol){
+    const want=M.steps.slice(-3), have=ol.children.length;
+    if(ol.dataset.n!==String(M.steps.length)){
+      ol.dataset.n=M.steps.length;
+      ol.innerHTML=want.map((s,i)=>{const n=M.steps.length-want.length+i+1;return `<li><span>${String(n).padStart(2,'0')}</span><span class="k">${s[0]}</span><span class="v">${s[1]}</span><span class="ms">${s[3]||''}</span></li>`}).join('');
+    }
+  }
+  const rp=$('#rp');
+  if(rp){
+    if(rp.children.length!==M.reply.length) rp.innerHTML=M.reply.map(w=>`<span>${w} </span>`).join('');
+    [...rp.children].forEach((e,i)=>e.classList.toggle('on',i<=M.spoken));
+  }
+}
+
+/* ---------- ticking: timers, ruler, canvases ---------- */
+const lv={wave:[0,0,0,0,0],speak:[0,0,0]};
+function level(t,kind){
+  if(kind==='wave') return M.talking? .35+.55*Math.abs(Math.sin(t*3.1)*Math.sin(t*1.7+1)) : .06;
+  return M.speaking? .3+.6*Math.abs(Math.sin(t*5.3)*Math.sin(t*2.1+.4)) : .05;
+}
+function drawViz(cv,t){
+  const kind=cv.dataset.viz, w=cv.clientWidth, h=cv.clientHeight, dpr=devicePixelRatio||1;
+  if(!w)return;
+  if(cv.width!==Math.round(w*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr)}
+  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const L=RM?.3:level(t,kind);
+  if(dir==='c'&&kind==='wave'){
+    ctx.strokeStyle='#9FD8FF'; ctx.lineWidth=1.25; ctx.beginPath();
+    for(let x=0;x<=w;x+=1){const env=Math.sin(Math.PI*x/w); const y=h/2+env*L*(h/2-2)*(.6*Math.sin(x*.45+t*9)+.4*Math.sin(x*.9-t*13)); x?ctx.lineTo(x,y):ctx.moveTo(x,y)}
+    ctx.stroke(); return;
+  }
+  const arr=lv[kind], n=arr.length, bw=kind==='wave'?3:2.5, gap=kind==='wave'?2.6:2.2;
+  const total=n*bw+(n-1)*gap, x0=kind==='wave'?0:(w-total);
+  let fill='#fff';
+  if(dir==='b'){const g=ctx.createLinearGradient(x0,0,x0+total,0); const cs=getComputedStyle(shell); g.addColorStop(0,cs.getPropertyValue('--c1').trim()||'#5AC8FA'); g.addColorStop(1,cs.getPropertyValue('--c2').trim()||'#7D7AFF'); fill=g}
+  if(dir==='c') fill='#9FD8FF';
+  ctx.fillStyle=fill;
+  for(let i=0;i<n;i++){
+    const target=L*(.55+.45*Math.sin(t*(7+i)+i*1.3));
+    arr[i]+= (Math.max(0,target)-arr[i])*.25;
+    const bh=Math.max(bw, 3+(h-3)*Math.min(1,arr[i]));
+    const x=x0+i*(bw+gap), y=(h-bh)/2;
+    ctx.beginPath(); ctx.roundRect?ctx.roundRect(x,y,bw,bh,bw/2):ctx.rect(x,y,bw,bh); ctx.fill();
+  }
+}
+function tick(now){
+  const t=now/1000/S;
+  document.querySelectorAll('canvas.viz').forEach(cv=>drawViz(cv,t));
+  const tm=$('#tm');
+  const el=((M.tEnd||now)-M.t0)/1000/S;
+  if(tm&&M.t0){
+    if(M.mode==='listen'){tm.textContent=`0:${String(Math.floor(el)).padStart(2,'0')}`}
+    else if(M.mode==='work'){tm.textContent=el.toFixed(1)+'s'}
+  }
+  const rf=$('#rf');
+  if(rf&&M.budget&&M.t0){
+    const fv=M.firstSound!=null?M.firstSound:el; rf.style.width=Math.min(100,fv/4*100)+'%'; rf.classList.toggle('over',fv>4);
+    const rl=$('#rl'); if(rl) rl.textContent=(M.firstSound!=null?M.firstSound:el).toFixed(1)+'s / 4s';
+    const fs=$('#rfs'); if(fs&&M.firstSound!=null){fs.style.display='block';fs.style.left=Math.min(100,M.firstSound/4*100)+'%'}
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---------- scenarios ---------- */
+const CANCEL={};
+function runner(fn){
+  const id=++run;
+  const w=ms=>new Promise((res,rej)=>setTimeout(()=>id===run?res():rej(CANCEL),ms*S));
+  fn(w,()=>id===run).catch(e=>{if(e!==CANCEL)console.error(e)});
+}
+function resetModel(){Object.assign(M,{words:[],steps:[],status:'',reply:[],spoken:-1,t0:0,tEnd:0,mode:'',talking:false,speaking:false,firstSound:null,budget:false})}
+
+async function listen(w,text,fix){
+  M.words=[]; M.mode='listen'; M.t0=performance.now(); M.tEnd=0; M.talking=true; M.budget=false;
+  setState('listening',{req:text}); await w(380);
+  const parts=text.split(' ');
+  for(let i=0;i<parts.length;i++){
+    const shown = fix&&fix[i] ? fix[i] : parts[i];
+    M.words.push({t:shown,c:false});
+    if(i>=2) M.words[i-2].c=true;
+    if(fix&&fix[i-2]!=null){M.words[i-2].t=parts[i-2]}
+    syncLive(); await w(210+Math.random()*90);
+  }
+  M.words.forEach((x,i)=>{x.c=true;x.t=parts[i]}); syncLive();
+  M.talking=false; await w(320); // end of speech, hotkey up
+}
+async function work(w,o){
+  M.mode='work'; M.t0=performance.now(); M.tEnd=0; M.budget=true; M.firstSound=null;
+  M.steps=[]; M.status='Thinking';
+  setState('working',o); await w(500);
+  for(const s of o.steps){ const st=[...s]; st[3]=((performance.now()-M.t0)/1000/S).toFixed(1)+'s'; M.steps.push(st); M.status=s[2]; syncLive(); await w(720); }
+}
+async function speak(w,o,saved){
+  M.firstSound=(performance.now()-M.t0)/1000/S; M.speaking=true;
+  M.reply=o.reply.split(' '); M.spoken=-1;
+  setState(saved?'doneSaved':'done',o); await w(260);
+  for(let i=0;i<M.reply.length;i++){M.spoken=i; syncLive(); await w(Math.max(170,M.reply[i].length*48))}
+  M.speaking=false; M.tEnd=performance.now();
+}
+const PLAYS={
+  weather: async w=>{
+    resetModel(); setState('idle'); await w(300);
+    const o=TXT.weather;
+    await listen(w,o.req,{2:'whether'});
+    await work(w,o);
+    await speak(w,o,false);
+    await w(1800); setState('doneCompact',{final:(M.firstSound||0).toFixed(1)+'s'}); await w(1400);
+    resetModel(); setState('idle');
+  },
+  research: async w=>{
+    resetModel(); setState('idle'); await w(300);
+    const o=TXT.research;
+    await listen(w,o.req);
+    await work(w,o);
+    await speak(w,o,true);
+    M.budget=false;
+  },
+  guard: async w=>{
+    resetModel(); setState('idle'); await w(300);
+    const o=TXT.guard;
+    await listen(w,o.req);
+    await work(w,o); await w(300);
+    M.budget=false; M.mode=''; setState('needsGuard');
+  },
+  reminder: async w=>{
+    resetModel(); setState('idle'); await w(300);
+    setState('reminder'); await w(5000);
+    setState('reminderCompact'); await w(6000);
+    setState('idle');
+  },
+};
+
+/* static jumps keep something alive so each state reads as it would */
+function jump(s){
+  runner(async w=>{
+    resetModel();
+    const o=TXT.weather;
+    if(s==='listening'){ await listen(w,o.req,{2:'whether'}); M.talking=false; return }
+    if(s==='working'||s==='workingCompact'){
+      M.mode='work'; M.t0=performance.now(); M.budget=true;
+      if(s==='workingCompact'){M.t0-=8200*S; setState(s,o); return}
+      setState(s,o);
+      let i=0; M.status='Thinking'; syncLive();
+      while(true){ await w(1400); const st=[...o.steps[i%2]]; st[3]=((performance.now()-M.t0)/1000/S).toFixed(1)+'s'; M.steps.push(st); M.status=st[2]; syncLive(); i++; }
+    }
+    if(s==='done'||s==='doneSaved'){
+      const oo=s==='doneSaved'?TXT.research:o; M.t0=performance.now()-2100*S; M.budget=true; M.mode='';
+      await speak(w,oo,s==='doneSaved'); return }
+    setState(s,{});
+  });
+}
+
+/* ---------- spec panel ---------- */
+const SPEC={
+  idle:['Idle',{'Shows':'Nothing. The notch is just the notch, and the app draws no window.','Enters':'Launch, or after Done and reminders finish.','Leaves':'Hotkey down, a reminder fires, a run asks something, or (phase 2) the pointer rests on the notch.'}],
+  listening:['Listening',{'Shows':'Live mic level on the left, elapsed time on the right, and the transcript as WhisperKit produces it. Unconfirmed words are dimmed and can still change (watch “whether” become “weather”).','Enters':'Hotkey goes down.','Motion':'Expand spring. Each new word fades in from a 6pt blur in 180ms.','Leaves':'Hotkey released. The launcher starts the run and the transcript hands over to Working.'}],
+  working:['Working',{'Shows':'The request in small type, then one plain line per tool call (WebSearch reads as “Checking the forecast”). Signal lists each step with its time and fills the 4 second budget bar.','Enters':'Launcher has spawned <code>claude -p</code>; lines come from <code>tool_use</code> events in stream-json.','Motion':'Height follows content with the expand spring. The status line blurs across and shimmers every 1.6s.','Leaves':'First sentence of the reply arrives: Done. If nothing has been spoken after 8s it shrinks to the compact pill.'}],
+  workingCompact:['Working, long run',{'Shows':'Activity indicator and elapsed time only, so a long research run doesn’t cover the menu bar.','Enters':'8s in Working with nothing spoken yet.','Motion':'Collapse spring, no overshoot.','Leaves':'Pointer hover opens Working again. A reply or a question takes over.'}],
+  done:['Done',{'Shows':'A check, a speaking indicator, and the reply as a caption that brightens word by word as Jarvis says it.','Enters':'First sentence streams in and the bridge <code>speak()</code> starts.','Motion':'Check draws in 350ms. Phase 1 times the caption from the <code>say</code> speaking rate; exact word timing needs in-app speech (phase 2 TTS).','Leaves':'1.8s after speech ends it shrinks to a compact check for 1.4s, then hides.'}],
+  doneSaved:['Done, saved',{'Shows':'As Done, plus the saved run’s name. Clicking it runs <code>claude --desktop --resume &lt;id&gt;</code>.','Enters':'Result has <code>keep: true</code>.','Leaves':'Stays 6s after speech (longer than ephemeral runs, so Leo can click it), then compact, then hidden. Also listed in the hover log.'}],
+  doneCompact:['Done',{'Shows':'Just the check. Signal adds time to first word.','Enters':'Speech finished.','Motion':'Collapse spring.','Leaves':'Hides after 1.4s.'}],
+  needsAsk:['Needs you: question',{'Shows':'The question and up to two quick answers. Answering by voice works too.','Enters':'A run calls the bridge <code>ask(question)</code>.','Motion':'Expand spring. Amber attention pulse every 1.2s until answered.','Leaves':'Leo answers, or <code>ask()</code> times out with “no answer”. A macOS notification is also posted.'}],
+  needsAccess:['Needs you: access',{'Shows':'Exactly what’s missing and where to fix it. No button pretends to fix it.','Enters':'Output of the <code>needs-access</code> skill, or a <code>permission_denied</code> event.','Leaves':'Stays until dismissed.'}],
+  needsGuard:['Needs you: blocked',{'Shows':'Which rule fired, in plain words, and the safe version as a button.','Enters':'Guard denies a tool call; the reason starts <code>guard:&lt;rule-id&gt;:</code> and the run relays it.','Leaves':'Leo picks the safe version or dismisses.'}],
+  reminder:['Reminder',{'Shows':'Time and text, with the bell rocking twice.','Enters':'A launchd reminder fires through the bridge. No run needed.','Leaves':'After 5s it shrinks to the reminder pill.'}],
+  reminderCompact:['Reminder pill',{'Shows':'Bell and a short label beside the notch.','Enters':'5s after the reminder opened.','Leaves':'Click, or 60s. The macOS notification stays in Notification Centre.'}],
+  log:['Hover log (phase 2)',{'Shows':'Last 8 actions from <code>~/Jarvis/actions.sqlite</code>. Saved runs show ↗; clicking one opens it in the Code tab.','Enters':'Pointer rests on the notch for 300ms while idle.','Leaves':'Pointer leaves for 400ms.'}],
+};
+function showSpec(s,z){
+  const [name,rows]=SPEC[s]||SPEC.idle;
+  $('#spName').textContent=name;
+  $('#spList').innerHTML=`<dt>Size</dt><dd class="mono" style="font-size:12.5px">${z.w} × ${z.h} pt${COMPACT.has(s)?' (compact)':z.w===340?' (expanded)':''}</dd>`+Object.entries(rows).map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
+}
+
+/* ---------- wiring ---------- */
+document.querySelectorAll('.dir').forEach(b=>b.addEventListener('click',()=>{
+  dir=b.dataset.dir; desk.className='desk dir-'+dir+($('#lim').checked?' show-limits':'');
+  document.querySelectorAll('.dir').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));
+  [lead,trail,body].forEach(e=>e._h=null);
+  if(cur==='idle') jump('listening'); else { const s=cur; setState(s,curOpts); }
+  try{localStorage.setItem('jn-dir',dir)}catch(e){}
+}));
+document.querySelectorAll('[data-s]').forEach(b=>b.addEventListener('click',()=>jump(b.dataset.s)));
+document.querySelectorAll('[data-play]').forEach(b=>b.addEventListener('click',()=>runner(PLAYS[b.dataset.play])));
+$('#slow').addEventListener('change',e=>{S=e.target.checked?4:1; document.documentElement.style.setProperty('--S',S)});
+$('#lim').addEventListener('change',e=>desk.classList.toggle('show-limits',e.target.checked));
+shell.addEventListener('click',e=>{
+  const a=e.target.closest('[data-act]'); if(!a)return;
+  const act=a.dataset.act;
+  if(act==='dismiss') runner(async w=>{resetModel();setState('idle')});
+  if(act==='answer') runner(async w=>{resetModel(); M.reply="Done, it's in In-progress.".split(' '); M.spoken=99; setState('done',{reply:"Done, it's in In-progress."}); await w(2200); setState('doneCompact',{}); await w(1200); setState('idle')});
+  if(act==='remind') runner(async w=>{resetModel(); const r="Okay, I'll remind you at 6pm to pay it yourself."; M.reply=r.split(' '); M.spoken=99; setState('done',{reply:r}); await w(2600); setState('doneCompact',{}); await w(1200); setState('idle')});
+  if(act==='open') a.animate([{opacity:1},{opacity:.4},{opacity:1}],{duration:300});
+});
+try{const d=localStorage.getItem('jn-dir'); if(d&&d!=='a') $('#dir-'+d).click()}catch(e){}
+document.fonts&&document.fonts.ready.then(()=>{});
+setTimeout(()=>runner(PLAYS.weather),600);
+})();
+</script>
+
+</body></html>
