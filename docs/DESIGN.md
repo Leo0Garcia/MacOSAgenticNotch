@@ -17,7 +17,7 @@ Everything Jarvis needs lives in four places:
 | Place | Holds |
 | - | - |
 | This repo (`MacOSAgenticNotch`) | All code, skills, guard, prompts, vault template |
-| `~/Jarvis` | Runtime: `briefing.md`, run logs, SQLite action log, reminder plists staging, librarian queue (`librarian/`), `cache/`, `logs/`, `.claude/skills` symlinks into this repo |
+| `~/Jarvis` | Runtime: `briefing.md`, run logs, SQLite action log (`actions.sqlite`), `notch.json` (app socket port and token), reminder plists staging, librarian queue (`librarian/`), `cache/`, `logs/`, `.claude/skills` symlinks into this repo |
 | `~/Jarvis-Memory` | Long-term memory vault |
 | macOS Keychain | Secrets, service names prefixed `jarvis/` |
 
@@ -93,7 +93,7 @@ claude -p "<transcribed request>" \
 
 Notes:
 
-- `--mcp-config` adds the bridge server; Leo's own MCP servers and claude.ai connectors still load. No `--strict-mcp-config`.
+- `--mcp-config` adds the bridge server; Leo's own MCP servers and claude.ai connectors still load. No `--strict-mcp-config`. The bridge needs the run's session id as a literal argument, so the launcher writes the config per run (`{"mcpServers":{"jarvis":{"command":"bun","args":["<repo>/bridge/src/server.ts","--session-id","<uuid>"]}}}`); see 8.1.
 - Never `--bare`: it skips skills, hooks, MCP servers and CLAUDE.md, and doesn't use the claude.ai login, which Chrome needs.
 - `-n` is set only when the request matches an explicit saved intent ("start a research session on…", "write a brief…"). Other runs that end with keep=true stay unnamed in Claude Code; the notch log labels them with `summary` and they resume by ID.
 - Skills load from `~/Jarvis/.claude/skills/<name>`, symlinks into `<repo>/skills/` (symlinked skill folders are supported in the project location). `-p` runs load skills and hooks the same way interactive sessions do unless `--bare` is passed.
@@ -180,7 +180,81 @@ States: idle, listening, working, done, needs-you. Visual and motion spec: [NOTC
 
 ## 8. Bridge
 
-Bun MCP server over stdio to Claude Code, WebSocket on `127.0.0.1` to the app (random port written to `~/Jarvis/bridge.port`, with a per-boot token so other local processes can't drive the notch). Tools: `speak(text)`, `notify(title, body)`, `ask(question) -> string`, `log(row)`, `remind(when, text)`. Phase 1 `speak` shells out to `say`. When the app isn't running, `speak`/`notify` fall back to `say`/`osascript display notification` and `ask` returns "Leo isn't available" so the run doesn't hang.
+`bridge/` is a dependency-free Bun MCP server over stdio (`bun <repo>/bridge/src/server.ts --session-id <uuid>`, server name `jarvis`, so tools are `mcp__jarvis__<name>`), plus a CLI and library the launcher and reminder jobs use without MCP. None of the tool names trips guard's MCP rules. Details and commands: `bridge/README.md`.
+
+### 8.1 Tools
+
+| Tool | Does | Without the app |
+| - | - | - |
+| `speak(text)` | Queues `say`, returns at once; sentences play in order. Tells the app what is being said (`speak_start`/`speak_end`) for the caption. Meant for progress lines; the final reply is spoken by the launcher. | Still speaks. |
+| `notify(title, body)` | Notch notification; the app also posts the macOS one. Only Leo sees it. | `osascript display notification` (text passed as argv, never into the script). |
+| `ask(question, options?, timeout_seconds?) -> string` | Needs-you question in the notch, up to two answer buttons, voice answer allowed. Blocks until answered, dismissed, or the timeout (default 120 s, 10 to 600). Returns `Leo answered: …`, or a sentence telling Claude to carry on with the safe default or stop. A cancelled MCP request withdraws the question. | Returns "Leo isn't available…" at once so the run never hangs. |
+| `log(summary, detail?, kind?)` | Appends to `~/Jarvis/actions.sqlite` (kind `action` or `note`) and sends the row to the app. | Still logs. |
+| `remind(when, text)` | Parses `when` (section 8.3), hands the absolute time to the launcher's scheduler, says back "Reminder set for today at 18:00 (UK time)". Fails out loud if the time is unreadable or past, or the scheduler is missing or fails. | Same. |
+
+Speech is one utterance at a time across processes: a lock directory `~/Jarvis/run/speech.lock` (holder pid inside; taken over if the holder died or after 60 s) keeps the launcher's streamed reply and Claude's `speak` calls from talking over each other. When Claude Code closes the bridge's stdin, the bridge finishes queued speech (up to 30 s) and exits.
+
+**Session id (decision):** the bridge takes the run's id from `--session-id <uuid>` in its args, else `JARVIS_SESSION_ID`. The docs document `${VAR}` expansion for `.mcp.json` but not for `--mcp-config`, and don't say whether stdio servers inherit the environment, so the launcher writes a per-run MCP config with the literal id (`~/Jarvis/runs/<session-id>.mcp.json`) rather than relying on either.
+
+### 8.2 Notch socket (protocol 1)
+
+**Decision (differs from the earlier draft):** the app hosts the WebSocket, not the bridge. Each run spawns its own bridge, and reminders must reach the notch with no run active, so the one long-lived process is the server. The app listens on `127.0.0.1` on a random port (Network.framework `NWListener` with `NWProtocolWebSocket`, no third-party code) and, once listening, writes `~/Jarvis/notch.json` atomically with mode 0600:
+
+```json
+{"port": 52731, "token": "<random 32+ bytes, hex>", "pid": 4242, "protocol": 1}
+```
+
+A new token every app launch. The app deletes the file on quit; clients also ignore it when `pid` is dead.
+
+Frames are JSON text, one message each, with a `type`. The first client frame must be `hello`; the app answers `welcome`, or `error` and closes (code 4001) on a wrong token or protocol. Unknown types are ignored by both sides so either can add messages. `id`s are opaque strings chosen by the sender of the request.
+
+Client to app:
+
+| type | Fields | App does |
+| - | - | - |
+| `hello` | `protocol`, `token`, `client` (`bridge` \| `launcher` \| `reminder` \| `cli`), `pid`, `session_id` | Authenticates; replies `welcome {protocol}` |
+| `speak_start` | `id`, `text`, `session_id` | Shows `text` as the Done caption, speaking bars on |
+| `speak_end` | `id` | Speaking bars off for that id |
+| `notify` | `id`, `title`, `body`, `session_id` | Notch notification + macOS notification |
+| `ask` | `id`, `question`, `options` (0 to 2), `timeout_ms`, `session_id` | Needs-you question state + macOS notification; later sends `answer` |
+| `ask_cancel` | `id`, `reason` (`timeout` \| `cancelled`) | Drops that question if still shown |
+| `reminder` | `id`, `text` | Reminder state + macOS notification |
+| `log` | `row` (an `actions` row, 8.4) | Refreshes the hover log (phase 2) |
+| `run_event` | `session_id`, `event` (`started` \| `tool` \| `speaking` \| `done` \| `denied` \| `failed`), optional `text`, `keep`, `summary`, `rule` | Optional channel for the launcher's run state (working status line, saved chip, guard block with `rule` = guard rule id) if it doesn't report over stdout |
+
+App to client:
+
+| type | Fields |
+| - | - |
+| `welcome` | `protocol` |
+| `answer` | `id`, `text`, `via` (`button` \| `voice` \| `dismissed`; `text` empty when dismissed) |
+| `error` | optional `id`, `message` |
+
+If the socket closes while an `ask` is open, the bridge treats it as no answer. Message types and fields are in `bridge/src/protocol.ts`; the app's Swift types mirror them. `bridge/test/helpers.ts` has a fake app that shows the server side.
+
+### 8.3 Reminders (bridge and launcher)
+
+- `when` accepts ISO 8601 (no offset means London time), relative times ("in 20 minutes", "in an hour and a half", "in 1h30m") and clock times with an optional day ("6pm", "18:00", "at 5", "tonight at 8", "tomorrow at 9am", "monday 14:30", "noon", "midnight"). Times are Europe/London, across clock changes. A clock time with no day is its next occurrence; an ambiguous hour with no day is the next future h:00 or (h+12):00 (section 6). On an explicit later day, an ambiguous 1 to 6 is pm and 7 to 11 am. "today at 9am" after 9am is an error, not tomorrow. At most a year ahead.
+- The bridge runs `bun <repo>/launcher/src/reminders.ts schedule` with stdin `{"at": "<ISO 8601 UTC>", "text": "…", "session_id": "<uuid>|null"}` and expects exit 0 with stdout (last line) `{"id": "<id>", "at": "<ISO>"}`. Non-zero exit: the last stderr line is relayed to Leo and nothing is claimed. `JARVIS_REMIND_SCHEDULER` overrides the command (tests).
+- When the launchd job fires, the launcher runs `bun <repo>/bridge/src/cli.ts reminder --text "<text>"` (or calls `fireReminder` from `bridge/src/notch.ts`): notch reminder via the socket, else a macOS notification plus `say`. It also logs a `reminder` row.
+
+### 8.4 Action log
+
+The bridge owns `~/Jarvis/actions.sqlite` (WAL, busy timeout 3 s):
+
+```sql
+CREATE TABLE actions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,          -- ISO 8601 UTC
+  session_id TEXT,
+  kind TEXT NOT NULL,        -- run | action | note | guard | reminder
+  summary TEXT NOT NULL,
+  detail TEXT,
+  saved INTEGER NOT NULL DEFAULT 0   -- 1: row opens the session (claude --desktop --resume)
+);
+```
+
+Claude writes `action`/`note` through the `log` tool; the launcher writes `run` and `guard` rows with `bun <repo>/bridge/src/cli.ts log --kind run --summary "…" [--saved] --session-id <id>` or `appendAction` from `bridge/src/actions.ts`. The app reads the newest 8 rows by `id` for the hover log.
 
 ## 9. Obsidian Kanban file format (verified)
 
