@@ -20,7 +20,7 @@ Environment the hook reads (all optional except `JARVIS_REPO`):
 | `JARVIS_REPO` | (required) | Repo root. Deletes and overwrites allowed inside, except `guard/`. |
 | `JARVIS_HOME` | `~/Jarvis` | Runtime folder. Deletes and overwrites allowed inside. |
 | `JARVIS_MEMORY` | `~/Jarvis-Memory` | Memory vault. Overwrites allowed, deletes not. |
-| `JARVIS_MASTER_VAULT` | `/Users/leogarcia/Documents/Obsidian Master Vault` | Read-only except `Kanban.md` at its root. |
+| `JARVIS_MASTER_VAULT` | `/Users/leogarcia/Documents/Obsidian Master Vault` | Notes can be read, created and edited (Leo, 2026-10-11); deleting or moving notes out, and `.obsidian/` / `.trash/`, are denied. |
 | `JARVIS_MASTER_VAULT_MCP` | `obsidian` | Regex for MCP server names that point at the master vault. |
 | `JARVIS_GUARD_TMPDIRS` | `$TMPDIR:/tmp:/private/tmp` | Temp folders where deletes are allowed. Tests set it. |
 

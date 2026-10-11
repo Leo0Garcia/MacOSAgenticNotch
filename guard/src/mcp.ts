@@ -1,5 +1,5 @@
 // MCP tool checks by tool name and input: sending, money, deleting, credentials,
-// browser uploads and submits, and the master-vault Obsidian server.
+// browser uploads and submits, and deletes or moves through the master-vault Obsidian server.
 
 import type { GuardContext } from "./context";
 import { deny, type Denial } from "./rules";
@@ -123,17 +123,18 @@ export function checkMcp(name: string, input: Record<string, unknown>, ctx: Guar
     }
   }
 
-  // Master vault through an Obsidian MCP server
+  // Master vault through an Obsidian MCP server: notes may be created and
+  // edited (Leo, 2026-10-11), but not deleted or moved, and Obsidian's own
+  // settings folder is off limits.
   if (ctx.masterVaultMcpServers.test(server) && !read) {
     const paths = ["path", "filePath", "file_path", "file", "note", "notePath", "oldPath", "newPath", "source", "destination", "target"]
       .map((k) => input[k])
       .filter((v): v is string => typeof v === "string");
-    const isKanban = (p: string) => /^\/?Kanban(\.md)?$/.test(p.trim());
-    if (paths.length === 0 || !paths.every(isKanban)) {
-      return deny("no-harm", `the master vault is read-only except Kanban.md (${label} ${paths.join(" ") || "with no path"})`);
+    if (words.some((w) => w === "delete" || w === "move" || w === "remove" || w === "rename")) {
+      return deny("no-harm", `notes in the master vault can be edited but not deleted or moved (${label} ${paths.join(" ")})`);
     }
-    if (words.some((w) => w === "delete" || w === "move")) {
-      return deny("no-harm", `the master vault's Kanban.md can be edited but not deleted or moved`);
+    if (paths.some((p) => /^\/?\.(obsidian|trash)(\/|$)/.test(p.trim()))) {
+      return deny("no-harm", `Obsidian's own settings and plugins in the master vault are off limits (${label} ${paths.join(" ")})`);
     }
   }
   return null;

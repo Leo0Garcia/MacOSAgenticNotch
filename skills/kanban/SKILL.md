@@ -7,7 +7,7 @@ allowed-tools: Bash(bun ${CLAUDE_SKILL_DIR}/kanban.ts *)
 
 # Kanban
 
-Leo's board is `Kanban.md` at the root of his master vault (Obsidian Kanban plugin). It is the only file in that vault Jarvis may change, and only through this script: never edit it with Write or Edit, never touch any other file in the master vault.
+Leo's board is `Kanban.md` at the root of his master vault (Obsidian Kanban plugin). Change it only through this script, never with Write or Edit, so the board's format survives. Other notes in the vault can be edited normally.
 
 ```
 bun ${CLAUDE_SKILL_DIR}/kanban.ts list                  # outstanding cards, by lane
