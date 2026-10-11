@@ -6,8 +6,10 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var voice: VoiceSettings
-    @AppStorage(AppDelegate.wakeEnabledKey) private var wakeEnabled = true
+    @AppStorage(AppDelegate.wakeEnabledKey) private var wakeEnabled = false
     @AppStorage(AppDelegate.wakeWordKey) private var wakeWord = "Jarvis"
+    @AppStorage(ComputerContext.shareBrowserKey) private var shareBrowser = false
+    @AppStorage(ComputerContext.shareScreenKey) private var shareScreen = false
     let model: AppModel
     let socket: URL
 
@@ -66,6 +68,13 @@ struct SettingsView: View {
             }
             Section("\u{201C}Hey Siri, Jarvis\u{201D} (mic off until you ask)") {
                 Text("Turn the wake word off above, then make a Shortcut named \u{201C}Jarvis\u{201D} with one action, Open URLs: jarvis://listen. Saying \u{201C}Hey Siri, Jarvis\u{201D} then opens Jarvis listening for one request; the mic is on only while you talk.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("What Jarvis can see") {
+                LabeledContent("Frontmost app", value: "Always shared")
+                Toggle("Share the open browser tab", isOn: $shareBrowser)
+                Toggle("Share a screenshot when you say \u{201C}this\u{201D} or \u{201C}my screen\u{201D}", isOn: $shareScreen)
+                Text("Sent only with the request it belongs to, and kept on this Mac. macOS asks the first time: Automation for each browser, Screen Recording for screenshots.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             LabeledContent("Push-to-talk", value: "Hold ⌥ Space")

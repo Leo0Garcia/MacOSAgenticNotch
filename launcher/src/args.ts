@@ -23,6 +23,8 @@ export interface RunPlan {
   name?: string;
   /** Warm run: started before the request exists; the prompt arrives on stdin as stream-json. */
   streamInput?: boolean;
+  /** Overrides the config's model for this run (quick asks get the fast model). */
+  model?: string;
 }
 
 /** The bridge entry for this run, written to ~/Jarvis/runs/<id>.mcp.json (DESIGN 8.1). */
@@ -46,7 +48,8 @@ export function claudeArgs(c: Config, plan: RunPlan): string[] {
   else if (plan.sessionId) args.push("--session-id", plan.sessionId);
   else throw new Error("a run needs a session id or a session to resume");
   if (plan.name) args.push("--name", plan.name);
-  if (c.model) args.push("--model", c.model);
+  const model = plan.model ?? c.model;
+  if (model) args.push("--model", model);
   args.push(
     "--settings", p.guardSettings,
     "--mcp-config", p.mcpConfig(id!),
@@ -80,4 +83,24 @@ export function savedRunName(request: string): string | undefined {
     return `Jarvis: ${t}`;
   }
   return undefined;
+}
+
+const SMART = /\b(research|analy[sz]e|analysis|plan|planning|write|draft|brief|essay|report|compare|comparison|explain why|why does|debug|code|refactor|review|think|carefully|properly|in depth|thorough(?:ly)?|step by step|strategy|summari[sz]e (?:the|my) (?:week|project|thread|channel))\b/i;
+
+/**
+ * Quick asks (weather, time, a Kanban card, a reminder, a lookup) go to the
+ * fast model; research, writing, planning, code and anything long go to the
+ * smart one. Leo, 2026-10-11: "switch, but keep Opus for smartest answers".
+ */
+export function needsSmartModel(request: string): boolean {
+  const r = request.trim();
+  if (savedRunName(r)) return true;
+  if (r.split(/\s+/).length > 25) return true;
+  return SMART.test(r);
+}
+
+/** The model for a run, or undefined for Leo's default. JARVIS_MODEL pins one for everything. */
+export function modelFor(c: Config, request: string): string | undefined {
+  if (c.model) return c.model;
+  return needsSmartModel(request) ? undefined : c.fastModel;
 }

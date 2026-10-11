@@ -8,11 +8,12 @@ import { NotchLink } from "../../bridge/src/notch";
 import type { RunEvent } from "../../bridge/src/protocol";
 import { Speaker } from "../../bridge/src/speech";
 import type { Runner } from "../../bridge/src/system";
-import { claudeArgs, mcpConfig, type RunPlan, savedRunName } from "./args";
+import { claudeArgs, mcpConfig, modelFor, needsSmartModel, type RunPlan, savedRunName } from "./args";
 import { childEnv, type Config, paths } from "./config";
 import { deleteRunFile, deleteTranscript, finalize, type FinalizeInput } from "./finalize";
 import { buildSystemPrompt, checkClaudeVersion, linkSkills } from "./setup";
 import { ensureDirs, type LastRun, log, recentRun, saveLastRun, writeFileAtomic } from "./store";
+import { withContext } from "./context";
 import { toolStatus } from "./status";
 import { type Denial, initProblem, RunMonitor } from "./stream";
 
@@ -73,7 +74,7 @@ export function planRun(c: Config, request: string, now = Date.now()): RunPlan &
       `Leo now says: ${request}`,
     ].join("\n");
   }
-  return { prompt, sessionId, name: savedRunName(request), runLog: p.runLog(sessionId), resumed: false };
+  return { prompt: withContext(c, prompt, now), sessionId, name: savedRunName(request), runLog: p.runLog(sessionId), resumed: false };
 }
 
 export async function run(c: Config, request: string, opts: RunOptions = {}): Promise<RunOutcome> {
@@ -119,9 +120,12 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   let plan: ReturnType<typeof planRun>;
   if (warm) {
     const id = randomUUID();
-    plan = { prompt: "", sessionId: id, runLog: p.runLog(id), resumed: false, streamInput: true };
+    // Warm runs are for quick asks, so they start on the fast model.
+    plan = { prompt: "", sessionId: id, runLog: p.runLog(id), resumed: false, streamInput: true, model: c.model ?? c.fastModel };
   } else {
     plan = planRun(c, request, now());
+    // A follow-up stays on the model its session started with.
+    if (!plan.resume) plan.model = modelFor(c, request);
   }
   const sessionId = (plan.resume ?? plan.sessionId)!;
 
@@ -140,10 +144,11 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   if (warm) {
     emit({ event: "ready", sessionId });
     const req = ((await warm()) ?? "").trim();
-    const fallBack = !req || (FOLLOWUP.test(req) && recentRun(c, now())) || savedRunName(req);
+    const fallBack = !req || (FOLLOWUP.test(req) && recentRun(c, now())) || savedRunName(req) || (!c.model && needsSmartModel(req));
     if (fallBack) {
       // Nothing to do, or a run this warm start can't be: a follow-up resumes
-      // another session, and a saved intent needs its name at start.
+      // another session, a saved intent needs its name at start, and a bigger
+      // task needs the smart model.
       proc.kill("SIGTERM");
       await proc.exited;
       rmSync(mcpFile, { force: true });
@@ -153,7 +158,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     }
     request = req;
     const sink = proc.stdin as import("bun").FileSink;
-    sink.write(JSON.stringify({ type: "user", message: { role: "user", content: request } }) + "\n");
+    sink.write(JSON.stringify({ type: "user", message: { role: "user", content: withContext(c, request, now()) } }) + "\n");
     await sink.end();
   }
 

@@ -28,6 +28,7 @@
 		87681E7347A2C171AAC5FD95 /* ActionsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24AFAF6BBE8E74A4E6FAEE22 /* ActionsStore.swift */; };
 		8D068F5CD261B90D6FE49225 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 386DF619897905B59E1F4A01 /* SettingsView.swift */; };
 		8D7AF99A5FAA74DC8222DF5C /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B753851A0C543247EFAA86 /* Theme.swift */; };
+		94B4D57620B5FA23897C1290 /* ComputerContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = B39173ECFE82B9FEE63664D7 /* ComputerContext.swift */; };
 		A40601FCE06DD85364927DD5 /* PixelCharacter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 395A970936DC23AF4486A2C0 /* PixelCharacter.swift */; };
 		A6CEEF5AB6921E7C3A45E1B8 /* Transcriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53425C9A136675D37536EFA7 /* Transcriber.swift */; };
 		B0D0DF4C3F2F7FC12AF64F74 /* DemoDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10091DCC5C1AD71F38B67CAE /* DemoDriver.swift */; };
@@ -70,6 +71,7 @@
 		96CD752F98C50BE99787ECD7 /* WakeWord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeWord.swift; sourceTree = "<group>"; };
 		A40FCE4078864C56A9189ADB /* Aurora.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Aurora.swift; sourceTree = "<group>"; };
 		AB30A56BEBAB614A9399B2D7 /* Launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Launcher.swift; sourceTree = "<group>"; };
+		B39173ECFE82B9FEE63664D7 /* ComputerContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerContext.swift; sourceTree = "<group>"; };
 		D758DDA5F42A49B6CB275DED /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D87F560B5D01E95B8EE62180 /* NotchServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchServer.swift; sourceTree = "<group>"; };
 		DAA2D9A96890795C2F02A32B /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
@@ -140,6 +142,7 @@
 			children = (
 				24AFAF6BBE8E74A4E6FAEE22 /* ActionsStore.swift */,
 				EA201F15CBAE07957922C904 /* CalendarService.swift */,
+				B39173ECFE82B9FEE63664D7 /* ComputerContext.swift */,
 				EF9B29D46C38BECE52C023D3 /* HotKey.swift */,
 				AB30A56BEBAB614A9399B2D7 /* Launcher.swift */,
 				8658147A374608398F17A8A8 /* NotchProtocol.swift */,
@@ -321,6 +324,7 @@
 				EE159A7E6418AAD0BDD57172 /* AudioCapture.swift in Sources */,
 				2CB1CD9B2C41D50CCE7439C3 /* Aurora.swift in Sources */,
 				E31E8FF84FDC1487E74BB67C /* CalendarService.swift in Sources */,
+				94B4D57620B5FA23897C1290 /* ComputerContext.swift in Sources */,
 				B0D0DF4C3F2F7FC12AF64F74 /* DemoDriver.swift in Sources */,
 				7474AC611E9BF7039CB83D5A /* FlowText.swift in Sources */,
 				7133A0F99F8F1049A215CE02 /* HotKey.swift in Sources */,

@@ -16,6 +16,8 @@ export interface Config {
   claudeConfigDir: string; // where Claude Code keeps projects/<dir>/<session>.jsonl
   bunBin: string;
   model?: string;
+  /** Model for quick asks (DESIGN 4.2); research and bigger tasks use `model` or Leo's default. */
+  fastModel?: string;
   launchctl: string;
   launchAgentsDir: string;
   env: Record<string, string | undefined>;
@@ -32,6 +34,7 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
     claudeConfigDir: env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"),
     bunBin: process.execPath,
     model: env.JARVIS_MODEL || undefined,
+    fastModel: env.JARVIS_FAST_MODEL === "" ? undefined : (env.JARVIS_FAST_MODEL ?? "sonnet"),
     launchctl: env.JARVIS_LAUNCHCTL ?? "launchctl",
     launchAgentsDir: env.JARVIS_LAUNCH_AGENTS ?? join(home, "Library", "LaunchAgents"),
     env,
@@ -45,6 +48,8 @@ export const paths = (c: Config) => ({
   runs: join(c.home, "runs"),
   runLog: (sessionId: string) => join(c.home, "runs", `${sessionId}.jsonl`),
   state: join(c.home, "state"),
+  /** What Leo was doing when he asked, written by the notch app (DESIGN 4.6). */
+  context: join(c.home, "state", "context.json"),
   lastRun: join(c.home, "state", "last-run.json"),
   /** Per-run MCP config with the session id as a literal argument (DESIGN 8.1). */
   mcpConfig: (sessionId: string) => join(c.home, "runs", `${sessionId}.mcp.json`),

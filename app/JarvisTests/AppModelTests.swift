@@ -92,9 +92,20 @@ import Testing
         let (m, s, l, _) = makeModel()
         m.submit("hi")
         l.emit(.speak("Hello Leo."))
-        s.advance(0.31)
+        s.advance(3.01)
         #expect(m.panel == .done)
         #expect(m.run?.captions.map(\.text) == ["Hello Leo."])
+    }
+
+    @Test func lateSocketSpeechDoesntDuplicateTheCaption() {
+        let (m, s, l, _) = makeModel()
+        m.submit("what's the time")
+        l.emit(.speak("It's ten thirty-three pm."))
+        s.advance(3.01) // fallback caption shown
+        m.speechStarted(id: "123-1", text: "It's ten thirty-three pm.") // Kokoro finally starts
+        #expect(m.run?.captions.map(\.text) == ["It's ten thirty-three pm."])
+        m.speechEnded(id: "123-1")
+        #expect(!m.speaking)
     }
 
     @Test func socketSpeechWinsOverStdoutSpeech() {
