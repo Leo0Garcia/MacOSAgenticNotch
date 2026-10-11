@@ -105,3 +105,32 @@ test("speaks with the chosen voice", async () => {
   await new Speaker({ home, run, voice: "Jamie (Enhanced)" }).say("Hello.");
   expect(run.calls[0]!.cmd).toEqual(["say", "-v", "Jamie (Enhanced)", "-f", "-"]);
 });
+
+test("plays the neural voice's audio when it renders, and falls back to say when it can't", async () => {
+  const run = stubRunner();
+  const rendered: string[] = [];
+  const synth = {
+    async render(text: string) {
+      rendered.push(text);
+      if (text === "fallback") return null;
+      const f = join(home, `${text}.wav`);
+      writeFileSync(f, "RIFF");
+      return f;
+    },
+  };
+  const s = new Speaker({ home, run, synth, voice: null });
+  await Promise.all([s.say("one"), s.say("fallback")]);
+  expect(rendered).toEqual(["one", "fallback"]); // both rendered up front
+  expect(run.calls.map((c) => c.cmd[0])).toEqual(["afplay", "say"]);
+  expect(existsSync(join(home, "one.wav"))).toBe(false); // temp audio removed
+});
+
+test("Kokoro is used only when installed, and JARVIS_TTS=say turns it off", async () => {
+  const { KokoroSynth } = await import("../src/speech");
+  expect(KokoroSynth.available(home)).toBe(false);
+  mkdirSync(join(home, "tts", ".venv", "bin"), { recursive: true });
+  writeFileSync(join(home, "tts", "kokoro-v1.0.onnx"), "");
+  writeFileSync(join(home, "tts", ".venv", "bin", "python"), "");
+  expect(KokoroSynth.available(home)).toBe(true);
+  expect(KokoroSynth.available(home, { JARVIS_TTS: "say" })).toBe(false);
+});

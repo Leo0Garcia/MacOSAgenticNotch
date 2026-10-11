@@ -75,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         voice.prepare()
+        startSpeechServer()
         if let i = args.firstIndex(of: "--request"), i + 1 < args.count {
             let request = args[i + 1]
             Task { @MainActor in
@@ -97,6 +98,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()
         launcher?.cancelAll()
+    }
+
+    /// Jarvis's voice (tts/server.py, Kokoro) kept warm so the first reply isn't slow.
+    /// Skipped when Kokoro isn't installed; speech then falls back to `say`.
+    private func startSpeechServer() {
+        let python = paths.home.appendingPathComponent("tts/.venv/bin/python")
+        let script = paths.repo.appendingPathComponent("tts/server.py")
+        guard FileManager.default.isExecutableFile(atPath: python.path), FileManager.default.fileExists(atPath: script.path),
+              ProcessInfo.processInfo.environment["JARVIS_TTS"] != "say" else { return }
+        let p = Process()
+        p.executableURL = python
+        p.arguments = [script.path]
+        var env = ProcessInfo.processInfo.environment
+        env["JARVIS_HOME"] = paths.home.path
+        env["PATH"] = ["/opt/homebrew/bin", "/usr/local/bin", env["PATH"] ?? "/usr/bin:/bin"].joined(separator: ":") // ffmpeg
+        p.environment = env
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { AppLog.write("speech server didn't start: \(error.localizedDescription)") }
     }
 
     private func startServer() {

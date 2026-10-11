@@ -3,8 +3,9 @@
 // streamed reply, Claude calling the speak tool) a lock directory at
 // ~/Jarvis/run/speech.lock keeps them from talking over each other.
 
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { speechLock } from "./config";
 import type { NotchLink } from "./notch";
 import { runCommand, type Runner } from "./system";
@@ -47,6 +48,67 @@ export function defaultVoice(run: Runner = runCommand, env = process.env): Promi
 }
 const STALE_LOCK_MS = 60_000;
 
+/** Renders a sentence to a WAV file; null means "use say instead". */
+export interface Synth {
+  render(text: string): Promise<string | null>;
+}
+
+/**
+ * Jarvis's own voice: Kokoro (on-device neural TTS) behind tts/server.py on
+ * ~/Jarvis/run/tts.sock. If the server isn't up, it is started in the
+ * background and this sentence falls back to `say`.
+ */
+export class KokoroSynth implements Synth {
+  private static starting = false;
+  constructor(
+    private home: string,
+    private repo = process.env.JARVIS_REPO || resolve(import.meta.dir, "../.."),
+    private preset = process.env.JARVIS_TTS_PRESET,
+  ) {}
+
+  /** Installed when the model and the venv are in ~/Jarvis/tts. */
+  static available(home: string, env = process.env): boolean {
+    if (env.JARVIS_TTS === "say") return false;
+    return existsSync(join(home, "tts", "kokoro-v1.0.onnx")) && existsSync(join(home, "tts", ".venv", "bin", "python"));
+  }
+
+  get socket(): string {
+    return join(this.home, "run", "tts.sock");
+  }
+
+  async render(text: string): Promise<string | null> {
+    try {
+      const res = await fetch("http://localhost/render", {
+        method: "POST",
+        unix: this.socket,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text, preset: this.preset }),
+        signal: AbortSignal.timeout(15_000),
+      } as RequestInit);
+      if (!res.ok) return null;
+      const file = join(tmpdir(), `jarvis-say-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`);
+      writeFileSync(file, new Uint8Array(await res.arrayBuffer()));
+      return file;
+    } catch {
+      this.start();
+      return null;
+    }
+  }
+
+  /** Starts the server detached; it keeps running for the next sentences. */
+  start(): void {
+    if (KokoroSynth.starting) return;
+    KokoroSynth.starting = true;
+    try {
+      const p = Bun.spawn([join(this.home, "tts", ".venv", "bin", "python"), join(this.repo, "tts", "server.py")], {
+        stdio: ["ignore", "ignore", "ignore"],
+        env: { ...process.env, JARVIS_HOME: this.home },
+      });
+      p.unref();
+    } catch {}
+  }
+}
+
 export interface SpeakerOptions {
   home: string;
   link?: NotchLink | null;
@@ -55,19 +117,27 @@ export interface SpeakerOptions {
   pollMs?: number;
   /** A `say` voice name; default: the best installed (see bestVoice). */
   voice?: string | null;
+  /** Neural voice; default Kokoro when installed in ~/Jarvis/tts. null: always `say`. */
+  synth?: Synth | null;
 }
 
 export class Speaker {
   private queue: Promise<void> = Promise.resolve();
   private count = 0;
 
-  constructor(private opts: SpeakerOptions) {}
+  private synth: Synth | null;
+
+  constructor(private opts: SpeakerOptions) {
+    this.synth = opts.synth !== undefined ? opts.synth : KokoroSynth.available(opts.home) ? new KokoroSynth(opts.home) : null;
+  }
 
   /** Queues text and resolves when it has been spoken (or failed). */
   say(text: string): Promise<void> {
     const t = text.trim().slice(0, MAX_SPEAK_CHARS);
     if (!t) return Promise.resolve();
-    const job = this.queue.then(() => this.speakNow(t));
+    // Render now, while earlier sentences are still playing, so there's no gap.
+    const audio = this.synth ? this.synth.render(t).catch(() => null) : Promise.resolve(null);
+    const job = this.queue.then(() => this.speakNow(t, audio));
     this.queue = job.catch(() => {});
     return job;
   }
@@ -77,13 +147,22 @@ export class Speaker {
     return this.queue;
   }
 
-  private async speakNow(text: string) {
+  private async speakNow(text: string, audio: Promise<string | null>) {
     const lock = speechLock(this.opts.home);
     await acquire(lock, this.opts.pollMs ?? 50);
     const id = `${process.pid}-${++this.count}`;
     const link = this.opts.link;
     try {
+      const file = await audio;
       await link?.send({ type: "speak_start", id, text, session_id: this.opts.sessionId ?? null });
+      if (file) {
+        try {
+          const r = await (this.opts.run ?? runCommand)(["afplay", file]);
+          if (r.code === 0) return;
+        } finally {
+          rmSync(file, { force: true });
+        }
+      }
       // Text goes on stdin (`say -f -`) so a sentence starting with "-" can't become a flag.
       const voice = this.opts.voice !== undefined ? this.opts.voice : await defaultVoice();
       const args = voice ? ["say", "-v", voice, "-f", "-"] : ["say", "-f", "-"];
