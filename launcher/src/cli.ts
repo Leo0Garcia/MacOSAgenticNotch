@@ -26,10 +26,14 @@ export async function main(argv: string[]): Promise<number> {
     }
     case "warm": {
       const lines = console[Symbol.asyncIterator]();
+      // Stopped before a request (app quit, refresh): clean up like an empty request.
+      let stop: (v: null) => void = () => {};
+      const stopped = new Promise<null>((r) => (stop = r));
+      for (const sig of ["SIGTERM", "SIGINT"] as const) process.once(sig, () => stop(null));
       return (await run(c, "", {
         awaitRequest: async () => {
-          const { value, done } = await lines.next();
-          return done ? null : String(value);
+          const next = lines.next().then(({ value, done }) => (done ? null : String(value)));
+          return Promise.race([next, stopped]);
         },
       })).exitCode;
     }

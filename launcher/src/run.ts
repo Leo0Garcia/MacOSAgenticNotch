@@ -2,7 +2,7 @@
 // the reply as it streams, log the outcome and hand the run to the librarian.
 
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { appendAction } from "../../bridge/src/actions";
 import { NotchLink } from "../../bridge/src/notch";
 import type { RunEvent } from "../../bridge/src/protocol";
@@ -130,6 +130,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   const sessionId = (plan.resume ?? plan.sessionId)!;
 
   mkdirSync(p.runs, { recursive: true });
+  sweepStaleMcpConfigs(p.runs, now());
   const mcpFile = p.mcpConfig(sessionId);
   writeFileAtomic(mcpFile, JSON.stringify(mcpConfig(c, sessionId)));
   let initFailure: string | undefined;
@@ -257,4 +258,15 @@ function action(c: Config, a: Parameters<typeof appendAction>[1]): void {
   } catch (e) {
     log(c, "couldn't append action", { error: String(e) });
   }
+}
+
+/** Per-run MCP configs left by runs that were killed (over 12 hours old). */
+export function sweepStaleMcpConfigs(dir: string, now = Date.now()): void {
+  try {
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".mcp.json")) continue;
+      const path = `${dir}/${f}`;
+      if (now - statSync(path).mtimeMs > 12 * 3600 * 1000) rmSync(path, { force: true });
+    }
+  } catch {}
 }

@@ -6,6 +6,9 @@ import SwiftUI
 @MainActor
 final class NotchEnvironment {
     var notchSize = CGSize(width: 185, height: 32)
+    /// Height of the expanded body as laid out, so the controller knows the
+    /// visible shape (everything outside it lets clicks through).
+    var expandedBodyHeight: CGFloat = 0
     let level: AudioLevel
     var hotkeyLabel = "⌥ Space"
     var snooze: (String, Int) -> Void = { _, _ in }
@@ -37,6 +40,7 @@ struct ExpandedView: View {
             }
             .frame(height: stableHeight.map { min($0, Theme.maxHeight - notchH - Theme.dnkInset) }, alignment: .top)
             .clipped()
+            .onGeometryChange(for: CGFloat.self, of: \.size.height) { env.expandedBodyHeight = $0 }
             .overlay(alignment: .top) { strip.frame(height: notchH).offset(y: -notchH) }
             .background {
                 AuroraRim(kind: panel.kind, topRadius: Theme.topRadius, bottomRadius: Theme.bottomRadius, visible: visible)
