@@ -20,7 +20,7 @@ import threading
 from http.server import BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from voice import DEFAULT, HOME, Voice  # noqa: E402
+from voice import DEFAULT, HOME, Preset, Voice, load_settings  # noqa: E402
 
 SOCK = os.path.join(HOME, "run", "tts.sock")
 MAX_CHARS = 600
@@ -44,7 +44,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/health":
-            self._send(200, json.dumps({"ok": True, "preset": DEFAULT}).encode(), "application/json")
+            self._send(200, json.dumps({"ok": True, "preset": DEFAULT or voice.current().name}).encode(), "application/json")
         else:
             self._send(404, b"", "text/plain")
 
@@ -57,11 +57,24 @@ class Handler(BaseHTTPRequestHandler):
             text = str(req.get("text", "")).strip()[:MAX_CHARS]
             if not text:
                 return self._send(400, b"empty text", "text/plain")
+            settings = req.get("settings")  # the settings window's "Play sample", before saving
             with lock:
-                wav = voice.render(text, str(req.get("preset") or DEFAULT))
+                wav = voice.render(text, preview(settings) if isinstance(settings, dict) else req.get("preset") or None)
             self._send(200, wav, "audio/wav")
         except Exception as e:  # report, never crash the server
             self._send(500, str(e).encode()[:500], "text/plain")
+
+
+def preview(d: dict) -> Preset:
+    """Unsaved settings from the window, validated the same way as the file."""
+    import tempfile
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(d, f)
+    try:
+        return load_settings(f.name)
+    finally:
+        os.unlink(f.name)
 
 
 class UnixHTTPServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):

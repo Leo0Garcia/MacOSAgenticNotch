@@ -15,6 +15,8 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let paths = Paths.current()
     lazy var model = AppModel(scheduler: LiveScheduler())
+    lazy var voiceSettings = VoiceSettings(file: paths.home.appendingPathComponent("state/voice.json"))
+    var speechSocket: URL { paths.home.appendingPathComponent("run/tts.sock") }
     private(set) var env: NotchEnvironment!
     private var controller: NotchController?
     private var server: NotchServer?

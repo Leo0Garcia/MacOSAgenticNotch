@@ -210,3 +210,31 @@ import Testing
         #expect(CalendarService.date("tomorrow") == nil)
     }
 }
+
+@MainActor
+@Suite struct VoiceSettingsTests {
+    private func file() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("voice-\(UUID().uuidString).json")
+    }
+
+    @Test func presetsFillTheSlidersAndMovingOneMakesItCustom() async throws {
+        let f = file()
+        let v = VoiceSettings(file: f)
+        #expect(v.style == .jarvis)
+        v.style = .deeper
+        #expect(v.values.semitones == -1)
+        v.values.semitones = -1.5
+        #expect(v.style == .custom)
+        v.save()
+        let d = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: f)) as? [String: Any])
+        #expect(d["custom"] as? Bool == true)
+        #expect(d["semitones"] as? Double == -1.5)
+        #expect((d["blend"] as? [String: Double])?["bm_lewis"] == 0.4)
+        // A fresh window reads it back.
+        let again = VoiceSettings(file: f)
+        #expect(again.style == .custom)
+        #expect(again.values.semitones == -1.5)
+        again.resetToJarvis()
+        #expect(again.values == VoiceSettings.presets[.jarvis])
+    }
+}

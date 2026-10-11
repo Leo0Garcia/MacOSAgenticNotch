@@ -9,4 +9,4 @@ tts/setup.sh                                   # venv + model into ~/Jarvis/tts 
 
 `server.py` keeps the model loaded and renders sentences over `~/Jarvis/run/tts.sock` (HTTP over a Unix socket). The notch app starts it at launch, and the bridge's `Speaker` starts it on first use if needed. Each sentence is rendered while the previous one plays, then played with `afplay`. If the server isn't installed or can't answer, speech falls back to `say` with the best installed macOS voice.
 
-`JARVIS_TTS_PRESET` picks a preset; `JARVIS_TTS=say` turns Kokoro off.
+The Settings window (menu-bar icon → Settings…) writes `~/Jarvis/state/voice.json`: style, depth (semitones), pace, AI effect and the voice blend. The server re-reads it when it changes, so edits apply from the next sentence; "Play sample" previews unsaved values. `JARVIS_TTS_PRESET` forces a preset; `JARVIS_TTS=say` turns Kokoro off.
