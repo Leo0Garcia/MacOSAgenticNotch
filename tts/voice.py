@@ -4,6 +4,7 @@ script so what Leo hears in samples is what Jarvis says."""
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -23,30 +24,66 @@ FFMPEG = shutil.which("ffmpeg") or next((p for p in ("/opt/homebrew/bin/ffmpeg",
 class Preset:
     name: str
     blend: dict[str, float]          # Kokoro voice -> weight
-    speed: float = 1.0
-    semitones: float = 0.0           # pitch shift, formant-preserving enough at ±2
-    fx: list[str] = field(default_factory=list)  # ffmpeg audio filters
+    speed: float = 1.0               # pace
+    semitones: float = 0.0           # depth: pitch shift, fine for about ±3
+    effect: float = 1.0              # 0 = clean, 1 = the full "AI" polish
+
+    def key(self) -> str:
+        return ",".join(f"{v}:{w:.3f}" for v, w in sorted(self.blend.items()))
 
 
-# Polish for a "Jarvis" feel: tidy low end, crisp presence, a small hard room
-# and a faint doubled sheen, evened out by a gentle compressor.
-POLISH = [
-    "highpass=f=85",
-    "equalizer=f=220:t=q:w=1.2:g=-2",
-    "equalizer=f=3200:t=q:w=1.0:g=3",
-    "equalizer=f=9000:t=q:w=1.0:g=1.5",
-    "aecho=0.85:0.5:18|37:0.14|0.08",
-    "chorus=0.9:0.9:12:0.12:0.25:1.5",
-    "acompressor=threshold=-20dB:ratio=2.5:attack=5:release=80",
-    "alimiter=limit=0.89",
-]
+def polish(effect: float) -> list[str]:
+    """The "Jarvis" polish, scaled by `effect` (0–1): tidy low end and crisp
+    presence always; a small hard room and a faint doubled sheen as it rises,
+    evened out by a gentle compressor."""
+    e = max(0.0, min(1.0, effect))
+    fx = [
+        "highpass=f=85",
+        "equalizer=f=220:t=q:w=1.2:g=-2",
+        f"equalizer=f=3200:t=q:w=1.0:g={1 + 2 * e:.2f}",
+        f"equalizer=f=9000:t=q:w=1.0:g={0.5 + 1 * e:.2f}",
+    ]
+    if e > 0.02:
+        fx += [
+            f"aecho=0.85:0.5:18|37:{0.14 * e:.3f}|{0.08 * e:.3f}",
+            f"chorus=0.9:0.9:12:{0.12 * e:.3f}:0.25:1.5",
+            f"acompressor=threshold=-20dB:ratio={1 + 1.5 * e:.2f}:attack=5:release=80",
+        ]
+    return fx + ["alimiter=limit=0.89"]
+
 
 PRESETS = {
-    "natural": Preset("natural", {"bm_george": 0.55, "bm_fable": 0.3, "bm_daniel": 0.15}, 1.0, 0, POLISH[:4]),
-    "jarvis": Preset("jarvis", {"bm_george": 0.55, "bm_fable": 0.3, "bm_daniel": 0.15}, 1.06, -0.5, POLISH),
-    "deeper": Preset("deeper", {"bm_george": 0.6, "bm_lewis": 0.4}, 1.0, -1.0, POLISH),
+    # Leo, 2026-10-11: "jarvis" good but a little deeper, not as deep as "deeper".
+    "jarvis": Preset("jarvis", {"bm_george": 0.55, "bm_fable": 0.25, "bm_daniel": 0.1, "bm_lewis": 0.1}, 1.04, -0.75, 1.0),
+    "natural": Preset("natural", {"bm_george": 0.55, "bm_fable": 0.3, "bm_daniel": 0.15}, 1.0, 0.0, 0.0),
+    "deeper": Preset("deeper", {"bm_george": 0.6, "bm_lewis": 0.4}, 1.0, -1.0, 1.0),
 }
-DEFAULT = os.environ.get("JARVIS_TTS_PRESET", "jarvis")
+DEFAULT = os.environ.get("JARVIS_TTS_PRESET", "")
+VOICE_NAMES = ("bm_george", "bm_fable", "bm_daniel", "bm_lewis")
+
+# The settings window writes this; the server re-reads it when it changes.
+SETTINGS = os.path.join(HOME, "state", "voice.json")
+
+
+def load_settings(path: str = SETTINGS) -> Preset:
+    """~/Jarvis/state/voice.json → a Preset; the jarvis preset when missing or bad."""
+    base = PRESETS["jarvis"]
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return base
+    if d.get("preset") in PRESETS and d.get("custom") is not True:
+        return PRESETS[d["preset"]]
+    blend = {v: float(w) for v, w in (d.get("blend") or {}).items() if v in VOICE_NAMES and float(w) > 0}
+    clamp = lambda x, lo, hi, dflt: max(lo, min(hi, float(x))) if isinstance(x, (int, float)) else dflt
+    return Preset(
+        "custom",
+        blend or base.blend,
+        clamp(d.get("speed"), 0.7, 1.4, base.speed),
+        clamp(d.get("semitones"), -4, 3, base.semitones),
+        clamp(d.get("effect"), 0, 1, base.effect),
+    )
 
 
 class Voice:
@@ -56,26 +93,39 @@ class Voice:
         # CPU: CoreML measured no faster here once ffmpeg is included.
         self.k = Kokoro(MODEL, VOICES)
         self._styles: dict[str, np.ndarray] = {}
+        self._settings: tuple[float, Preset] | None = None
 
     def style(self, p: Preset) -> np.ndarray:
-        if p.name not in self._styles:
+        if p.key() not in self._styles:
             total = sum(p.blend.values())
-            self._styles[p.name] = sum(self.k.get_voice_style(v) * (w / total) for v, w in p.blend.items())
-        return self._styles[p.name]
+            self._styles[p.key()] = sum(self.k.get_voice_style(v) * (w / total) for v, w in p.blend.items())
+        return self._styles[p.key()]
+
+    def current(self) -> Preset:
+        """The settings file's voice, re-read only when the file changes."""
+        try:
+            m = os.stat(SETTINGS).st_mtime
+        except OSError:
+            m = 0.0
+        if not self._settings or self._settings[0] != m:
+            self._settings = (m, load_settings())
+        return self._settings[1]
 
     def raw(self, text: str, p: Preset) -> np.ndarray:
         samples, _ = self.k.create(text, voice=self.style(p), speed=p.speed, lang="en-gb")
         return samples.astype(np.float32)
 
-    def render(self, text: str, preset: str = DEFAULT) -> bytes:
-        """Text → 16-bit WAV bytes with the preset's pitch and polish applied."""
-        p = PRESETS.get(preset, PRESETS["jarvis"])
+    def render(self, text: str, preset: str | Preset | None = None) -> bytes:
+        """Text → 16-bit WAV bytes with pitch and polish applied. `preset` names
+        one of PRESETS (or is a Preset); otherwise the settings file decides."""
+        name = preset or DEFAULT
+        p = name if isinstance(name, Preset) else PRESETS.get(name) or self.current()
         audio = self.raw(text, p)
         filters = []
         if p.semitones:
             ratio = 2 ** (p.semitones / 12)
             filters += [f"asetrate={int(SR * ratio)}", f"atempo={1 / ratio:.5f}", f"aresample={SR}"]
-        filters += p.fx
+        filters += polish(p.effect)
         filters.append("loudnorm=I=-18:TP=-1.5:LRA=9")  # same loudness for every preset
         pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
         cmd = [FFMPEG, "-loglevel", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "pipe:0"]

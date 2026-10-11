@@ -11,6 +11,9 @@ struct JarvisApp: App {
         MenuBarExtra("Jarvis", systemImage: "waveform") {
             MenuContent(model: delegate.model)
         }
+        Settings {
+            SettingsView(voice: delegate.voiceSettings, model: delegate.model, socket: delegate.speechSocket)
+        }
     }
 }
 
@@ -21,6 +24,8 @@ private struct MenuContent: View {
         Text("Hold ⌥ Space and talk")
         Text(speechStatus)
         Divider()
+        SettingsLink { Text("Settings…") }
+            .keyboardShortcut(",")
         Button("Quit Jarvis") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
