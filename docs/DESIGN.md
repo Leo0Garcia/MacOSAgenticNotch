@@ -153,7 +153,7 @@ Each skill has a fixture-based test. None calls the model in tests.
 
 Swift 6 / SwiftUI on DynamicNotchKit, macOS 15+, no other third-party deps beyond the wake-word SDK (phase 2).
 
-States: idle, listening, working, done, needs-you. Phase 1 is push-to-talk with a global hotkey and WhisperKit on-device transcription. Hover (phase 2) expands to the last ~8 actions from `~/Jarvis/actions.sqlite`; clicking a row runs `claude --desktop --resume <session-id>`. Never larger than the notch area. macOS notifications for needs-you and reminders come through the bridge.
+States: idle, listening, working, done, needs-you. Visual and motion spec: [NOTCH-DESIGN.md](NOTCH-DESIGN.md) (Aurora with a pixel character and the Large layout, collapsing to the pill whenever it isn't needed: Leo's picks, 2026-10-11); interactive mockup in `docs/design/notch-mockup.html`. Leo confirmed on 2026-10-11 that the notch may use a large area; it still draws nothing while idle and stays inside its layout's max box. Phase 1 is push-to-talk with a global hotkey and WhisperKit on-device transcription. Hover (phase 2) expands to the last ~8 actions from `~/Jarvis/actions.sqlite`; clicking a row runs `claude --desktop --resume <session-id>`. macOS notifications for needs-you and reminders come through the bridge.
 
 **Decision (differs from the spec):** the spec says rows open "via Claude Code deep link". The `claude-cli://open` deep link only takes `q`, `cwd` and `repo`; it cannot open an existing session, and it opens a terminal, not Desktop. `claude --desktop --resume <id>` is the documented way to open a CLI session in the Code tab.
 
