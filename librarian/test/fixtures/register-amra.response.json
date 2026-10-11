@@ -1,0 +1,10 @@
+{"type":"result","subtype":"success","is_error":false,"result":"","session_id":"lib-1","structured_output":{"ops":[
+  {"op":"create","path":"Projects/Amra.md"},
+  {"op":"set","path":"Projects/Amra.md","key":"slack_channels","values":["#amra"]},
+  {"op":"set","path":"Projects/Amra.md","key":"people","values":["[[Sue]]","[[Ellen]]"]},
+  {"op":"append","path":"Projects/Amra.md","section":"Needs Leo","text":"Decide whether to post the hello message in #amra yourself"},
+  {"op":"create","path":"People/Sue.md"},
+  {"op":"create","path":"People/Ellen.md"},
+  {"op":"create","path":"../outside.md","content":"escape"},
+  {"op":"replace","path":"Index.md","content":"hijack"}
+],"log":["Registered [[Amra]] with [[Sue]] and [[Ellen]]"]}}

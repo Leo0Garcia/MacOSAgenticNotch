@@ -17,7 +17,7 @@ Everything Jarvis needs lives in four places:
 | Place | Holds |
 | - | - |
 | This repo (`MacOSAgenticNotch`) | All code, skills, guard, prompts, vault template |
-| `~/Jarvis` | Runtime: `briefing.md`, run logs, SQLite action log, reminder plists staging, `.claude/skills` symlinks into this repo |
+| `~/Jarvis` | Runtime: `briefing.md`, run logs, SQLite action log, reminder plists staging, librarian queue (`librarian/`), `cache/`, `logs/`, `.claude/skills` symlinks into this repo |
 | `~/Jarvis-Memory` | Long-term memory vault |
 | macOS Keychain | Secrets, service names prefixed `jarvis/` |
 
@@ -129,13 +129,24 @@ Projects/ is the registry: "Jarvis, register the Amra project, Slack #amra, peop
 
 ### Librarian
 
-After every run the launcher starts, detached, `claude -p --model haiku` with `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`, the run's stream log, and the relevant notes. It updates notes and appends to today's Log, then regenerates `~/Jarvis/briefing.md`:
+After every run the launcher calls `bun <repo>/librarian/src/cli.ts enqueue --stream-log ~/Jarvis/runs/<session-id>.jsonl --request "<text>"` and waits for it (no model call, well under a second). It condenses the stream log into a job in `~/Jarvis/librarian/queue/` and starts a detached worker. Once `enqueue` returns, the launcher may delete an ephemeral run's transcript and stream log; the condensed job is deleted once filed. Leo never waits for the worker.
+
+The worker files jobs one at a time (lock file `~/Jarvis/librarian/lock`), so notes aren't edited concurrently. For each job it makes one `claude -p --model haiku` call with `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`, `--no-session-persistence`, guard's `--settings`, and **no tools** (`--tools ""`, `--strict-mcp-config`, `--disallowedTools "mcp__*"`). The condensed run, Me.md, today's log and any Projects/People note named in the run go in on stdin; the model returns note edits through `--json-schema` (`create`, `replace`, `append`, `move`, `remove`, `set`; no delete). The script validates every path (inside the vault after resolving symlinks, `.md`, not hidden, not `Index.md`, `Log/` or a template), refuses text that looks like a secret or card number, and writes atomically.
+
+**Decision (refines the spec):** the spec gives the librarian write access through its own guard settings. Instead the model gets no tools and the script does all writes, so the "only `~/Jarvis-Memory` and `briefing.md`" limit is enforced by code the model can't reach, and transcript content (web pages, Slack messages) can't steer a file tool. Log entries, `Index.md` and `briefing.md` are built by the script, not the model.
+
+Then the script appends the run to `Log/YYYY-MM-DD.md` and regenerates `Index.md` and `~/Jarvis/briefing.md`:
 
 - Me.md
-- Active projects (status != archived) with their Needs Leo items
-- Live snapshot: frontmost apps, running Claude sessions (`claude agents --json`), today's Apple Calendar events, today's timetable from the iCal cache
+- Librarian problems, if any job failed
+- Live snapshot: frontmost apps (`lsappinfo`, which needs no Accessibility or Automation permission), running Claude sessions (`claude agents --json`), today's Apple Calendar events (`osascript`, read-only; needs Calendar access, which macOS asks Leo for once), today's timetable from the iCal cache `~/Jarvis/cache/uni.ics` (the calendar skill owns fetching it)
+- Open Needs Leo items across active projects
+- Today's runs from the log
+- Active projects (status != archived), last so a long registry is what gets truncated (cap 16 KB)
 
-Leo never waits for it. The librarian runs with its own guard settings that only allow writes inside `~/Jarvis-Memory` and `~/Jarvis/briefing.md`. Runs queue: if a librarian is still running, the next one waits for it, so notes aren't edited concurrently. If `briefing.md` is missing or stale, the launcher still runs with whatever is there.
+If the model call fails, the run is still logged with a "Librarian problem" line, the job moves to `~/Jarvis/librarian/failed/` (`cli.ts retry` re-queues it), and the briefing says so. `cli.ts briefing` rebuilds the briefing without a run (e.g. at app start); `cli.ts init-vault` copies `vault-template/` into `~/Jarvis-Memory` without overwriting. If `briefing.md` is missing or stale, the launcher still runs with whatever is there.
+
+Known limits: AppleScript doesn't expand repeating Apple Calendar events, so a repeating event shows only on its first day (the calendar skill's reader can replace this probe once it exists). The timetable reader expands DAILY/WEEKLY rules, which covers university feeds.
 
 ## 6. Day-one capabilities (skills/)
 
@@ -155,7 +166,7 @@ Interface for the launcher: skill scripts are invoked as `bun ${CLAUDE_SKILL_DIR
 
 Swift 6 / SwiftUI on DynamicNotchKit, macOS 15+, no other third-party deps beyond the wake-word SDK (phase 2).
 
-States: idle, listening, working, done, needs-you. Phase 1 is push-to-talk with a global hotkey and WhisperKit on-device transcription. Hover (phase 2) expands to the last ~8 actions from `~/Jarvis/actions.sqlite`; clicking a row runs `claude --desktop --resume <session-id>`. Never larger than the notch area. macOS notifications for needs-you and reminders come through the bridge.
+States: idle, listening, working, done, needs-you. Visual and motion spec: [NOTCH-DESIGN.md](NOTCH-DESIGN.md) (Aurora with a pixel character and the Large layout, collapsing to the pill whenever it isn't needed: Leo's picks, 2026-10-11); interactive mockup in `docs/design/notch-mockup.html`. Leo confirmed on 2026-10-11 that the notch may use a large area; it still draws nothing while idle and stays inside its layout's max box. Phase 1 is push-to-talk with a global hotkey and WhisperKit on-device transcription. Hover (phase 2) expands to the last ~8 actions from `~/Jarvis/actions.sqlite`; clicking a row runs `claude --desktop --resume <session-id>`. macOS notifications for needs-you and reminders come through the bridge.
 
 **Decision (differs from the spec):** the spec says rows open "via Claude Code deep link". The `claude-cli://open` deep link only takes `q`, `cwd` and `repo`; it cannot open an existing session, and it opens a terminal, not Desktop. `claude --desktop --resume <id>` is the documented way to open a CLI session in the Code tab.
 
