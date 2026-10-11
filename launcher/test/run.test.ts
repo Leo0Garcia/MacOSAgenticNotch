@@ -263,3 +263,40 @@ test("a run that ends without a spoken answer speaks its summary instead of goin
   expect(out.reply).toBe("Checked the weather: 15 degrees and overcast");
   expect(events.filter((e) => e.event === "status")).toEqual([{ event: "status", text: "Running a command", detail: "Fetch weather" }]);
 });
+
+test("a warm run starts claude before the request and sends it on stdin", async () => {
+  w.setFixture(runs.weather());
+  const events: LauncherEvent[] = [];
+  let release!: (r: string | null) => void;
+  const req = new Promise<string | null>((r) => (release = r));
+  const outP = run(w.config(), "", {
+    emit: (e) => {
+      events.push(e);
+      if (e.event === "ready") setTimeout(() => release("what's the weather in Southampton"), 20);
+    },
+    finalize: async () => {},
+    speechRunner: w.speechRunner,
+    awaitRequest: () => req,
+  });
+  const out = await outP;
+  const lines = w.read("calls.jsonl").trim().split("\n").map((l) => JSON.parse(l));
+  const start = lines.findLast((l) => l.argv)!;
+  expect(start.argv.slice(0, 3)).toEqual(["-p", "--input-format", "stream-json"]);
+  expect(start.argv).toContain("--session-id");
+  const input = JSON.parse(lines.at(-1).stdin.trim());
+  expect(input).toEqual({ type: "user", message: { role: "user", content: "what's the weather in Southampton" } });
+  expect(events[0]).toEqual({ event: "ready", sessionId: out.sessionId });
+  expect(events.map((e) => e.event)).toContain("done");
+  expect(out.reply).toContain("14 degrees");
+});
+
+test("a warm run with no request (or a follow-up) cleans up and falls back", async () => {
+  w.setFixture(runs.weather());
+  const quiet = await run(w.config(), "", { emit: () => {}, finalize: async () => {}, speechRunner: w.speechRunner, awaitRequest: async () => null });
+  expect(quiet.exitCode).toBe(0);
+  expect(quiet.sessionId).toBeUndefined();
+  // A saved intent can't be named after start: it runs cold instead.
+  const saved = await run(w.config(), "", { emit: () => {}, finalize: async () => {}, speechRunner: w.speechRunner, awaitRequest: async () => "start a research session on heat pumps" });
+  expect(w.lastCall().argv.slice(0, 2)).toEqual(["-p", "start a research session on heat pumps"]);
+  expect(saved.exitCode).toBe(0);
+});

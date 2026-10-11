@@ -21,6 +21,8 @@ export interface RunPlan {
   resume?: string;
   /** Display name, only for explicit saved intents. */
   name?: string;
+  /** Warm run: started before the request exists; the prompt arrives on stdin as stream-json. */
+  streamInput?: boolean;
 }
 
 /** The bridge entry for this run, written to ~/Jarvis/runs/<id>.mcp.json (DESIGN 8.1). */
@@ -39,7 +41,7 @@ export function mcpConfig(c: Config, sessionId: string): object {
 export function claudeArgs(c: Config, plan: RunPlan): string[] {
   const p = paths(c);
   const id = plan.resume ?? plan.sessionId;
-  const args = ["-p", plan.prompt];
+  const args = plan.streamInput ? ["-p", "--input-format", "stream-json"] : ["-p", plan.prompt];
   if (plan.resume) args.push("--resume", plan.resume);
   else if (plan.sessionId) args.push("--session-id", plan.sessionId);
   else throw new Error("a run needs a session id or a session to resume");

@@ -3,6 +3,8 @@
 //
 //   run "<request>"     one Jarvis run (request on stdin if no argument); NDJSON events on stdout
 //   open <session-id>   open a saved run in Claude Desktop's Code tab
+//   warm                start claude now, print {"event":"ready"}, then read the
+//                       request as one line on stdin (the notch app keeps one ready)
 //
 // Reminders have their own entry point, src/reminders.ts, which the bridge calls.
 
@@ -21,6 +23,15 @@ export async function main(argv: string[]): Promise<number> {
     case "run": {
       const request = args.length ? args.join(" ") : await Bun.stdin.text();
       return (await run(c, request)).exitCode;
+    }
+    case "warm": {
+      const lines = console[Symbol.asyncIterator]();
+      return (await run(c, "", {
+        awaitRequest: async () => {
+          const { value, done } = await lines.next();
+          return done ? null : String(value);
+        },
+      })).exitCode;
     }
     case "open": {
       const id = args[0];

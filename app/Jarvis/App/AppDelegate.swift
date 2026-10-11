@@ -89,6 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         voice.prepare()
         startSpeechServer()
+        // A warm run, so the first request doesn't pay Claude Code's start-up.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { launcher.prepareWarm() }
         observeWakeSettings()
         if let i = args.firstIndex(of: "--request"), i + 1 < args.count {
             let request = args[i + 1]
@@ -107,6 +109,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         observeEscape()
+    }
+
+    /// jarvis://listen — for a Shortcut Siri can run ("Hey Siri, Jarvis"):
+    /// Jarvis listens for one request, mic on only for that request.
+    /// jarvis://ask?q=<text> sends text straight in.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "jarvis" {
+            switch url.host {
+            case "listen":
+                AppLog.write("listening (from \(url.absoluteString))")
+                wake?.listenNow()
+            case "ask":
+                let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "q" }?.value ?? ""
+                if !q.trimmingCharacters(in: .whitespaces).isEmpty { model.submit(q) }
+            default:
+                break
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

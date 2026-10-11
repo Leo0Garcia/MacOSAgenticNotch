@@ -26,6 +26,12 @@ mkdirSync(join(project, sid), { recursive: true });
 writeFileSync(join(project, `${sid}.jsonl`), "{}\n");
 writeFileSync(join(project, sid, "tool-results.txt"), "x");
 
+// Warm runs (--input-format stream-json): the prompt arrives on stdin.
+if (argv.includes("--input-format")) {
+  const input = await Bun.stdin.text();
+  if (env.STUB_CALLS) appendFileSync(env.STUB_CALLS, JSON.stringify({ stdin: input }) + "\n");
+}
+
 const lines = readFileSync(env.STUB_FIXTURE!, "utf8").replaceAll("{{SID}}", sid).split("\n").filter(Boolean);
 for (const l of lines) {
   process.stdout.write(l + "\n");

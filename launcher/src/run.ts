@@ -18,6 +18,7 @@ import { type Denial, initProblem, RunMonitor } from "./stream";
 
 /** Lines the launcher prints on stdout, one JSON object each, for the notch app. */
 export type LauncherEvent =
+  | { event: "ready"; sessionId: string }
   | { event: "state"; state: "working" | "done" | "needs-you" | "error"; sessionId?: string }
   | { event: "speak"; text: string }
   | { event: "status"; text: string; detail?: string }
@@ -33,6 +34,12 @@ export interface RunOptions {
   /** Runs `say` for the shared Speaker. Tests replace it. */
   speechRunner?: Runner;
   now?: () => number;
+  /**
+   * Warm run: start claude now (hooks, MCP servers) and wait for the request,
+   * so the start-up cost is paid before Leo speaks. Resolves the request, or
+   * null to give up. Follow-ups and saved intents fall back to a normal run.
+   */
+  awaitRequest?: () => Promise<string | null>;
 }
 
 export interface RunOutcome {
@@ -95,8 +102,9 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     return { exitCode: 1, sessionId, error: message };
   };
 
+  const warm = opts.awaitRequest;
   request = request.trim();
-  if (!request) return fail("empty request", undefined, "I didn't catch that.");
+  if (!request && !warm) return fail("empty request", undefined, "I didn't catch that.");
 
   ensureDirs(c);
   const p = paths(c);
@@ -108,25 +116,52 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   linkSkills(c);
   buildSystemPrompt(c);
 
-  const plan = planRun(c, request, now());
+  let plan: ReturnType<typeof planRun>;
+  if (warm) {
+    const id = randomUUID();
+    plan = { prompt: "", sessionId: id, runLog: p.runLog(id), resumed: false, streamInput: true };
+  } else {
+    plan = planRun(c, request, now());
+  }
   const sessionId = (plan.resume ?? plan.sessionId)!;
-  link = new NotchLink({ home: c.home, client: "launcher", sessionId, connectTimeoutMs: 300 });
-  speaker = new Speaker({ home: c.home, link, sessionId, run: opts.speechRunner });
-  emit({ event: "state", state: "working", sessionId });
-  notch({ event: "started", text: request }, sessionId);
 
   mkdirSync(p.runs, { recursive: true });
   const mcpFile = p.mcpConfig(sessionId);
   writeFileAtomic(mcpFile, JSON.stringify(mcpConfig(c, sessionId)));
-  const logFile = Bun.file(plan.runLog).writer();
   let initFailure: string | undefined;
   const proc = Bun.spawn([c.claudeBin, ...claudeArgs(c, plan)], {
     cwd: c.home,
     env: childEnv(c, { JARVIS_RUN_SESSION_ID: sessionId }),
-    stdin: "ignore",
+    stdin: warm ? "pipe" : "ignore",
     stdout: "pipe",
     stderr: "pipe",
   });
+
+  if (warm) {
+    emit({ event: "ready", sessionId });
+    const req = ((await warm()) ?? "").trim();
+    const fallBack = !req || (FOLLOWUP.test(req) && recentRun(c, now())) || savedRunName(req);
+    if (fallBack) {
+      // Nothing to do, or a run this warm start can't be: a follow-up resumes
+      // another session, and a saved intent needs its name at start.
+      proc.kill("SIGTERM");
+      await proc.exited;
+      rmSync(mcpFile, { force: true });
+      deleteTranscript(c, sessionId);
+      if (!req) return { exitCode: 0 };
+      return run(c, req, { ...opts, awaitRequest: undefined });
+    }
+    request = req;
+    const sink = proc.stdin as import("bun").FileSink;
+    sink.write(JSON.stringify({ type: "user", message: { role: "user", content: request } }) + "\n");
+    await sink.end();
+  }
+
+  link = new NotchLink({ home: c.home, client: "launcher", sessionId, connectTimeoutMs: 300 });
+  speaker = new Speaker({ home: c.home, link, sessionId, run: opts.speechRunner });
+  emit({ event: "state", state: "working", sessionId });
+  notch({ event: "started", text: request }, sessionId);
+  const logFile = Bun.file(plan.runLog).writer();
   const monitor = new RunMonitor({
     onSentence: speak,
     onTool: (name, input) => {

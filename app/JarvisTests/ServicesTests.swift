@@ -40,6 +40,7 @@ import Testing
         #expect(LauncherEvent.parse(#"{"event":"done","sessionId":"s","keep":true,"summary":"S","reply":"R","name":"Jarvis: N"}"#)
             == .done(sessionId: "s", keep: true, summary: "S", reply: "R", name: "Jarvis: N"))
         #expect(LauncherEvent.parse(#"{"event":"error","message":"boom"}"#) == .error("boom"))
+        #expect(LauncherEvent.parse(#"{"event":"ready","sessionId":"s"}"#) == .ready(sessionId: "s"))
         #expect(LauncherEvent.parse("not json") == nil)
         #expect(LauncherEvent.parse(#"{"event":"future"}"#) == nil)
     }
@@ -169,6 +170,7 @@ import Testing
         """
         try script.write(to: launcherDir.appendingPathComponent("run.sh"), atomically: true, encoding: .utf8)
         let launcher = Launcher(paths: Paths(home: repo.appendingPathComponent("home"), repo: repo))
+        launcher.keepWarm = false
         var events: [LauncherEvent] = []
         var code: Int32?
         try launcher.run("hello", onEvent: { events.append($0) }, exited: { code = $0 })
@@ -236,5 +238,37 @@ import Testing
         #expect(again.values.semitones == -1.5)
         again.resetToJarvis()
         #expect(again.values == VoiceSettings.presets[.jarvis])
+    }
+}
+
+
+@MainActor
+@Suite(.serialized) struct WarmRunTests {
+    @Test func aWarmRunTakesTheNextRequestOnStdin() async throws {
+        let repo = FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-warm-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: repo.appendingPathComponent("launcher"), withIntermediateDirectories: true)
+        // Stand-in run.sh: "warm" says ready, reads one line, echoes it back as speech.
+        let script = """
+        #!/bin/sh
+        if [ "$1" = warm ]; then
+          printf '%s\\n' '{"event":"ready","sessionId":"w1"}'
+          read -r req || exit 0
+          printf '{"event":"speak","text":"warm: %s"}\\n' "$req"
+          exit 0
+        fi
+        printf '{"event":"speak","text":"cold: %s"}\\n' "$2"
+        """
+        try script.write(to: repo.appendingPathComponent("launcher/run.sh"), atomically: true, encoding: .utf8)
+        let launcher = Launcher(paths: Paths(home: repo.appendingPathComponent("home"), repo: repo))
+        launcher.prepareWarm()
+        try await Task.sleep(for: .milliseconds(400))
+        var events: [LauncherEvent] = []
+        var code: Int32?
+        try launcher.run("what's the time", onEvent: { events.append($0) }, exited: { code = $0 })
+        for _ in 0..<100 where code == nil { try await Task.sleep(for: .milliseconds(20)) }
+        launcher.keepWarm = false
+        launcher.cancelAll()
+        #expect(events == [.speak("warm: what's the time")])
+        #expect(code == 0)
     }
 }
