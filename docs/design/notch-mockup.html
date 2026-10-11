@@ -293,7 +293,7 @@ canvas.viz.wide{width:150px;height:22px;margin-top:10px}
     <h2>Pick a layout</h2>
     <div class="dirs" style="grid-template-columns:repeat(2,minmax(0,1fr))">
       <button class="dir" data-lay="compact" aria-pressed="false"><span class="k">1 · 340 × 200 max</span><b>Compact</b><span>Hugs the notch. Character sits in the left wing; one line of status, two or three of text.</span></button>
-      <button class="dir" data-lay="large" aria-pressed="true"><span class="k">2 · 520 × 360 max</span><b>Large</b><span>A proper panel under the notch. Big character beside the text, every tool step, sources, and a fuller log.</span></button>
+      <button class="dir" data-lay="large" aria-pressed="true"><span class="k">2 · 520 × 360 max · picked</span><b>Large</b><span>A proper panel under the notch. Big character beside the text, every tool step, sources, and a fuller log.</span></button>
     </div>
   </section>
 
@@ -404,7 +404,7 @@ const TXT={
   weather:{req:"What's the weather in Southampton", reply:"It's 14 degrees and cloudy in Southampton, with light rain from about 4pm.",
     steps:[['WEBSEARCH','southampton weather today','Checking the forecast'],['WEBFETCH','bbc.co.uk/weather/2637487','Reading BBC Weather']]},
   research:{req:"Start a research session on Southampton rents", reply:"I've started that. The first pass is in your vault under Southampton rents.",
-    steps:[['WEBSEARCH','southampton average rent 2026','Searching the web'],['WEBFETCH','zoopla.co.uk/market/southampton','Reading Zoopla'],['WRITE','Jarvis-Memory/Research/Southampton rents.md','Writing the notes']],
+    steps:[['WEBSEARCH','southampton average rent 2026','Searching the web'],['WEBFETCH','zoopla.co.uk/market/southampton','Reading Zoopla'],['WEBFETCH','rightmove.co.uk/house-prices/southampton','Reading Rightmove'],['WEBFETCH','homelet.co.uk/homelet-rental-index','Reading the HomeLet index'],['WRITE','Jarvis-Memory/Research/Southampton rents.md','Writing the notes']],
     saved:'Research: Southampton rents'},
   guard:{req:"Pay my tuition fee", steps:[['CHROME','navigate → fees portal','Opening the fees portal']]},
 };
@@ -642,7 +642,8 @@ async function work(w,o){
   M.mode='work'; M.t0=performance.now(); M.tEnd=0; M.budget=true; M.firstSound=null;
   M.steps=[]; M.status='Thinking';
   setState('working',o); await w(500);
-  for(const s of o.steps){ const st=[...s]; st[3]=((performance.now()-M.t0)/1000/S).toFixed(1)+'s'; M.steps.push(st); M.status=s[2]; syncLive(); await w(720); }
+  for(const s of o.steps){ const st=[...s]; st[3]=((performance.now()-M.t0)/1000/S).toFixed(1)+'s'; M.steps.push(st); M.status=s[2]; syncLive(); await w(720);
+    if(cur==='working' && (performance.now()-M.t0)/S>3000) setState('workingCompact',o); }
 }
 async function speak(w,o,saved){
   M.firstSound=(performance.now()-M.t0)/1000/S; M.speaking=true;
@@ -668,6 +669,7 @@ const PLAYS={
     await work(w,o);
     await speak(w,o,true);
     M.budget=false;
+    await w(4000); setState('doneCompact',{}); await w(1400); resetModel(); setState('idle');
   },
   guard: async w=>{
     resetModel(); setState('idle'); await w(300);
@@ -692,7 +694,7 @@ function jump(s){
     if(s==='listening'){ await listen(w,o.req,{2:'whether'}); M.talking=false; return }
     if(s==='working'||s==='workingCompact'){
       M.mode='work'; M.t0=performance.now(); M.budget=true;
-      if(s==='workingCompact'){M.t0-=8200*S; setState(s,o); return}
+      if(s==='workingCompact'){M.t0-=3200*S; setState(s,o); return}
       setState(s,o);
       let i=0; M.status='Thinking'; syncLive();
       while(true){ await w(1400); const st=[...o.steps[i%2]]; st[3]=((performance.now()-M.t0)/1000/S).toFixed(1)+'s'; M.steps.push(st); M.status=st[2]; syncLive(); i++; }
@@ -708,10 +710,10 @@ function jump(s){
 const SPEC={
   idle:['Idle',{'Shows':'Nothing. The notch is just the notch, and the app draws no window.','Enters':'Launch, or after Done and reminders finish.','Leaves':'Hotkey down, a reminder fires, a run asks something, or (phase 2) the pointer rests on the notch.'}],
   listening:['Listening',{'Shows':'Live mic level on the left, elapsed time on the right, and the transcript as WhisperKit produces it. Unconfirmed words are dimmed and can still change (watch “whether” become “weather”).','Enters':'Hotkey goes down.','Motion':'Expand spring. Each new word fades in from a 6pt blur in 180ms.','Leaves':'Hotkey released. The launcher starts the run and the transcript hands over to Working.'}],
-  working:['Working',{'Shows':'The request in small type, then one plain line per tool call (WebSearch reads as “Checking the forecast”). Large also lists each step with its site and time. The character walks while it works.','Enters':'Launcher has spawned <code>claude -p</code>; lines come from <code>tool_use</code> events in stream-json.','Motion':'Height follows content with the expand spring. The status line blurs across and shimmers every 1.6s.','Leaves':'First sentence of the reply arrives: Done. If nothing has been spoken after 8s it shrinks to the compact pill.'}],
-  workingCompact:['Working, long run',{'Shows':'Activity indicator and elapsed time only, so a long research run doesn’t cover the menu bar.','Enters':'8s in Working with nothing spoken yet.','Motion':'Collapse spring, no overshoot.','Leaves':'Pointer hover opens Working again. A reply or a question takes over.'}],
+  working:['Working',{'Shows':'The request in small type, then one plain line per tool call (WebSearch reads as “Checking the forecast”). Large also lists each step with its site and time. The character walks while it works.','Enters':'Launcher has spawned <code>claude -p</code>; lines come from <code>tool_use</code> events in stream-json.','Motion':'Height follows content with the expand spring. The status line blurs across and shimmers every 1.6s.','Leaves':'First sentence of the reply arrives: Done. If nothing has been spoken after 3s it shrinks to the pill.'}],
+  workingCompact:['Working, long run',{'Shows':'Activity indicator and elapsed time only, so a long research run doesn’t cover the menu bar.','Enters':'3s in Working with nothing spoken yet (the research play shows this).','Motion':'Collapse spring, no overshoot.','Leaves':'Pointer hover opens Working again. A reply or a question takes over.'}],
   done:['Done',{'Shows':'The character hops, then bobs as it talks; the reply brightens word by word as Jarvis says it. Large adds the sources used and the time to first word.','Enters':'First sentence streams in and the bridge <code>speak()</code> starts.','Motion':'Hop: arms up, 2 px, 0.5s. Phase 1 times the caption from the <code>say</code> speaking rate; exact word timing needs in-app speech (phase 2 TTS).','Leaves':'1.8s after speech ends it shrinks to a compact check for 1.4s, then hides.'}],
-  doneSaved:['Done, saved',{'Shows':'As Done, plus the saved run’s name. Clicking it runs <code>claude --desktop --resume &lt;id&gt;</code>.','Enters':'Result has <code>keep: true</code>.','Leaves':'Stays 6s after speech (longer than ephemeral runs, so Leo can click it), then compact, then hidden. Also listed in the hover log.'}],
+  doneSaved:['Done, saved',{'Shows':'As Done, plus the saved run’s name. Clicking it runs <code>claude --desktop --resume &lt;id&gt;</code>.','Enters':'Result has <code>keep: true</code>.','Leaves':'Stays 4s after speech so the saved chip can be clicked, then the pill, then hidden. Also listed in the hover log.'}],
   doneCompact:['Done',{'Shows':'Just the happy character.','Enters':'Speech finished.','Motion':'Collapse spring.','Leaves':'Hides after 1.4s.'}],
   needsAsk:['Needs you: question',{'Shows':'The question and up to two quick answers. Answering by voice works too.','Enters':'A run calls the bridge <code>ask(question)</code>.','Motion':'Expand spring. The rim pulses amber every 1.2s and the character waves until answered.','Leaves':'Leo answers, or <code>ask()</code> times out with “no answer”. A macOS notification is also posted.'}],
   needsAccess:['Needs you: access',{'Shows':'Exactly what’s missing and where to fix it. No button pretends to fix it.','Enters':'Output of the <code>needs-access</code> skill, or a <code>permission_denied</code> event.','Leaves':'Stays until dismissed.'}],

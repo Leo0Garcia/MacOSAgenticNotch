@@ -2,7 +2,7 @@
 
 What the app/ thread builds from. DESIGN.md section 7 says what the notch does; this file says how it looks and moves. The interactive mockup is `docs/design/notch-mockup.html` (open it in a browser; 1 CSS px = 1 pt).
 
-Status: Leo picked **B, Aurora** on 2026-10-11 and asked for a pixel character instead of the orb (section 6). Two layouts are drafted, **waiting on Leo to pick one**: Compact (340 × 200 max) and Large (520 × 360 max). Leo said the notch may use a large area.
+Status: Leo picked **B, Aurora** on 2026-10-11 and asked for a pixel character instead of the orb (section 6). Leo then picked the **Large** layout (520 × 360 max), on condition that it shows and hides efficiently, collapsing to the pill whenever it isn't needed (section 2.1). The Compact layout stays documented as the fallback.
 
 ## 1. Geometry
 
@@ -36,14 +36,30 @@ Compact pills (Working long run, Done tail, Reminder pill) are the same in both:
 
 ## 2. States
 
+### 2.1 Show and hide (Large layout)
+
+The large panel is shown only while Leo needs to read or answer it; otherwise the notch is the pill or hidden.
+
+| Moment | Large panel | Then |
+| - | - | - |
+| Listening | shown while the hotkey is held | Working |
+| Working | first 3 s, so Leo sees it understood | pill (walking character + elapsed) until the reply; hover re-expands |
+| Done | while speaking, plus 1.8 s (saved runs: 4 s, so the chip can be clicked) | pill 1.4 s, then hidden |
+| Needs you | until answered; after 20 s without pointer or keyboard activity on it, pill with the waving character and amber rim | hover or click re-expands; notification already posted |
+| Reminder | 5 s | pill until clicked or 60 s |
+| Hover log | while the pointer is on it (300 ms in, 400 ms out) | hidden |
+
+Always: Esc or a click outside collapses to the pill (or hides, if nothing is running). Nothing stays expanded for more than 6 s without new content except an unanswered needs-you. Expanding uses `expand`, shrinking uses `collapse` (section 3), so the panel never lingers mid-animation.
+
+
 | State | Size | Leading | Trailing | Body | Enters on | Leaves on |
 | - | - | - | - | - | - | - |
 | Idle | hidden | | | | launch, end of Done/reminder | hotkey down, reminder, ask, hover (phase 2) |
 | Listening | expanded | character (listening) + mic level | elapsed `0:03` | live transcript; unconfirmed WhisperKit words at 45% white | hotkey down | hotkey up |
-| Working | expanded | character (walking) | elapsed `1.6s` | request (12 pt, 50% white) + one status line per `tool_use` event | launcher spawned the run | first reply sentence, ask, or 8 s with nothing spoken |
-| Working, long run | compact | character (walking) | elapsed | | 8 s in Working with nothing spoken | hover re-expands; reply/ask takes over |
-| Done | expanded | character (hop, then talks) | speaking bars | reply caption, words go 30% → 100% as spoken | first sentence streams, bridge `speak()` starts | 1.8 s after speech: compact check 1.4 s, then hidden |
-| Done, saved | expanded | as Done | as Done | + chip "Saved · <name> ↗", click runs `claude --desktop --resume <id>` | result `keep: true` | 6 s after speech, then as Done |
+| Working | expanded 3 s, then pill | character (walking) | elapsed `1.6s` | request (12 pt, 50% white) + one status line per `tool_use` event | launcher spawned the run | first reply sentence, ask, or 3 s with nothing spoken |
+| Working, long run | compact | character (walking) | elapsed | | 3 s in Working with nothing spoken | hover re-expands; reply/ask takes over |
+| Done | expanded | character (hop, then talks) | speaking bars | reply caption, words go 30% → 100% as spoken | first sentence streams, bridge `speak()` starts | 1.8 s after speech: pill 1.4 s, then hidden |
+| Done, saved | expanded | as Done | as Done | + chip "Saved · <name> ↗", click runs `claude --desktop --resume <id>` | result `keep: true` | 4 s after speech, then as Done |
 | Needs you: question | expanded | character (waving) | "Question" | question + up to two answer buttons + "or hold ⌥ Space" | bridge `ask()` | answered, or `ask()` timeout |
 | Needs you: access | expanded | character (waving) | "Access" | what's missing + where to fix it + "Got it" | `needs-access` skill, `permission_denied` | dismissed |
 | Needs you: blocked | expanded | character (waving) | "Blocked" | `guard:<rule-id>` as a label, plain sentence, safe-version button + Dismiss | guard deny reason relayed by the run | safe version picked or dismissed |
@@ -81,6 +97,18 @@ Hand-offs:
 - Listening → Working: the transcript text moves into the 12 pt request line (`matchedGeometryEffect` on the text), status line fades in under it.
 - Working → Done: status line and steps leave with `contentOut`; reply enters with `contentIn`; height follows with `expand` or `collapse`.
 - Any → Idle: content out first, then `collapse` to the hardware outline, then `notch.hide()`.
+
+### Smoothness requirements
+
+Leo's bar is "everything is smooth". The app thread treats these as acceptance criteria:
+
+- **Frame rate:** no dropped frames during any transition on the M4's 120 Hz display. Check with Instruments' Animation Hitches template; target hitch ratio under 1 ms/s.
+- **Interruptible:** every change is a SwiftUI spring, so a new state mid-animation retargets from the current size and velocity instead of snapping or queueing. Never chain `expand()`/`compact()` calls with sleeps; set the model and let one animation run.
+- **Coalesce updates:** stream events arrive faster than the eye can read. Status line changes at most every 350 ms; transcript words are batched per frame; the panel's height animates only when content height changes by 4 pt or more.
+- **No reflow:** content is laid out at full width from the first frame (section 1), text uses `.contentTransition(.opacity)` or the blur transition, never resizing mid-word.
+- **Cheap drawing:** the rim, character and bars draw only while visible; `TimelineView` pauses when hidden. Canvas for the character and bars, no per-frame view rebuilds of the text. Measured CPU while Working under 5% on the M4.
+- **Startup:** the notch window is created at launch and kept hidden, so the first hotkey press expands in the same frame (DynamicNotchKit's `expand()` starts the animation before showing the window).
+- **Audio first:** speech starts the instant the first sentence arrives, independent of animation state; the UI follows the audio, never the other way round.
 
 ## 4. Type and colour (shared)
 
