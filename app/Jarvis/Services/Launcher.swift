@@ -5,6 +5,8 @@ import Foundation
 
 /// One line of the launcher's stdout.
 enum LauncherEvent: Equatable, Sendable {
+    /// A warm run has started claude and is waiting for the request.
+    case ready(sessionId: String?)
     case state(String, sessionId: String?)
     case speak(String)
     case status(text: String, detail: String?)
@@ -20,6 +22,7 @@ enum LauncherEvent: Equatable, Sendable {
         else { return nil }
         let s = { (k: String) in o[k] as? String }
         switch event {
+        case "ready": return .ready(sessionId: s("sessionId"))
         case "state": return s("state").map { .state($0, sessionId: s("sessionId")) }
         case "speak": return s("text").map { .speak($0) }
         case "status": return s("text").map { .status(text: $0, detail: s("detail")) }
@@ -74,18 +77,96 @@ final class Launcher: LauncherRunning {
         return p
     }
 
+    /// Where a launcher process's events go. A warm process has none until a
+    /// request is handed to it.
+    @MainActor private final class Route {
+        var onEvent: (@MainActor (LauncherEvent) -> Void)?
+        var exited: (@MainActor (Int32) -> Void)?
+        var ready = false
+        var stdin: FileHandle?
+        var startedAt = Date()
+    }
+
+    private var warm: (process: Process, route: Route)?
+    private var warmRetries = 0
+    private var refreshTimer: Timer?
+    /// Keep a warm run ready (claude started, hooks and MCP servers up) so a
+    /// request skips ~2–3 s of start-up. JARVIS_WARM=0 turns it off.
+    var keepWarm = ProcessInfo.processInfo.environment["JARVIS_WARM"] != "0"
+    /// A warm run older than this is replaced, so the briefing it loaded stays fresh.
+    static let warmMaxAge: TimeInterval = 10 * 60
+
     func run(_ request: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws {
-        let p = try process(["run", request])
+        if let w = warm, w.route.ready, w.process.isRunning, let stdin = w.route.stdin {
+            warm = nil
+            w.route.onEvent = onEvent
+            w.route.exited = exited
+            w.route.stdin = nil
+            do {
+                try stdin.write(contentsOf: Data((request.replacingOccurrences(of: "\n", with: " ") + "\n").utf8))
+                try stdin.close()
+                AppLog.write("request handed to the warm run (pid \(w.process.processIdentifier))")
+                return
+            } catch {
+                AppLog.write("warm run didn't take the request: \(error.localizedDescription)")
+                w.process.terminate()
+            }
+        }
+        let route = Route()
+        route.onEvent = onEvent
+        route.exited = exited
+        let p = try spawn(["run", request], route: route, stdin: false)
+        AppLog.write("launcher run started (pid \(p.processIdentifier))")
+    }
+
+    /// Starts a warm run if none is ready. Called at launch and after each run.
+    func prepareWarm() {
+        guard keepWarm, warm == nil else { return }
+        let route = Route()
+        do {
+            let p = try spawn(["warm"], route: route, stdin: true)
+            warm = (p, route)
+            if refreshTimer == nil {
+                refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.refreshWarm() }
+                }
+            }
+        } catch {
+            AppLog.write("couldn't start a warm run: \(error.localizedDescription)")
+        }
+    }
+
+    private func refreshWarm() {
+        guard let w = warm, Date().timeIntervalSince(w.route.startedAt) > Self.warmMaxAge else { return }
+        warm = nil
+        try? w.route.stdin?.close() // an empty request: the warm run cleans up and exits
+        w.route.stdin = nil
+    }
+
+    private func spawn(_ args: [String], route: Route, stdin: Bool) throws -> Process {
+        let p = try process(args)
         let out = Pipe(), err = Pipe()
         p.standardOutput = out
         p.standardError = err
+        if stdin {
+            let input = Pipe()
+            p.standardInput = input
+            route.stdin = input.fileHandleForWriting
+        }
         let lines = LineSplitter()
         out.fileHandleForReading.readabilityHandler = { h in
             let chunk = h.availableData
             if chunk.isEmpty { h.readabilityHandler = nil; return }
             let parsed = lines.push(chunk).compactMap(LauncherEvent.parse)
             guard !parsed.isEmpty else { return }
-            DispatchQueue.main.async { MainActor.assumeIsolated { parsed.forEach(onEvent) } }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    for e in parsed {
+                        if case .ready = e { route.ready = true; continue }
+                        route.onEvent?(e)
+                    }
+                }
+            }
         }
         err.fileHandleForReading.readabilityHandler = { h in
             let chunk = h.availableData
@@ -98,15 +179,27 @@ final class Launcher: LauncherRunning {
             // Let the last stdout chunk drain before reporting the exit.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 MainActor.assumeIsolated {
-                    if let tail = lines.flush().flatMap(LauncherEvent.parse) { onEvent(tail) }
+                    if let tail = lines.flush().flatMap(LauncherEvent.parse) { route.onEvent?(tail) }
                     self.running.removeAll { $0 === proc }
-                    exited(code)
+                    let wasUnusedWarm = self.warm?.process === proc
+                    if wasUnusedWarm { self.warm = nil }
+                    route.exited?(code)
+                    // Next warm run once this one is done (not alongside it, to keep
+                    // the start-up from competing with a live run).
+                    if wasUnusedWarm, code != 0 {
+                        self.warmRetries += 1
+                        guard self.warmRetries <= 3 else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { MainActor.assumeIsolated { self.prepareWarm() } }
+                    } else {
+                        if route.exited != nil { self.warmRetries = 0 }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { MainActor.assumeIsolated { self.prepareWarm() } }
+                    }
                 }
             }
         }
         try p.run()
         running.append(p)
-        AppLog.write("launcher run started (pid \(p.processIdentifier))")
+        return p
     }
 
     func open(sessionId: String) {
@@ -145,6 +238,9 @@ final class Launcher: LauncherRunning {
     }
 
     func cancelAll() {
+        refreshTimer?.invalidate()
+        try? warm?.route.stdin?.close()
+        warm = nil
         for p in running where p.isRunning { p.terminate() }
     }
 }

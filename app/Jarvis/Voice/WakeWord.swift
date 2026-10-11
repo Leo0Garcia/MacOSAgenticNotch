@@ -157,29 +157,59 @@ final class WakeListener {
     func setEnabled(_ on: Bool) {
         guard on != enabled else { return }
         if on {
-            guard AudioCapture.permission == .authorized else {
-                AppLog.write("wake word needs microphone access first")
-                return
-            }
-            do {
-                try capture.startStreaming()
-            } catch {
-                AppLog.write("wake word couldn't start the mic: \(error.localizedDescription)")
-                return
-            }
+            guard startStream() else { return }
             enabled = true
+            oneShot = false
             reset()
-            timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.tick() }
-            }
             AppLog.write("listening for the wake word")
         } else {
             enabled = false
-            timer?.invalidate()
-            timer = nil
-            capture.stopStreaming()
+            if !triggered { stopStream() }
             reset()
         }
+    }
+
+    /// "Hey Siri, Jarvis" (a Shortcut opening jarvis://listen): listen for one
+    /// request right now, ending on a pause, without the wake word. The mic is
+    /// on only for this request when wake-word listening is off.
+    func listenNow() {
+        guard !triggered, model?.panel != .listening else { return }
+        if !enabled {
+            guard startStream() else { return }
+            oneShot = true
+        }
+        reset()
+        triggered = true
+        framesSinceTrigger = 0
+        spokeAfterTrigger = false
+        model?.wakeTriggered(preroll: [])
+    }
+
+    private var oneShot = false
+
+    private func startStream() -> Bool {
+        guard AudioCapture.permission == .authorized else {
+            AppLog.write("hands-free needs microphone access first")
+            return false
+        }
+        do {
+            try capture.startStreaming()
+        } catch {
+            AppLog.write("hands-free couldn't start the mic: \(error.localizedDescription)")
+            return false
+        }
+        if timer == nil {
+            timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.tick() }
+            }
+        }
+        return true
+    }
+
+    private func stopStream() {
+        timer?.invalidate()
+        timer = nil
+        capture.stopStreaming()
     }
 
     private func reset() {
@@ -193,7 +223,7 @@ final class WakeListener {
     }
 
     private func tick() {
-        guard enabled, let model else { return }
+        guard enabled || oneShot, let model else { return }
         pending += capture.stream.drain()
         // Push-to-talk, Jarvis speaking or the panel listening: don't listen
         // for the wake word (and never hear Jarvis say its own name).
@@ -252,6 +282,10 @@ final class WakeListener {
         guard triggered else { return }
         triggered = false
         model?.wakeEnded()
+        if oneShot || !enabled {
+            oneShot = false
+            stopStream()
+        }
     }
 
     private func maybeCheck() {

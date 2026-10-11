@@ -39,6 +39,10 @@ targets:
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         LSUIElement: true
+        # jarvis://listen and jarvis://ask?q= (Shortcuts, "Hey Siri, Jarvis")
+        CFBundleURLTypes:
+          - CFBundleURLName: com.jarvis.notch
+            CFBundleURLSchemes: [jarvis]
         LSMinimumSystemVersion: "15.0"
         NSMicrophoneUsageDescription: Jarvis listens only while you hold the push-to-talk hotkey, and transcribes on this Mac.
         # The calendar skill's EventKit helper runs under Jarvis, so macOS asks on Jarvis's behalf.

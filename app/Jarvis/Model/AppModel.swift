@@ -380,7 +380,7 @@ final class AppModel {
         case let .denied(tool, rule, reason):
             guard let rule, let reason else { return }
             run?.denials.append(Self.blockedInfo(rule: rule, reason: reason, tool: tool))
-        case .warning:
+        case .warning, .ready:
             break
         case let .done(sessionId, keep, summary, reply, name):
             if !sessionId.isEmpty { run?.sessionId = sessionId }

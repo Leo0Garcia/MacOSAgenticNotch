@@ -64,6 +64,10 @@ struct SettingsView: View {
                 Text("Say \u{201C}\(wakeWord.isEmpty ? "Jarvis" : wakeWord), what's the weather\u{201D} in one breath. Jarvis stops listening when you pause. The mic stays on while this is enabled, but speech is only checked on this Mac and then dropped: nothing is recorded or sent.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("\u{201C}Hey Siri, Jarvis\u{201D} (mic off until you ask)") {
+                Text("Turn the wake word off above, then make a Shortcut named \u{201C}Jarvis\u{201D} with one action, Open URLs: jarvis://listen. Saying \u{201C}Hey Siri, Jarvis\u{201D} then opens Jarvis listening for one request; the mic is on only while you talk.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             LabeledContent("Push-to-talk", value: "Hold ⌥ Space")
             LabeledContent("Hover", value: "Rest the pointer on the notch for recent actions")
             LabeledContent("Speech recognition", value: speechStatus)
