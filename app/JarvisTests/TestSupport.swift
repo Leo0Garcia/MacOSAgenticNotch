@@ -48,10 +48,15 @@ final class FakeLauncher: LauncherRunning {
 final class FakeVoice: VoiceInput {
     var result = ""
     var started = 0
+    var preroll: [Float]?
     var failWith: Error?
     func start() throws {
         if let failWith { throw failWith }
         started += 1
+    }
+    func start(preroll: [Float]) throws {
+        try start()
+        self.preroll = preroll
     }
     func finish() async -> String { result }
     func cancel() {}

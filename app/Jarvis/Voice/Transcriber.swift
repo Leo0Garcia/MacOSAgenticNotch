@@ -7,8 +7,13 @@ import Foundation
 protocol SpeechTranscribing: Sendable {
     /// Loads (downloading if needed) the model. Progress text goes to `status`.
     func prepare(status: @escaping @Sendable (String) -> Void) async throws
-    /// Transcribes 16 kHz mono samples.
-    func transcribe(_ samples: [Float]) async throws -> String
+    /// Transcribes 16 kHz mono samples. `prompt` biases Whisper toward words it
+    /// should expect (the wake word).
+    func transcribe(_ samples: [Float], prompt: String?) async throws -> String
+}
+
+extension SpeechTranscribing {
+    func transcribe(_ samples: [Float]) async throws -> String { try await transcribe(samples, prompt: nil) }
 }
 
 actor WhisperTranscriber: SpeechTranscribing {
@@ -71,8 +76,12 @@ actor WhisperTranscriber: SpeechTranscribing {
         return nil
     }
 
-    func transcribe(_ samples: [Float]) async throws -> String {
+    func transcribe(_ samples: [Float], prompt: String?) async throws -> String {
         let w = try await load(status: { _ in })
+        var promptTokens: [Int]?
+        if let prompt, let tok = w.kit.tokenizer {
+            promptTokens = tok.encode(text: " " + prompt).filter { $0 < tok.specialTokens.specialTokenBegin }
+        }
         let options = DecodingOptions(
             verbose: false,
             task: .transcribe,
@@ -84,7 +93,9 @@ actor WhisperTranscriber: SpeechTranscribing {
             withoutTimestamps: true,
             suppressBlank: true,
             noSpeechThreshold: 0.6)
-        let results = try await w.kit.transcribe(audioArray: samples, decodeOptions: options)
+        var opts = options
+        opts.promptTokens = promptTokens
+        let results = try await w.kit.transcribe(audioArray: samples, decodeOptions: opts)
         return Self.clean(results.map(\.text).joined(separator: " "))
     }
 

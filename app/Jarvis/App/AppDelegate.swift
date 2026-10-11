@@ -24,6 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeys: HotKeyCenter?
     private var escapeID: UInt32?
     private var voice: VoicePipeline?
+    private var wake: WakeListener?
+    private var defaultsObserver: NSObjectProtocol?
+
+    /// Settings > General. Defaults: on, "Jarvis".
+    static let wakeEnabledKey = "WakeWordEnabled"
+    static let wakeWordKey = "WakeWord"
     private let notifier = SystemNotifier()
     private let calendar = CalendarService()
     private var notificationsRequested = false
@@ -53,9 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let actions = paths.home.appendingPathComponent("actions.sqlite")
         model.loadRecent = { ActionsStore.newest(8, file: actions) }
 
-        let voice = VoicePipeline(capture: capture, transcriber: WhisperTranscriber(downloadBase: paths.models), model: model)
+        let transcriber = WhisperTranscriber(downloadBase: paths.models)
+        let voice = VoicePipeline(capture: capture, transcriber: transcriber, model: model)
         self.voice = voice
         model.voice = voice
+        UserDefaults.standard.register(defaults: [Self.wakeEnabledKey: true, Self.wakeWordKey: "Jarvis"])
+        let phrase = UserDefaults.standard.string(forKey: Self.wakeWordKey) ?? "Jarvis"
+        model.wakePhrase = phrase
+        wake = WakeListener(capture: capture, transcriber: transcriber, model: model, phrase: phrase)
 
         // SIGTERM/SIGINT (launchd, kill) still go through terminate, so notch.json is removed.
         for sig in [SIGTERM, SIGINT] {
@@ -78,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         voice.prepare()
         startSpeechServer()
+        observeWakeSettings()
         if let i = args.firstIndex(of: "--request"), i + 1 < args.count {
             let request = args[i + 1]
             Task { @MainActor in
@@ -100,6 +112,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()
         launcher?.cancelAll()
+    }
+
+    /// Starts wake-word listening once the speech model is loaded and the mic
+    /// is allowed, and follows changes made in Settings.
+    private func observeWakeSettings() {
+        Task { @MainActor in
+            // Hands-free needs the mic; ask now rather than waiting for a key press.
+            if UserDefaults.standard.bool(forKey: Self.wakeEnabledKey), AudioCapture.permission == .notDetermined {
+                let granted = await AudioCapture.requestPermission()
+                AppLog.write("microphone \(granted ? "allowed" : "denied") (for the wake word)")
+            }
+            while true {
+                if case .ready = model.speechModel, AudioCapture.permission == .authorized { break }
+                if case .failed = model.speechModel { return }
+                try? await Task.sleep(for: .seconds(1))
+            }
+            applyWakeSettings()
+        }
+        defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyWakeSettings() }
+        }
+    }
+
+    private func applyWakeSettings() {
+        guard let wake, case .ready = model.speechModel else { return }
+        let d = UserDefaults.standard
+        let phrase = (d.string(forKey: Self.wakeWordKey) ?? "Jarvis").trimmingCharacters(in: .whitespaces)
+        if phrase != model.wakePhrase { wake.setPhrase(phrase) }
+        wake.setEnabled(d.bool(forKey: Self.wakeEnabledKey) && !WakePhrase(phrase).isEmpty)
     }
 
     /// Jarvis's voice (tts/server.py, Kokoro) kept warm so the first reply isn't slow.

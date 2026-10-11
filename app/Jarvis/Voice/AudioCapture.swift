@@ -20,6 +20,28 @@ final class SampleBuffer: Sendable {
     func snapshot() -> [Float] { samples.withLock { $0 } }
     func reset() { samples.withLock { $0.removeAll(keepingCapacity: true) } }
     var count: Int { samples.withLock { $0.count } }
+    /// Takes everything appended so far and empties the buffer.
+    func drain() -> [Float] {
+        samples.withLock { s in
+            let out = s
+            s.removeAll(keepingCapacity: true)
+            return out
+        }
+    }
+}
+
+/// Where the tap delivers audio: the push-to-talk buffer while capturing, the
+/// wake-word stream while listening for the wake word. Read on the audio thread.
+final class CaptureFlags: Sendable {
+    private let state = Mutex<(capturing: Bool, streaming: Bool)>((false, false))
+    var capturing: Bool {
+        get { state.withLock { $0.capturing } }
+        set { state.withLock { $0.capturing = newValue } }
+    }
+    var streaming: Bool {
+        get { state.withLock { $0.streaming } }
+        set { state.withLock { $0.streaming = newValue } }
+    }
 }
 
 enum AudioCaptureError: LocalizedError {
@@ -38,14 +60,18 @@ enum AudioCaptureError: LocalizedError {
 
 @MainActor
 final class AudioCapture {
-    static let sampleRate: Double = 16_000
+    nonisolated static let sampleRate: Double = 16_000
 
     let level = AudioLevel()
     let buffer = SampleBuffer()
+    /// Everything heard while listening for the wake word; WakeListener drains it.
+    let stream = SampleBuffer()
+    private let flags = CaptureFlags()
     private let engine = AVAudioEngine()
     private var running = false
 
     var isRunning: Bool { running }
+    var isStreaming: Bool { flags.streaming }
 
     static var permission: AVAuthorizationStatus { AVCaptureDevice.authorizationStatus(for: .audio) }
 
@@ -54,13 +80,42 @@ final class AudioCapture {
         await AVCaptureDevice.requestAccess(for: .audio)
     }
 
-    func start() throws {
+    /// Push-to-talk (or a wake word) starts a capture; `preroll` is audio
+    /// already heard (the wake word itself) that belongs to it.
+    func start(preroll: [Float] = []) throws {
+        buffer.reset()
+        buffer.append(preroll)
+        try ensureEngine()
+        flags.capturing = true
+    }
+
+    /// Stops the capture and returns everything captured. The mic stays on
+    /// only while listening for the wake word.
+    func stop() -> [Float] {
+        flags.capturing = false
+        if !flags.streaming { stopEngine() }
+        return buffer.snapshot()
+    }
+
+    /// Wake-word listening: keeps the mic on and feeds `stream`.
+    func startStreaming() throws {
+        stream.reset()
+        try ensureEngine()
+        flags.streaming = true
+    }
+
+    func stopStreaming() {
+        flags.streaming = false
+        stream.reset()
+        if !flags.capturing { stopEngine() }
+    }
+
+    private func ensureEngine() throws {
         guard !running else { return }
         switch Self.permission {
         case .denied, .restricted: throw AudioCaptureError.micDenied
         default: break
         }
-        buffer.reset()
         level.set(0)
         let input = engine.inputNode
         let inFormat = input.outputFormat(forBus: 0)
@@ -70,24 +125,24 @@ final class AudioCapture {
         else { throw AudioCaptureError.converter }
 
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: inFormat, block: Self.makeTap(converter: converter, outFormat: outFormat, buffer: buffer, level: level))
+        input.installTap(onBus: 0, bufferSize: 1024, format: inFormat,
+                         block: Self.makeTap(converter: converter, outFormat: outFormat, buffer: buffer, stream: stream, flags: flags, level: level))
         engine.prepare()
         try engine.start()
         running = true
     }
 
-    /// Stops capture and returns everything captured.
-    func stop() -> [Float] {
-        guard running else { return buffer.snapshot() }
+    private func stopEngine() {
+        guard running else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         running = false
         level.set(0)
-        return buffer.snapshot()
     }
 
     /// Built outside the main actor so the tap closure isn't main-actor isolated.
-    nonisolated private static func makeTap(converter: AVAudioConverter, outFormat: AVAudioFormat, buffer: SampleBuffer, level: AudioLevel) -> AVAudioNodeTapBlock {
+    nonisolated private static func makeTap(converter: AVAudioConverter, outFormat: AVAudioFormat, buffer: SampleBuffer, stream: SampleBuffer,
+                                            flags: CaptureFlags, level: AudioLevel) -> AVAudioNodeTapBlock {
         let conv = UncheckedBox(converter)
         let smoothed = Mutex<Float>(0)
         return { pcm, _ in
@@ -120,7 +175,9 @@ final class AudioCapture {
                 return pcm
             }
             if err == nil, let ch = out.floatChannelData?[0], out.frameLength > 0 {
-                buffer.append(Array(UnsafeBufferPointer(start: ch, count: Int(out.frameLength))))
+                let samples = Array(UnsafeBufferPointer(start: ch, count: Int(out.frameLength)))
+                if flags.capturing { buffer.append(samples) }
+                if flags.streaming { stream.append(samples) }
             }
         }
     }

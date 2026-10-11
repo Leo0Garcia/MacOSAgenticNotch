@@ -197,7 +197,7 @@ Interface for the launcher: skill scripts are invoked as `bun ${CLAUDE_SKILL_DIR
 
 Swift 6 / SwiftUI on DynamicNotchKit, macOS 15+, no other third-party deps beyond the wake-word SDK (phase 2).
 
-States: idle, listening, working, done, needs-you. Visual and motion spec: [NOTCH-DESIGN.md](NOTCH-DESIGN.md) (Aurora with a pixel character and the Large layout, collapsing to the pill whenever it isn't needed: Leo's picks, 2026-10-11); interactive mockup in `docs/design/notch-mockup.html`. Leo confirmed on 2026-10-11 that the notch may use a large area; it still draws nothing while idle and stays inside its layout's max box. Phase 1 is push-to-talk with a global hotkey and WhisperKit on-device transcription. Resting the pointer on the notch for 300 ms while nothing is shown opens the Recent panel: the last 8 actions from `~/Jarvis/actions.sqlite`; clicking a saved row runs `claude --desktop --resume <session-id>`; it closes 400 ms after the pointer leaves (Leo asked for this in phase 1, 2026-10-11). macOS notifications for needs-you and reminders come through the bridge.
+States: idle, listening, working, done, needs-you. Visual and motion spec: [NOTCH-DESIGN.md](NOTCH-DESIGN.md) (Aurora with a pixel character and the Large layout, collapsing to the pill whenever it isn't needed: Leo's picks, 2026-10-11); interactive mockup in `docs/design/notch-mockup.html`. Leo confirmed on 2026-10-11 that the notch may use a large area; it still draws nothing while idle and stays inside its layout's max box. Push-to-talk with a global hotkey, and hands-free with a wake word (default "Jarvis", set in Settings; Leo asked for it on 2026-10-11, ahead of phase 2): while enabled the mic stays on, a level-based speech detector watches for speech, and WhisperKit (prompted with the wake word) checks the first seconds of each utterance; "Jarvis, what's the weather" in one breath starts Listening with what was already said, a pause after the name is allowed, and 0.9 s of quiet sends it. Nothing is recorded or kept; the stream is dropped as it is read, and wake checks pause while Jarvis speaks. **Decision (differs from the spec):** no Porcupine; it needs a Picovoice key and trained keyword files, and couldn't take any word Leo types. Transcription is WhisperKit on-device. Resting the pointer on the notch for 300 ms while nothing is shown opens the Recent panel: the last 8 actions from `~/Jarvis/actions.sqlite`; clicking a saved row runs `claude --desktop --resume <session-id>`; it closes 400 ms after the pointer leaves (Leo asked for this in phase 1, 2026-10-11). macOS notifications for needs-you and reminders come through the bridge.
 
 Built (app/, see `app/README.md`):
 
@@ -370,7 +370,7 @@ Each thread: branch from main, one draft PR named by area, `bun test` in bridge/
 
 ## 12. Phase 2 (not now)
 
-Porcupine wake word ("Jarvis" built-in keyword), hover action log, routing briefs into other projects by driving the project conversation in Claude Desktop or claude.ai/code, never by adding anything to those projects.
+ hover action log, routing briefs into other projects by driving the project conversation in Claude Desktop or claude.ai/code, never by adding anything to those projects.
 
 ## 13. Decisions from Leo
 

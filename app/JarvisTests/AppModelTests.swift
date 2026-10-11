@@ -328,3 +328,64 @@ import Testing
         #expect(m.panel == .working)
     }
 }
+
+@Suite struct WakeWordTests {
+    @Test func findsTheWakeWordNearTheStartAndForgivesSmallSlips() {
+        let w = WakePhrase("Jarvis")
+        #expect(w.match(in: "Jarvis, what's the weather in Southampton?") == 1)
+        #expect(w.match(in: "Hey Jarvis what's the time") == 2)
+        #expect(w.match(in: "Jarviss, add buy chalk") == 1)       // one-letter slip
+        #expect(w.match(in: "I told my friend about Jarvis yesterday") == nil) // not at the start
+        #expect(w.match(in: "Travis, are you there") == nil)       // different word (2 edits)
+        #expect(WakePhrase("Hey Computer").match(in: "hey computer, lights on") == 2)
+        #expect(WakePhrase("  ").isEmpty)
+    }
+
+    @Test func stripsTheWakeWordAndKeepsTheRequest() {
+        let w = WakePhrase("Jarvis")
+        #expect(w.strip("Jarvis, what's the weather in Southampton?") == "what's the weather in Southampton?")
+        #expect(w.strip("Hey Jarvis. Remind me to call Sue at 5.") == "Remind me to call Sue at 5.")
+        #expect(w.strip("Jarvis") == "")
+        #expect(w.strip("what's the weather") == "what's the weather")
+    }
+
+    @Test func speechGateStartsOnSpeechAndEndsAfterQuiet() {
+        var g = SpeechGate()
+        for _ in 0..<20 { #expect(g.feed(rms: 0.003, endAfter: 9) == .none) } // room noise
+        #expect(g.feed(rms: 0.08, endAfter: 9) == .started)
+        #expect(g.feed(rms: 0.06, endAfter: 9) == .continuing)
+        for _ in 0..<8 { #expect(g.feed(rms: 0.004, endAfter: 9) == .continuing) } // a short pause
+        #expect(g.feed(rms: 0.004, endAfter: 9) == .ended)
+        #expect(!g.speaking)
+    }
+}
+
+@MainActor
+@Suite struct HandsFreeTests {
+    @Test func wakeWordStartsListeningWithWhatWasSaidAndSilenceSends() async throws {
+        let (m, _, l, v) = makeModel()
+        v.result = "Jarvis, what's the weather in Southampton?"
+        m.wakeTriggered(preroll: [0.1, 0.2])
+        #expect(m.panel == .listening)
+        #expect(v.preroll == [0.1, 0.2])
+        m.wakeEnded()
+        for _ in 0..<50 where l.requests.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(l.requests == ["what's the weather in Southampton?"])
+    }
+
+    @Test func justTheWakeWordSaysItDidntCatchARequest() {
+        let (m, _, l, _) = makeModel()
+        m.wakeTriggered(preroll: [])
+        m.listeningFinished("Jarvis.")
+        #expect(l.requests.isEmpty)
+        #expect(m.panel == .notice(title: "I didn't catch that.", body: ""))
+    }
+
+    @Test func aCustomWakeWordIsStripped() {
+        let (m, _, l, _) = makeModel()
+        m.wakePhrase = "Friday"
+        m.hotkeyDown()
+        m.listeningFinished("Friday, add buy chalk to my Kanban")
+        #expect(l.requests == ["add buy chalk to my Kanban"])
+    }
+}

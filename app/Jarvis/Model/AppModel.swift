@@ -136,6 +136,8 @@ enum SpeechModelStatus: Equatable, Sendable {
 protocol VoiceInput: AnyObject {
     /// Starts capture. Throws when the mic or model isn't available.
     func start() throws
+    /// Starts capture with audio already heard (the wake word and what followed).
+    func start(preroll: [Float]) throws
     /// Stops capture and returns the final transcription ("" if nothing was said).
     func finish() async -> String
     func cancel()
@@ -160,6 +162,10 @@ final class AppModel {
     private(set) var listeningStartedAt: Double = 0
     private(set) var isTranscribing = false
     var speechModel: SpeechModelStatus = .notLoaded
+    /// The hands-free wake word, stripped from the front of what was heard.
+    var wakePhrase = "Jarvis"
+    /// Whether the current Listening came from the wake word (ends on silence, not key-up).
+    private(set) var handsFree = false
 
     // The current run, if any.
     private(set) var run: RunState?
@@ -232,7 +238,23 @@ final class AppModel {
     // MARK: - Hotkey and voice
 
     func hotkeyDown() {
+        beginListening(preroll: nil)
+    }
+
+    /// The wake word was heard: Listening, with what was already said.
+    func wakeTriggered(preroll: [Float]) {
+        beginListening(preroll: preroll)
+    }
+
+    /// Hands-free: the speaker went quiet.
+    func wakeEnded() {
+        guard handsFree else { return }
+        hotkeyUp()
+    }
+
+    private func beginListening(preroll: [Float]?) {
         if panel == .listening { return }
+        handsFree = preroll != nil
         if case let .question(ask) = panel { listenTarget = .answer(ask) } else { listenTarget = .request }
         transcript = Transcript()
         listenProblem = nil
@@ -240,7 +262,7 @@ final class AppModel {
         listeningStartedAt = scheduler.now
         cancelTimer("collapse"); cancelTimer("hide"); cancelTimer("needsIdle"); cancelTimer("hover")
         do {
-            try voice?.start()
+            if let preroll { try voice?.start(preroll: preroll) } else { try voice?.start() }
         } catch {
             listenProblem = error.localizedDescription
         }
@@ -270,7 +292,12 @@ final class AppModel {
 
     func listeningFinished(_ text: String) {
         isTranscribing = false
-        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // "Jarvis, what's the weather" → "what's the weather" (also when the
+        // hotkey user starts with the wake word out of habit).
+        let wake = WakePhrase(wakePhrase)
+        if !wake.isEmpty, wake.match(in: clean) != nil { clean = wake.strip(clean) }
+        handsFree = false
         switch listenTarget {
         case let .answer(ask):
             listenTarget = .request
