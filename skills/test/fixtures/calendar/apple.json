@@ -1,0 +1,6 @@
+[
+  {"calendar": "Personal", "title": "Dentist", "start": "2026-10-12T14:30:00.000Z", "end": "2026-10-12T15:00:00.000Z", "allDay": false, "location": "Portswood", "recurrence": null},
+  {"calendar": "Personal", "title": "Football", "start": "2026-09-01T17:00:00.000Z", "end": "2026-09-01T18:30:00.000Z", "allDay": false, "location": null, "recurrence": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU"},
+  {"calendar": "Family", "title": "Mum's birthday", "start": "2026-10-11T23:00:00.000Z", "end": "2026-10-12T23:00:00.000Z", "allDay": true, "location": null, "recurrence": null},
+  {"calendar": "Personal", "title": "Old thing", "start": "2026-01-05T10:00:00.000Z", "end": "2026-01-05T11:00:00.000Z", "allDay": false, "location": null, "recurrence": "FREQ=WEEKLY;UNTIL=20260301"}
+]

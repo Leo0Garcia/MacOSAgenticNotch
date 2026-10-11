@@ -1,0 +1,8 @@
+[
+  { "request": "remind me to call Mum at 6pm", "text": "Call Mum", "when": "at 6pm", "expect": "2026-10-11T17:00:00.000Z" },
+  { "request": "remind me in 20 minutes to take the pizza out", "text": "Take the pizza out", "when": "in 20 minutes", "expect": "2026-10-11T13:20:00.000Z" },
+  { "request": "remind me at 5 to email Ellen", "text": "Email Ellen", "when": "at 5", "expect": "2026-10-11T16:00:00.000Z" },
+  { "request": "tomorrow at 9am remind me to print the report", "text": "Print the report", "when": "tomorrow at 9am", "expect": "2026-10-12T08:00:00.000Z" },
+  { "request": "remind me to put the bins out tonight at 8", "text": "Put the bins out", "when": "tonight at 8", "expect": "2026-10-11T19:00:00.000Z" },
+  { "request": "remind me on the 27th at 10am to book the dentist", "text": "Book the dentist", "when": "2026-10-27T10:00", "expect": "2026-10-27T10:00:00.000Z" }
+]
