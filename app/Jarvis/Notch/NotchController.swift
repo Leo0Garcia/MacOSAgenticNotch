@@ -19,6 +19,51 @@ final class NotchController {
     private var clickMonitor: Any?
     private var moveMonitor: Any?
     private var pointerInNotch = false
+    private var passThroughTimer: Timer?
+
+    /// The visible notch shape in screen coordinates (AppKit, origin bottom-left).
+    private func visibleShape() -> NSRect? {
+        let s = screen
+        let n = env.notchSize
+        let w: CGFloat, h: CGFloat
+        switch applied {
+        case .hidden: return nil
+        case .compact:
+            w = n.width + 2 * Theme.wing + 12
+            h = n.height
+        case .expanded:
+            w = Theme.expandedWidth + 2 * Theme.topRadius
+            h = n.height + max(env.expandedBodyHeight, 40) + Theme.dnkInset
+        }
+        return NSRect(x: s.frame.midX - w / 2, y: s.frame.maxY - h, width: w, height: h)
+    }
+
+    /// DynamicNotchKit's window is half the screen wide and tall; only the
+    /// notch shape inside it should take clicks. Everything else passes through
+    /// to the apps underneath, and the panel never keeps the keyboard.
+    private func updatePassThrough() {
+        guard let w = notch.windowController?.window else { return }
+        (w as? NSPanel)?.becomesKeyOnlyIfNeeded = true
+        guard let shape = visibleShape() else {
+            w.ignoresMouseEvents = true
+            return
+        }
+        let inside = shape.insetBy(dx: -6, dy: -6).contains(NSEvent.mouseLocation)
+        if w.ignoresMouseEvents == inside { w.ignoresMouseEvents = !inside }
+        if !inside, w.isKeyWindow { w.resignKey() }
+    }
+
+    private func startPassThroughTimer() {
+        guard passThroughTimer == nil else { return }
+        passThroughTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updatePassThrough() }
+        }
+    }
+
+    private func stopPassThroughTimer() {
+        passThroughTimer?.invalidate()
+        passThroughTimer = nil
+    }
 
     private func pointerMoved() {
         guard applied == .hidden else {
@@ -114,10 +159,13 @@ final class NotchController {
         switch size {
         case .expanded, .compact:
             if from == .hidden { reveal() }
+            startPassThroughTimer()
             Task {
                 if size == .expanded { await notch.expand(on: target) } else { await notch.compact(on: target) }
             }
         case .hidden:
+            stopPassThroughTimer()
+            if let w = notch.windowController?.window, w.isKeyWindow { w.resignKey() }
             Task { await notch.compact(on: target) }
             // Fade once the shape has shrunk back to the hardware outline.
             fadeTask = Task { @MainActor in
@@ -137,7 +185,8 @@ final class NotchController {
     private func reveal() {
         guard let w = notch.windowController?.window else { return }
         w.alphaValue = 1 // the shape is still the black hardware outline, so this is seamless
-        w.ignoresMouseEvents = false
+        (w as? NSPanel)?.becomesKeyOnlyIfNeeded = true
+        updatePassThrough()
     }
 
     /// Creates the window at launch, hidden, so the first hotkey press animates

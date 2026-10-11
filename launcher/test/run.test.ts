@@ -3,7 +3,7 @@
 import { Database } from "bun:sqlite";
 import type { FinalizeInput } from "../src/finalize";
 import { afterAll, beforeEach, expect, test } from "bun:test";
-import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { finalize } from "../src/finalize";
 import { type LauncherEvent, run } from "../src/run";
@@ -299,4 +299,18 @@ test("a warm run with no request (or a follow-up) cleans up and falls back", asy
   const saved = await run(w.config(), "", { emit: () => {}, finalize: async () => {}, speechRunner: w.speechRunner, awaitRequest: async () => "start a research session on heat pumps" });
   expect(w.lastCall().argv.slice(0, 2)).toEqual(["-p", "start a research session on heat pumps"]);
   expect(saved.exitCode).toBe(0);
+});
+
+test("stale per-run MCP configs from killed runs are swept", async () => {
+  const { sweepStaleMcpConfigs } = await import("../src/run");
+  const dir = join(jarvis, "runs");
+  mkdirSync(dir, { recursive: true });
+  const old = join(dir, "old.mcp.json"), fresh = join(dir, "fresh.mcp.json");
+  writeFileSync(old, "{}");
+  writeFileSync(fresh, "{}");
+  const t = (Date.now() - 13 * 3600 * 1000) / 1000;
+  utimesSync(old, t, t);
+  sweepStaleMcpConfigs(dir);
+  expect(existsSync(old)).toBe(false);
+  expect(existsSync(fresh)).toBe(true);
 });

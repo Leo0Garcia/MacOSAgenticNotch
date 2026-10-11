@@ -14,9 +14,9 @@ if security find-identity -p codesigning | grep -q '"Jarvis Local Signing"'; the
 else
   echo "note: no Jarvis Local Signing identity; macOS will ask for permissions again after each install (run setup-signing.sh)"
 fi
+# Quitting Jarvis also stops its warm run, which cleans up after itself.
 pkill -TERM -f "Jarvis.app/Contents/MacOS/Jarvis" 2>/dev/null || true
-pkill -f "launcher/src/cli.ts warm" 2>/dev/null || true
-sleep 1
+sleep 2
 mkdir -p "$home"
 rm -rf "$home/Jarvis.app.new"
 cp -R "$app" "$home/Jarvis.app.new"
