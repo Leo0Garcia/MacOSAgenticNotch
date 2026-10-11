@@ -67,3 +67,23 @@ test("CLI prints JSON", () => {
     wait: false,
   });
 });
+
+describe("chrome.ts", () => {
+  test("opens Chrome in the background when it's closed, and leaves it alone when running", async () => {
+    const { ensureChrome } = await import("../needs-access/chrome.ts");
+    const calls: string[][] = [];
+    let running = false;
+    const spawn = (cmd: string[]) => {
+      calls.push(cmd);
+      if (cmd[0] === "pgrep") return { code: running ? 0 : 1, stdout: "" };
+      if (cmd[0] === "open") { running = true; return { code: 0, stdout: "" }; }
+      return { code: 1, stdout: "" };
+    };
+    expect(await ensureChrome(spawn, async () => {}, 1000)).toBe("started");
+    expect(calls).toContainEqual(["open", "-g", "-a", "Google Chrome"]);
+    calls.length = 0;
+    expect(await ensureChrome(spawn, async () => {}, 1000)).toBe("running");
+    expect(calls.some((c) => c[0] === "open")).toBe(false);
+    expect(await ensureChrome(() => ({ code: 1, stdout: "" }), async () => {}, 1000)).toBe("not-installed");
+  });
+});
