@@ -1,8 +1,9 @@
 // The reminders skill passes Leo's time words straight to the bridge's remind tool,
 // so its fixture is checked against the bridge's own parser (bridge/src/when.ts).
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { parseWhen } from "../../bridge/src/when.ts";
 
 interface Example {
   request: string;
@@ -13,7 +14,6 @@ interface Example {
 
 const EXAMPLES = JSON.parse(readFileSync(join(import.meta.dir, "../reminders/examples.json"), "utf8")) as Example[];
 const SKILL = readFileSync(join(import.meta.dir, "../reminders/SKILL.md"), "utf8");
-const BRIDGE_WHEN = join(import.meta.dir, "../../bridge/src/when.ts");
 // Sunday 11 October 2026, 14:00 BST.
 const NOW = new Date("2026-10-11T13:00:00Z");
 
@@ -27,8 +27,7 @@ describe("examples", () => {
     }
   });
 
-  test.skipIf(!existsSync(BRIDGE_WHEN))("the bridge parses every example to the expected instant", async () => {
-    const { parseWhen } = (await import(BRIDGE_WHEN)) as { parseWhen: (s: string, now: Date) => { at: Date } };
+  test("the bridge parses every example to the expected instant", () => {
     for (const e of EXAMPLES) expect([e.when, parseWhen(e.when, NOW).at.toISOString()]).toEqual([e.when, e.expect]);
   });
 });

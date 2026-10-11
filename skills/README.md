@@ -27,4 +27,4 @@ Shared code is in `lib/` (paths, Europe/London time, recurrence, atomic writes).
 cd skills && bun install && bun test
 ```
 
-Fixtures in `test/fixtures/` are hand-written in each service's format (Obsidian Kanban, iCalendar, the JXA output shape, Moodle page text), not recorded from Leo's accounts. `test/reminders.test.ts` checks the reminders examples against `bridge/src/when.ts` and skips that one test until bridge/ is on the branch.
+Fixtures in `test/fixtures/` are hand-written in each service's format (Obsidian Kanban, iCalendar, the JXA output shape, Moodle page text), not recorded from Leo's accounts. `test/reminders.test.ts` checks the reminders examples against `bridge/src/when.ts`, so a change to the bridge's time rules shows up here.
