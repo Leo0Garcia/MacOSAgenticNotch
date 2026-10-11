@@ -159,6 +159,19 @@ describe("apple calendar", () => {
     expect(toOccurrences(APPLE, r.from, r.to).map((o) => [o.title, o.start])).toEqual([["Football", "2026-10-27T18:00:00.000Z"]]);
   });
 
+  test("EventKit output (already expanded, no recurrence) reads the same way", () => {
+    const ek = [{ calendar: "Personal", title: "Dentist", start: "2026-10-12T14:30:00.000Z", end: "2026-10-12T15:00:00.000Z", allDay: false, location: null, recurrence: null }];
+    const list = readCalendar(() => ({ ok: true, stdout: JSON.stringify(ek), stderr: "" }), from, to);
+    expect(list.map((o) => [o.title, o.source])).toEqual([["Dentist", "Personal"]]);
+  });
+
+  test("a denied EventKit read is a permission problem, a slow one says so", () => {
+    expect(() => readCalendar(() => ({ ok: false, stdout: "", stderr: "DENIED: Calendars access is off for Jarvis." }), from, to)).toThrow(AutomationDenied);
+    expect(() => readCalendar(() => ({ ok: false, stdout: "", stderr: "TIMEOUT: Apple Calendar took longer than 20 seconds to answer." }), from, to)).toThrow(
+      "Apple Calendar took longer than 20 seconds to answer.",
+    );
+  });
+
   test("passes the range to osascript and parses its output", () => {
     let seen: [Date, Date] | null = null;
     const list = readCalendar(

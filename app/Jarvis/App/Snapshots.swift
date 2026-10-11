@@ -30,7 +30,11 @@ struct NotchFillShape: Shape {
 enum Snapshots {
     final class ManualScheduler: Scheduling {
         var now: Double = 100
-        func after(_ seconds: Double, _ action: @escaping @MainActor () -> Void) -> Scheduled { Scheduled {} }
+        /// Only the hover delay fires (so the Recent snapshot opens); nothing else moves.
+        func after(_ seconds: Double, _ action: @escaping @MainActor () -> Void) -> Scheduled {
+            if seconds == AppModel.Timing.hoverIn { action() }
+            return Scheduled {}
+        }
     }
 
     final class NoLauncher: LauncherRunning {
@@ -42,6 +46,8 @@ enum Snapshots {
     /// Renders every panel once offscreen at launch, so fonts, glyphs and
     /// view types are warm before the first real transition (no first-show hitch).
     static func warmUp(env: NotchEnvironment) {
+        OffscreenRender.active = true
+        defer { OffscreenRender.active = false }
         for (_, m) in cases(env: env) {
             _ = ImageRenderer(content: expanded(m, env)).cgImage
             _ = ImageRenderer(content: pill(m, env)).cgImage
@@ -50,6 +56,7 @@ enum Snapshots {
 
     static func render(to dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        OffscreenRender.active = true
         let level = AudioLevel()
         level.set(0.55)
         let env = NotchEnvironment(level: level)
@@ -97,6 +104,15 @@ enum Snapshots {
                 m.submit("Check my Notion")
                 m.launcherEvent(.done(sessionId: "x", keep: false, summary: "", reply: "I need the Notion connector for that, connect it at claude.ai/customize/connectors and ask again.", name: nil))
                 m.launcherExited(0)
+            }),
+            ("recent", model { m in
+                m.loadRecent = {
+                    [ActionItem(id: 4, date: Date(), sessionId: nil, kind: "run", summary: "Weather in Southampton", saved: false),
+                     ActionItem(id: 3, date: Date().addingTimeInterval(-900), sessionId: "a", kind: "run", summary: "Research: quiet study spots in Southampton", saved: true),
+                     ActionItem(id: 2, date: Date().addingTimeInterval(-1800), sessionId: nil, kind: "guard", summary: "Blocked: tuition fee payment", saved: false),
+                     ActionItem(id: 1, date: Date().addingTimeInterval(-2400), sessionId: nil, kind: "reminder", summary: "Reminder set: call Sue, 17:00", saved: false)]
+                }
+                m.notchHover(true)
             }),
             ("reminder", model { m in
                 m.received(.reminder(id: "r", text: "Call Sue about the Amra brief"), from: 1)

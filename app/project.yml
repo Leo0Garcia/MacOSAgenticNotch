@@ -41,6 +41,8 @@ targets:
         LSUIElement: true
         LSMinimumSystemVersion: "15.0"
         NSMicrophoneUsageDescription: Jarvis listens only while you hold the push-to-talk hotkey, and transcribes on this Mac.
+        # The calendar skill's EventKit helper runs under Jarvis, so macOS asks on Jarvis's behalf.
+        NSCalendarsFullAccessUsageDescription: Jarvis reads your calendar to answer questions about your day. It never changes events.
         NSHumanReadableCopyright: ""
         # Where the Jarvis repo lives; the launcher and bridge run from here.
         # JARVIS_REPO in the environment overrides it.

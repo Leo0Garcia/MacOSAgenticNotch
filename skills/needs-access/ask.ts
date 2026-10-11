@@ -3,7 +3,7 @@
 //
 //   bun ask.ts connector <name>
 //   bun ask.ts login <site>
-//   bun ask.ts permission <microphone|accessibility|full-disk|screen-recording|automation:<App>>
+//   bun ask.ts permission <microphone|accessibility|full-disk|screen-recording|calendars|automation:<App>>
 //   bun ask.ts key <keychain-name>                 e.g. uni-ical  (service jarvis/<name>)
 //   bun ask.ts chrome
 //   bun ask.ts mcp <server-name>
@@ -50,6 +50,8 @@ const PERMISSIONS: Record<string, string> = {
   "full disk": "Full Disk Access",
   "screen-recording": "Screen & System Audio Recording",
   screen: "Screen & System Audio Recording",
+  calendars: "Calendars",
+  calendar: "Calendars",
 };
 
 const KEYS: Record<string, string> = {

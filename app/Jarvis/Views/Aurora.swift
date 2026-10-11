@@ -51,12 +51,26 @@ struct AuroraRim: View {
                 }
                 .drawingGroup()
             }
-            RimLayer(colors: rim.colors, period: rim.period, opacity: rim.opacity, pulse: kind == .needs,
-                     topRadius: topRadius, bottomRadius: bottomRadius, animating: visible && !reduceMotion)
+            if OffscreenRender.active {
+                // ImageRenderer can't draw AppKit layers: a still SwiftUI stroke.
+                NotchRimPath(topRadius: topRadius, bottomRadius: bottomRadius)
+                    .stroke(AngularGradient(colors: rim.colors + [rim.colors[0]], center: .center), lineWidth: 3)
+                    .opacity(rim.opacity)
+            } else {
+                RimLayer(colors: rim.colors, period: rim.period, opacity: rim.opacity, pulse: kind == .needs,
+                         topRadius: topRadius, bottomRadius: bottomRadius, animating: visible && !reduceMotion)
+            }
         }
         .allowsHitTesting(false)
         .animation(.easeInOut(duration: 0.4), value: kind)
     }
+}
+
+/// Set while rendering offscreen (snapshots, warm-up), where AppKit-backed
+/// layers can't be drawn.
+@MainActor
+enum OffscreenRender {
+    static var active = false
 }
 
 /// The turning band of light, run entirely by Core Animation: a conic

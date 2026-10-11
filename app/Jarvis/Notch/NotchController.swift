@@ -17,6 +17,23 @@ final class NotchController {
     private var screenSub: AnyCancellable?
     private var applied: NotchSize = .hidden
     private var clickMonitor: Any?
+    private var moveMonitor: Any?
+    private var pointerInNotch = false
+
+    private func pointerMoved() {
+        guard applied == .hidden else {
+            pointerInNotch = false
+            return
+        }
+        let s = screen
+        let n = s.jarvisNotchSize
+        // The notch, a few points wider so the menu bar's edge counts too.
+        let rect = NSRect(x: s.frame.midX - n.width / 2 - 6, y: s.frame.maxY - n.height, width: n.width + 12, height: n.height + 1)
+        let inside = rect.contains(NSEvent.mouseLocation)
+        guard inside != pointerInNotch else { return }
+        pointerInNotch = inside
+        model.notchHover(inside)
+    }
 
     init(model: AppModel, env: NotchEnvironment) {
         self.model = model
@@ -52,6 +69,12 @@ final class NotchController {
             }
         // A click anywhere else collapses the panel (section 2.1). Mouse-only
         // global monitors need no Accessibility permission.
+        // Hover on the hardware notch while hidden opens the Recent panel. The
+        // hidden window is click-through, so watch the pointer globally (mouse
+        // monitors need no Accessibility permission).
+        moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pointerMoved() }
+        }
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak model] _ in
             MainActor.assumeIsolated { model?.collapseOrHide() }
         }
