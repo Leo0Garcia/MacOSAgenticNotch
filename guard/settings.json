@@ -1,0 +1,98 @@
+{
+  "permissions": {
+    "deny": [
+      "mcp__*__slack_send_message",
+      "mcp__*__slack_schedule_message",
+      "mcp__*__send_message",
+      "mcp__*__send_email",
+      "mcp__*__send_mail",
+      "mcp__*__send_draft",
+      "mcp__*__reply_to_email",
+      "mcp__*__forward_email",
+      "mcp__*__send_sms",
+      "mcp__*__send_dm",
+      "mcp__*__post_message",
+      "mcp__*__respond_to_event",
+      "mcp__*__execute_order",
+      "mcp__*__execute_orders_batch",
+      "mcp__*__execute_prediction_order",
+      "mcp__*__buy_*",
+      "mcp__*__*_purchase",
+      "mcp__*__create_payment*",
+      "mcp__*__payment_link",
+      "mcp__*__enable_trading",
+      "mcp__*__enable_automated_trading",
+      "mcp__*__withdraw*",
+      "mcp__*__transfer_funds*",
+
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.kube/**)",
+      "Read(~/.docker/config.json)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.config/gcloud/**)",
+      "Read(~/.netrc)",
+      "Read(~/.npmrc)",
+      "Read(~/.pypirc)",
+      "Read(~/.git-credentials)",
+      "Read(~/.claude/.credentials.json)",
+      "Read(~/.password-store/**)",
+      "Read(~/Library/Keychains/**)",
+      "Read(~/Library/Cookies/**)",
+      "Read(~/Library/Application Support/Google/Chrome/**/Login Data*)",
+      "Read(~/Library/Application Support/Google/Chrome/**/Cookies*)",
+      "Read(~/Library/Application Support/1Password/**)",
+      "Read(//Library/Keychains/**)",
+      "Read(//etc/sudoers)",
+      "Read(//**/.env)",
+      "Read(//**/.env.local)",
+      "Read(//**/.env.production)",
+      "Read(//**/.env.development)",
+      "Read(//**/id_rsa)",
+      "Read(//**/id_ed25519)",
+      "Read(//**/*.pem)",
+
+      "Bash(sudo *)",
+      "Bash(su *)",
+      "Bash(tccutil *)",
+      "Bash(csrutil *)",
+      "Bash(spctl *)",
+      "Bash(fdesetup *)",
+      "Bash(systemsetup *)",
+      "Bash(pfctl *)",
+      "Bash(nvram *)",
+      "Bash(profiles *)",
+      "Bash(security add-*)",
+      "Bash(security delete-*)",
+      "Bash(security dump-keychain *)",
+      "Bash(security export *)",
+      "Bash(security import *)",
+      "Bash(security find-internet-password *)",
+      "Bash(security unlock-keychain *)",
+      "Bash(security set-*)",
+      "Bash(security authorizationdb *)",
+      "Bash(diskutil erase*)",
+      "Bash(diskutil secureErase *)",
+      "Bash(diskutil zeroDisk *)",
+      "Bash(sendmail *)",
+      "Bash(mail *)",
+      "Bash(mailx *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$JARVIS_REPO/guard/hook.ts\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,216 @@
+# Jarvis guard: blocked domains.
+#
+# Format: <host> <rule-id> [path-regex]
+#   host      matches that host and every subdomain of it. "*" means any host
+#             (only useful with a path-regex).
+#   rule-id   no-money | no-real-consequences | no-contacting-as-leo
+#   path-regex optional, JavaScript regex tested against the lowercased URL path.
+#             When present, only matching paths on that host are blocked.
+# Lines starting with # and blank lines are ignored.
+# Changes to this file need Leo's explicit approval (docs/DESIGN.md section 3).
+
+# ---------------------------------------------------------------- no-money
+# Generic checkout and payment paths on any site.
+*                               no-money   ^/(checkout|secure-checkout|pay|payment|payments|basket/checkout|cart/checkout)(/|$)
+
+# UK high-street and online banks, building societies, savings apps
+barclays.co.uk                  no-money
+barclays.com                    no-money
+hsbc.co.uk                      no-money
+hsbc.com                        no-money
+lloydsbank.com                  no-money
+lloydsbank.co.uk                no-money
+natwest.com                     no-money
+rbs.co.uk                       no-money
+rbs.com                         no-money
+santander.co.uk                 no-money
+nationwide.co.uk                no-money
+halifax.co.uk                   no-money
+halifax-online.co.uk            no-money
+tsb.co.uk                       no-money
+bankofscotland.co.uk            no-money
+firstdirect.com                 no-money
+metrobankonline.co.uk           no-money
+co-operativebank.co.uk          no-money
+virginmoney.com                 no-money
+monzo.com                       no-money
+starlingbank.com                no-money
+revolut.com                     no-money
+chase.co.uk                     no-money
+kroo.com                        no-money
+atombank.co.uk                  no-money
+tide.co                         no-money
+ulsterbank.co.uk                no-money
+danskebank.co.uk                no-money
+coutts.com                      no-money
+sainsburysbank.co.uk            no-money
+tescobank.com                   no-money
+zopa.com                        no-money
+marcus.co.uk                    no-money
+nsandi.com                      no-money
+moneybox.com                    no-money
+chip.co                         no-money
+plum.com                        no-money
+yorkshirebank.co.uk             no-money
+skipton.co.uk                   no-money
+coventrybuildingsociety.co.uk   no-money
+ybs.co.uk                       no-money
+# Card issuers and credit
+americanexpress.com             no-money
+mbna.co.uk                      no-money
+capitalone.co.uk                no-money
+vanquis.co.uk                   no-money
+aquacard.co.uk                  no-money
+barclaycard.co.uk               no-money
+newday.co.uk                    no-money
+klarna.com                      no-money
+clearpay.co.uk                  no-money
+afterpay.com                    no-money
+paypal.com                      no-money
+paypal.me                       no-money
+# US / international banks Leo might hit
+chase.com                       no-money
+bankofamerica.com               no-money
+wellsfargo.com                  no-money
+citi.com                        no-money
+# Payments and money transfer
+checkout.stripe.com             no-money
+buy.stripe.com                  no-money
+billing.stripe.com              no-money
+invoice.stripe.com              no-money
+pay.google.com                  no-money
+wise.com                        no-money
+transferwise.com                no-money
+venmo.com                       no-money
+cash.app                        no-money
+gocardless.com                  no-money
+pay.gocardless.com              no-money
+remitly.com                     no-money
+westernunion.com                no-money
+worldremit.com                  no-money
+pay.ebay.co.uk                  no-money
+pay.ebay.com                    no-money
+amazon.co.uk                    no-money   ^/(gp/buy|gp/cart|checkout|cpe/yourpayments|gp/prime/pipeline)
+amazon.com                      no-money   ^/(gp/buy|gp/cart|checkout|cpe/yourpayments|gp/prime/pipeline)
+# Brokers, trading platforms, pensions, robo-advisers
+trading212.com                  no-money
+hl.co.uk                        no-money
+ii.co.uk                        no-money
+ajbell.co.uk                    no-money
+vanguardinvestor.co.uk          no-money
+fidelity.co.uk                  no-money
+fidelity.com                    no-money
+freetrade.io                    no-money
+etoro.com                       no-money
+plus500.com                     no-money
+ig.com                          no-money
+interactivebrokers.com          no-money
+interactivebrokers.co.uk        no-money
+degiro.co.uk                    no-money
+degiro.com                      no-money
+robinhood.com                   no-money
+webull.com                      no-money
+webull.co.uk                    no-money
+cmcmarkets.com                  no-money
+home.saxo                       no-money
+saxotrader.com                  no-money
+moneyfarm.com                   no-money
+nutmeg.com                      no-money
+wealthify.com                   no-money
+lightyear.com                   no-money
+xtb.com                         no-money
+pepperstone.com                 no-money
+oanda.com                       no-money
+schwab.com                      no-money
+etrade.com                      no-money
+tastytrade.com                  no-money
+pensionbee.com                  no-money
+# Crypto exchanges and DeFi front ends
+coinbase.com                    no-money
+binance.com                     no-money
+kraken.com                      no-money
+crypto.com                      no-money
+bitstamp.net                    no-money
+gemini.com                      no-money
+kucoin.com                      no-money
+okx.com                         no-money
+bybit.com                       no-money
+bitpanda.com                    no-money
+uphold.com                      no-money
+hyperliquid.xyz                 no-money
+app.uniswap.org                 no-money
+# Prediction markets and betting
+polymarket.com                  no-money
+kalshi.com                      no-money
+betfair.com                     no-money
+bet365.com                      no-money
+skybet.com                      no-money
+williamhill.com                 no-money
+paddypower.com                  no-money
+ladbrokes.com                   no-money
+coral.co.uk                     no-money
+betway.com                      no-money
+
+# ----------------------------------------------------- no-real-consequences
+# Government (every .gov.uk site, including HMRC, DVLA, Student Finance England,
+# passports, electoral register, local councils such as southampton.gov.uk)
+gov.uk                          no-real-consequences
+hmrc.gov.uk                     no-real-consequences
+# Student finance and loans
+slc.co.uk                       no-real-consequences
+studentloanrepayment.co.uk      no-real-consequences
+studentfinanceengland.co.uk     no-real-consequences
+studentfinancewales.co.uk       no-real-consequences
+saas.gov.uk                     no-real-consequences
+# University applications, enrolment and registration
+ucas.com                        no-real-consequences
+# University of Southampton: fee payment (verified from southampton.ac.uk/courses/fees/pay.page
+# on 2026-10-11), plus any fees, payment, registration, enrolment or store path.
+# Moodle (moodle.ecs.soton.ac.uk) stays readable; the moodle skill never submits.
+payments.soton.ac.uk            no-real-consequences
+southampton.ac.uk               no-real-consequences   ^/(finance/services/make-payments|courses/fees/pay)
+southampton.ac.uk               no-real-consequences   (^|/)(onlinestore|online-store|estore|registration|enrolment|enrollment|online-registration)(/|\.|$)
+soton.ac.uk                     no-real-consequences   (^|/)(onlinestore|online-store|estore|registration|enrolment|enrollment|online-registration|make-payments|pay-fees)(/|\.|$)
+# Health: logins and records, not public information pages
+login.nhs.uk                    no-real-consequences
+access.login.nhs.uk             no-real-consequences
+nhsapp.service.nhs.uk           no-real-consequences
+patientaccess.com               no-real-consequences
+systmonline.tpp-uk.com          no-real-consequences
+# Insurance and comparison
+aviva.co.uk                     no-real-consequences
+directline.com                  no-real-consequences
+admiral.com                     no-real-consequences
+axa.co.uk                       no-real-consequences
+lv.com                          no-real-consequences
+churchill.com                   no-real-consequences
+bupa.co.uk                      no-real-consequences
+vitality.co.uk                  no-real-consequences
+endsleigh.co.uk                 no-real-consequences
+comparethemarket.com            no-real-consequences
+gocompare.com                   no-real-consequences
+moneysupermarket.com            no-real-consequences
+confused.com                    no-real-consequences
+# Signing documents on Leo's behalf
+docusign.com                    no-real-consequences
+docusign.net                    no-real-consequences
+echosign.adobe.com              no-real-consequences
+sign.dropbox.com                no-real-consequences
+hellosign.com                   no-real-consequences
+pandadoc.com                    no-real-consequences
+# Licences and utilities that bill
+tvlicensing.co.uk               no-real-consequences
+
+# ------------------------------------------------------ no-contacting-as-leo
+# Message-sending APIs that a shell command could post to
+hooks.slack.com                 no-contacting-as-leo
+slack.com                       no-contacting-as-leo   ^/api/(chat\.|conversations\.(invite|open)|files\.upload)
+discord.com                     no-contacting-as-leo   ^/api/(v\d+/)?(webhooks|channels/[^/]+/messages)
+api.telegram.org                no-contacting-as-leo
+api.twilio.com                  no-contacting-as-leo
+api.sendgrid.com                no-contacting-as-leo
+api.mailgun.net                 no-contacting-as-leo
+api.postmarkapp.com             no-contacting-as-leo
+api.resend.com                  no-contacting-as-leo
+graph.facebook.com              no-contacting-as-leo
+gmail.googleapis.com            no-contacting-as-leo   /send$
