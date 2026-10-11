@@ -17,7 +17,7 @@ Everything Jarvis needs lives in four places:
 | Place | Holds |
 | - | - |
 | This repo (`MacOSAgenticNotch`) | All code, skills, guard, prompts, vault template |
-| `~/Jarvis` | Runtime: `briefing.md`, run logs, SQLite action log, reminder plists staging, `.claude/skills` symlinks into this repo |
+| `~/Jarvis` | Runtime: `briefing.md`, run logs, SQLite action log, reminder plists staging, librarian queue (`librarian/`), `cache/`, `logs/`, `.claude/skills` symlinks into this repo |
 | `~/Jarvis-Memory` | Long-term memory vault |
 | macOS Keychain | Secrets, service names prefixed `jarvis/` |
 
@@ -129,13 +129,24 @@ Projects/ is the registry: "Jarvis, register the Amra project, Slack #amra, peop
 
 ### Librarian
 
-After every run the launcher starts, detached, `claude -p --model haiku` with `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`, the run's stream log, and the relevant notes. It updates notes and appends to today's Log, then regenerates `~/Jarvis/briefing.md`:
+After every run the launcher calls `bun <repo>/librarian/src/cli.ts enqueue --stream-log ~/Jarvis/runs/<session-id>.jsonl --request "<text>"` and waits for it (no model call, well under a second). It condenses the stream log into a job in `~/Jarvis/librarian/queue/` and starts a detached worker. Once `enqueue` returns, the launcher may delete an ephemeral run's transcript and stream log; the condensed job is deleted once filed. Leo never waits for the worker.
+
+The worker files jobs one at a time (lock file `~/Jarvis/librarian/lock`), so notes aren't edited concurrently. For each job it makes one `claude -p --model haiku` call with `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`, `--no-session-persistence`, guard's `--settings`, and **no tools** (`--tools ""`, `--strict-mcp-config`, `--disallowedTools "mcp__*"`). The condensed run, Me.md, today's log and any Projects/People note named in the run go in on stdin; the model returns note edits through `--json-schema` (`create`, `replace`, `append`, `move`, `remove`, `set`; no delete). The script validates every path (inside the vault after resolving symlinks, `.md`, not hidden, not `Index.md`, `Log/` or a template), refuses text that looks like a secret or card number, and writes atomically.
+
+**Decision (refines the spec):** the spec gives the librarian write access through its own guard settings. Instead the model gets no tools and the script does all writes, so the "only `~/Jarvis-Memory` and `briefing.md`" limit is enforced by code the model can't reach, and transcript content (web pages, Slack messages) can't steer a file tool. Log entries, `Index.md` and `briefing.md` are built by the script, not the model.
+
+Then the script appends the run to `Log/YYYY-MM-DD.md` and regenerates `Index.md` and `~/Jarvis/briefing.md`:
 
 - Me.md
-- Active projects (status != archived) with their Needs Leo items
-- Live snapshot: frontmost apps, running Claude sessions (`claude agents --json`), today's Apple Calendar events, today's timetable from the iCal cache
+- Librarian problems, if any job failed
+- Live snapshot: frontmost apps (`lsappinfo`, which needs no Accessibility or Automation permission), running Claude sessions (`claude agents --json`), today's Apple Calendar events (`osascript`, read-only; needs Calendar access, which macOS asks Leo for once), today's timetable from the iCal cache `~/Jarvis/cache/uni.ics` (the calendar skill owns fetching it)
+- Open Needs Leo items across active projects
+- Today's runs from the log
+- Active projects (status != archived), last so a long registry is what gets truncated (cap 16 KB)
 
-Leo never waits for it. The librarian runs with its own guard settings that only allow writes inside `~/Jarvis-Memory` and `~/Jarvis/briefing.md`. Runs queue: if a librarian is still running, the next one waits for it, so notes aren't edited concurrently. If `briefing.md` is missing or stale, the launcher still runs with whatever is there.
+If the model call fails, the run is still logged with a "Librarian problem" line, the job moves to `~/Jarvis/librarian/failed/` (`cli.ts retry` re-queues it), and the briefing says so. `cli.ts briefing` rebuilds the briefing without a run (e.g. at app start); `cli.ts init-vault` copies `vault-template/` into `~/Jarvis-Memory` without overwriting. If `briefing.md` is missing or stale, the launcher still runs with whatever is there.
+
+Known limits: AppleScript doesn't expand repeating Apple Calendar events, so a repeating event shows only on its first day (the calendar skill's reader can replace this probe once it exists). The timetable reader expands DAILY/WEEKLY rules, which covers university feeds.
 
 ## 6. Day-one capabilities (skills/)
 
