@@ -217,7 +217,7 @@ Built (app/, see `app/README.md`):
 
 | Tool | Does | Without the app |
 | - | - | - |
-| `speak(text)` | Queues `say`, returns at once; sentences play in order. Tells the app what is being said (`speak_start`/`speak_end`) for the caption. Meant for progress lines; the final reply is spoken by the launcher. | Still speaks. |
+| `speak(text)` | Queues `say` (with the most natural installed voice: Premium, then Enhanced, British English first; `JARVIS_VOICE` overrides), returns at once; sentences play in order. Tells the app what is being said (`speak_start`/`speak_end`) for the caption. Meant for progress lines; the final reply is spoken by the launcher. | Still speaks. |
 | `notify(title, body)` | Notch notification; the app also posts the macOS one. Only Leo sees it. | `osascript display notification` (text passed as argv, never into the script). |
 | `ask(question, options?, timeout_seconds?) -> string` | Needs-you question in the notch, up to two answer buttons, voice answer allowed. Blocks until answered, dismissed, or the timeout (default 120 s, 10 to 600). Returns `Leo answered: …`, or a sentence telling Claude to carry on with the safe default or stop. A cancelled MCP request withdraws the question. | Returns "Leo isn't available…" at once so the run never hangs. |
 | `log(summary, detail?, kind?)` | Appends to `~/Jarvis/actions.sqlite` (kind `action` or `note`) and sends the row to the app. | Still logs. |
