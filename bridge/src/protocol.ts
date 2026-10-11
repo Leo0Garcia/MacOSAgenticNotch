@@ -71,7 +71,14 @@ export interface RunEvent {
   summary?: string;
   rule?: string;
 }
-export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent;
+/** The calendar skill asks the app (which holds the Calendars permission) for events. */
+export interface CalendarEvents {
+  type: "calendar_events";
+  id: string;
+  from: string; // ISO 8601
+  to: string;
+}
+export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents;
 
 // App -> client
 export interface Welcome {
@@ -89,7 +96,13 @@ export interface ErrorMsg {
   id?: string;
   message: string;
 }
-export type AppMessage = Welcome | Answer | ErrorMsg;
+export interface CalendarEventsResult {
+  type: "calendar_events_result";
+  id: string;
+  events?: { calendar: string; title: string; start: string; end: string; allDay: boolean; location: string | null; recurrence: null }[];
+  error?: { code: "denied" | "bad_range"; message: string };
+}
+export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult;
 
 /** One row of ~/Jarvis/actions.sqlite, as stored and as sent in `log`. */
 export interface ActionRow {

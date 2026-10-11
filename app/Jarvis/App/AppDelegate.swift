@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var escapeID: UInt32?
     private var voice: VoicePipeline?
     private let notifier = SystemNotifier()
+    private let calendar = CalendarService()
     private var notificationsRequested = false
     private var demo: DemoDriver?
     private var signalSources: [DispatchSourceSignal] = []
@@ -177,6 +178,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NotchServerDelegate {
     func notchServer(_ server: NotchServer, received message: NotchProtocol.ClientMessage, from client: NotchServer.ClientID) {
+        if case let .calendarEvents(id, from, to) = message {
+            Task {
+                switch await calendar.events(fromISO: from, toISO: to) {
+                case let .success(events): server.send(.calendarEventsResult(id: id, events: events), to: client)
+                case .failure(.denied): server.send(.calendarEventsError(id: id, code: "denied", message: "Calendars access is off for Jarvis."), to: client)
+                case .failure(.badRange): server.send(.calendarEventsError(id: id, code: "bad_range", message: "from and to must be ISO 8601, from before to."), to: client)
+                }
+            }
+            return
+        }
         model.received(message, from: client)
     }
 

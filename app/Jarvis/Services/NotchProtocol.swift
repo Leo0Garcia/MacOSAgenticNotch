@@ -41,6 +41,8 @@ enum NotchProtocol {
         case reminder(id: String, text: String)
         case log(ActionRow)
         case runEvent(sessionId: String?, event: String, text: String?, keep: Bool?, summary: String?, rule: String?)
+        /// The calendar skill asks the app (which holds the Calendars permission) for events.
+        case calendarEvents(id: String, from: String, to: String)
         case unknown(type: String)
     }
 
@@ -49,6 +51,18 @@ enum NotchProtocol {
         case welcome
         case answer(id: String, text: String, via: AnswerVia)
         case error(id: String?, message: String)
+        case calendarEventsResult(id: String, events: [CalendarEvent])
+        case calendarEventsError(id: String, code: String, message: String)
+    }
+
+    /// One calendar occurrence, in the shape the calendar skill's apple.ts reads.
+    struct CalendarEvent: Equatable, Sendable {
+        var calendar: String
+        var title: String
+        var start: String
+        var end: String
+        var allDay: Bool
+        var location: String?
     }
 
     enum AnswerVia: String, Codable, Sendable {
@@ -108,6 +122,8 @@ enum NotchProtocol {
             return .runEvent(
                 sessionId: optStr("session_id"), event: try str("event"), text: optStr("text"),
                 keep: obj["keep"] as? Bool, summary: optStr("summary"), rule: optStr("rule"))
+        case "calendar_events":
+            return .calendarEvents(id: try str("id"), from: try str("from"), to: try str("to"))
         default:
             return .unknown(type: type)
         }
@@ -123,6 +139,13 @@ enum NotchProtocol {
         case let .error(id, message):
             obj = ["type": "error", "message": message]
             if let id { obj["id"] = id }
+        case let .calendarEventsResult(id, events):
+            obj = ["type": "calendar_events_result", "id": id, "events": events.map { e -> [String: Any] in
+                ["calendar": e.calendar, "title": e.title, "start": e.start, "end": e.end, "allDay": e.allDay,
+                 "location": e.location ?? NSNull(), "recurrence": NSNull()]
+            }]
+        case let .calendarEventsError(id, code, message):
+            obj = ["type": "calendar_events_result", "id": id, "error": ["code": code, "message": message]]
         }
         let data = (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])) ?? Data()
         return String(decoding: data, as: UTF8.self)

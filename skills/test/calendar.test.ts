@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AutomationDenied, JXA, readCalendar, toOccurrences, type RawEvent } from "../calendar/apple.ts";
+import { appCalendar, AutomationDenied, JXA, readCalendar, toOccurrences, type RawEvent } from "../calendar/apple.ts";
 import { dayRange, formatOccurrences, loadTimetable, MissingKeyError, occurrences, parseIcs, type Deps } from "../calendar/ics.ts";
 
 const ICS = readFileSync(join(import.meta.dir, "fixtures/calendar/uni.ics"), "utf8");
@@ -195,5 +195,48 @@ describe("apple calendar", () => {
   test("the JXA script only reads", () => {
     expect(JXA).not.toMatch(/\b(make|delete|save|close|duplicate|move|set)\s*\(/);
     expect(JXA).not.toMatch(/=\s*[^=]*\.(summary|startDate|location)\s*=/);
+  });
+});
+
+describe("calendar through the notch app", () => {
+  function fakeApp(reply: (msg: any) => any) {
+    const home = mkdtempSync(join(tmpdir(), "jarvis-cal-"));
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(req, srv) {
+        return srv.upgrade(req) ? undefined : new Response("no", { status: 400 });
+      },
+      websocket: {
+        message(ws, raw) {
+          const m = JSON.parse(String(raw));
+          if (m.type === "hello") ws.send(JSON.stringify(m.token === "t" ? { type: "welcome", protocol: 1 } : { type: "error", message: "bad token" }));
+          else if (m.type === "calendar_events") ws.send(JSON.stringify(reply(m)));
+        },
+      },
+    });
+    writeFileSync(join(home, "notch.json"), JSON.stringify({ port: server.port, token: "t", pid: process.pid, protocol: 1 }));
+    return { home, server };
+  }
+
+  test("asks the app for the range and reads its events", async () => {
+    let asked: any;
+    const { home, server } = fakeApp((m) => {
+      asked = m;
+      return { type: "calendar_events_result", id: m.id, events: [{ calendar: "Personal", title: "Dentist", start: "2026-10-12T14:30:00.000Z", end: "2026-10-12T15:00:00.000Z", allDay: false, location: null, recurrence: null }] };
+    });
+    const r = await appCalendar(new Date("2026-10-12T00:00:00Z"), new Date("2026-10-13T00:00:00Z"), home, 3000);
+    server.stop(true);
+    expect(asked.from).toBe("2026-10-12T00:00:00.000Z");
+    expect(r?.ok).toBe(true);
+    expect(readCalendar(() => r!, Date.parse("2026-10-12T00:00:00Z"), Date.parse("2026-10-13T00:00:00Z")).map((o) => o.title)).toEqual(["Dentist"]);
+  });
+
+  test("a denial from the app is a permission problem; no app means fall back", async () => {
+    const { home, server } = fakeApp((m) => ({ type: "calendar_events_result", id: m.id, error: { code: "denied", message: "Calendars access is off for Jarvis." } }));
+    const r = await appCalendar(new Date(0), new Date(1000), home, 3000);
+    server.stop(true);
+    expect(() => readCalendar(() => r!, 0, 1000)).toThrow(AutomationDenied);
+    expect(await appCalendar(new Date(0), new Date(1000), mkdtempSync(join(tmpdir(), "jarvis-none-")), 500)).toBeNull();
   });
 });

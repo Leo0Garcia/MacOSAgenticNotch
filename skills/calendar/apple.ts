@@ -9,10 +9,11 @@
 // file expands their recurrence itself. Exit 4 = macOS permission missing.
 //
 // AppleScript answers at about 12 ms per event per field, so with a few thousand
-// events it took minutes. The fast path is eventkit.swift, compiled on first use
-// into ~/Jarvis/bin/jarvis-calendar; AppleScript is the fallback (no Swift
-// compiler), capped at 20 seconds so a run never hangs on Calendar.
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+// events it took minutes. The fast path asks the notch app over its socket: the
+// app holds the Calendars permission and reads through EventKit. Without the app,
+// eventkit.swift (compiled on first use into ~/Jarvis/bin/jarvis-calendar), then
+// AppleScript, capped at 20 seconds so a run never hangs on Calendar.
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fail, flag, now, parseArgs, TZ } from "../lib/env.ts";
@@ -72,6 +73,55 @@ export const osascriptRunner: Runner = (from, to) => {
   }
   return { ok: r.exitCode === 0, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
 };
+
+/**
+ * Asks the notch app, which holds the Calendars permission, over its socket
+ * (DESIGN 8.2 `calendar_events`). Null when the app isn't running or doesn't
+ * answer, so the caller falls back to the helper or AppleScript.
+ */
+export async function appCalendar(from: Date, to: Date, home = process.env.JARVIS_HOME ?? join(homedir(), "Jarvis"), timeoutMs = 60_000): Promise<RunResult | null> {
+  let f: { port: number; token: string; pid: number };
+  try {
+    f = JSON.parse(readFileSync(join(home, "notch.json"), "utf8"));
+    process.kill(f.pid, 0);
+  } catch {
+    return null;
+  }
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (r: RunResult | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {}
+      resolve(r);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    const ws = new WebSocket(`ws://127.0.0.1:${f.port}/`);
+    const id = `cal-${process.pid}-${Date.now()}`;
+    ws.onopen = () => ws.send(JSON.stringify({ type: "hello", protocol: 1, token: f.token, client: "cli", pid: process.pid, session_id: null }));
+    ws.onmessage = (ev) => {
+      let m: any;
+      try {
+        m = JSON.parse(String(ev.data));
+      } catch {
+        return;
+      }
+      if (m.type === "welcome") ws.send(JSON.stringify({ type: "calendar_events", id, from: from.toISOString(), to: to.toISOString() }));
+      else if (m.type === "calendar_events_result" && m.id === id) {
+        if (m.error?.code === "denied") finish({ ok: false, stdout: "", stderr: "DENIED: " + m.error.message });
+        else if (m.error) finish(null);
+        else finish({ ok: true, stdout: JSON.stringify(m.events ?? []), stderr: "" });
+      } else if (m.type === "error" && !m.id) finish(null);
+    };
+    ws.onerror = () => finish(null);
+    ws.onclose = () => finish(null);
+  });
+}
+
+type RunResult = { ok: boolean; stdout: string; stderr: string };
 
 const HELPER_SRC = join(import.meta.dir, "eventkit.swift");
 const HELPER_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
@@ -162,8 +212,11 @@ if (import.meta.main) {
   const args = parseArgs(process.argv.slice(2));
   try {
     const { from, to } = dayRange(flag(args, "day") ?? "today", Number(flag(args, "days") ?? 1), now().getTime());
-    const helper = eventkitHelper();
-    const list = readCalendar(helper ? eventkitRunner(helper) : osascriptRunner, from, to);
+    // 1. the notch app (holds the Calendars permission); 2. the EventKit helper; 3. AppleScript.
+    const viaApp = await appCalendar(new Date(from), new Date(to));
+    const helper = viaApp ? null : eventkitHelper();
+    const runner: Runner = viaApp ? () => viaApp : helper ? eventkitRunner(helper) : osascriptRunner;
+    const list = readCalendar(runner, from, to);
     console.log(flag(args, "json") ? JSON.stringify({ events: list }, null, 2) : formatOccurrences(list, "Nothing in your calendar."));
   } catch (e) {
     fail((e as Error).message, e instanceof AutomationDenied ? 4 : 1);
