@@ -9,7 +9,7 @@ allowed-tools: Bash(bun ${CLAUDE_SKILL_DIR}/page.ts *)
 
 Moodle is read only for Jarvis. Never click Submit, Add submission, Edit submission, Upload, Enrol, Post or Reply, never fill a form, never upload a file, never change a setting or a forum subscription. Guard denies browser uploads and submits; if Leo asks for any of those, say you can't (rule: nothing that submits on his behalf) and offer the safe version: a reminder, a summary of what's needed, or a draft he can paste himself.
 
-Uses Claude in Chrome. If no Chrome tools are loaded or the extension isn't connected, run `bun "$JARVIS_REPO/skills/needs-access/ask.ts" chrome` and say what it prints. Don't fall back to WebFetch: Moodle needs Leo's login.
+Uses Claude in Chrome. If the extension isn't connected (`list_connected_browsers` is empty), Chrome is usually just closed: run `bun "$JARVIS_REPO/skills/needs-access/chrome.ts"`, which opens Chrome in the background and waits, then check `list_connected_browsers` again; the extension can take a few seconds more to connect, so if it prints `started`, try up to three times with `sleep 4` between. Only if it is still empty (or no Chrome tools are loaded), run `bun "$JARVIS_REPO/skills/needs-access/ask.ts" chrome` and say what it prints. Don't fall back to WebFetch: Moodle needs Leo's login.
 
 ## Pages
 

@@ -14,7 +14,7 @@ bun ${CLAUDE_SKILL_DIR}/ask.ts connector <name>       # claude.ai connector not 
 bun ${CLAUDE_SKILL_DIR}/ask.ts login <site>           # site shows a login page in Chrome
 bun ${CLAUDE_SKILL_DIR}/ask.ts permission <kind>      # microphone | accessibility | full-disk | screen-recording | automation:<App>
 bun ${CLAUDE_SKILL_DIR}/ask.ts key <name>             # Keychain item jarvis/<name> missing
-bun ${CLAUDE_SKILL_DIR}/ask.ts chrome                 # Claude in Chrome not connected
+bun ${CLAUDE_SKILL_DIR}/ask.ts chrome                 # Claude in Chrome still not connected after chrome.ts
 bun ${CLAUDE_SKILL_DIR}/ask.ts mcp <server>           # an MCP server from jarvis.json didn't load
 bun ${CLAUDE_SKILL_DIR}/ask.ts guard "<reason>"       # a denial whose reason starts with guard:
 ```
@@ -27,5 +27,7 @@ It prints `{"say": "...", "wait": true|false}`.
 ## Guard denials
 
 When a tool call is denied and the reason starts with `guard:<rule-id>:`, a hard limit fired (no-money, no-real-consequences, no-contacting-as-leo, no-harm). Run `ask.ts guard "<the full reason>"` and reply with what it prints: it names the rule and offers the safe version. Then do the safe version if it fits what Leo asked (write the draft, summarise the page read-only, or set a reminder for him to do it himself) and say you did. Never retry the blocked action another way: through a different tool, a shell command, a different URL for the same site, or by asking Leo to approve it.
+
+Before `ask.ts chrome`, run `bun ${CLAUDE_SKILL_DIR}/chrome.ts`: it opens Chrome in the background when it's closed (the usual reason the extension isn't connected) and waits; then check `list_connected_browsers` again. Only ask Leo if it's still not connected.
 
 Only things in this list: connector, login, permission, key, chrome, mcp, guard. For anything else missing, say plainly what it is and how Leo gets it, in one sentence.
