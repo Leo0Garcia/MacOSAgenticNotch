@@ -28,7 +28,7 @@ Hold **⌥ Space** and talk; let go to send. The request goes to `launcher/run.s
 - **Notifications**: asked the first time Jarvis needs you or a reminder fires.
 - No Accessibility, Input Monitoring, Screen Recording or Full Disk Access.
 
-The build is ad-hoc signed (no developer team on this Mac), so macOS may ask for the microphone again after a rebuild.
+Install with `app/install.sh`: it builds Release, signs with **Jarvis Local Signing** and puts the app in `~/Jarvis/Jarvis.app`. That identity is a self-signed certificate in the login keychain, made once by `app/setup-signing.sh`. Signing every build with the same identity is what keeps macOS's permissions (microphone, calendars, automation, screen recording) across rebuilds. An ad-hoc signed build looks like a new app to macOS, which then asks again. `xcodebuild -scheme Jarvis build` stays ad-hoc so it builds anywhere.
 
 ## Testing without a mic
 
