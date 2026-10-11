@@ -3,7 +3,7 @@
 import { Database } from "bun:sqlite";
 import type { FinalizeInput } from "../src/finalize";
 import { afterAll, beforeEach, expect, test } from "bun:test";
-import { existsSync, lstatSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { finalize } from "../src/finalize";
 import { type LauncherEvent, run } from "../src/run";
@@ -38,7 +38,8 @@ test("weather: runs claude with the design flags from ~/Jarvis, speaks, and fina
   const { out, events, finals, said } = await go("what's the weather in Southampton", runs.weather());
   expect(out).toMatchObject({ exitCode: 0, keep: false, summary: "Told Leo the Southampton weather" });
   const call = w.lastCall();
-  expect(call.cwd).toBe(jarvis);
+  // macOS TMPDIR is a /var → /private/var symlink; the child reports the resolved path.
+  expect(realpathSync(call.cwd)).toBe(realpathSync(jarvis));
   expect(call.argv.slice(0, 3)).toEqual(["-p", "what's the weather in Southampton", "--session-id"]);
   expect(call.argv[3]).toBe(out.sessionId);
   for (const f of ["--chrome", "--verbose", "--include-partial-messages"]) expect(call.argv).toContain(f);

@@ -13,12 +13,14 @@ import { childEnv, type Config, paths } from "./config";
 import { deleteRunFile, deleteTranscript, finalize, type FinalizeInput } from "./finalize";
 import { buildSystemPrompt, checkClaudeVersion, linkSkills } from "./setup";
 import { ensureDirs, type LastRun, log, recentRun, saveLastRun, writeFileAtomic } from "./store";
+import { toolStatus } from "./status";
 import { type Denial, initProblem, RunMonitor } from "./stream";
 
 /** Lines the launcher prints on stdout, one JSON object each, for the notch app. */
 export type LauncherEvent =
   | { event: "state"; state: "working" | "done" | "needs-you" | "error"; sessionId?: string }
   | { event: "speak"; text: string }
+  | { event: "status"; text: string; detail?: string }
   | { event: "denied"; tool: string; rule?: string; reason?: string }
   | { event: "warning"; message: string }
   | { event: "done"; sessionId: string; keep: boolean; summary: string; reply: string; name?: string }
@@ -127,6 +129,12 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   });
   const monitor = new RunMonitor({
     onSentence: speak,
+    onTool: (name, input) => {
+      const st = toolStatus(name, input);
+      if (!st) return;
+      emit({ event: "status", text: st.text, ...(st.detail ? { detail: st.detail } : {}) });
+      notch({ event: "tool", text: st.text }, sessionId);
+    },
     onInit: (init) => {
       initFailure = initProblem(init);
       if (initFailure) proc.kill("SIGTERM");
