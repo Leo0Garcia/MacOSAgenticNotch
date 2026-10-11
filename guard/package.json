@@ -1,0 +1,13 @@
+{
+  "name": "jarvis-guard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@types/bun": "1.2.17",
+    "typescript": "5.9.2"
+  }
+}

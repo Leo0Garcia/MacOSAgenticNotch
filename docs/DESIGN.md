@@ -17,7 +17,7 @@ Everything Jarvis needs lives in four places:
 | Place | Holds |
 | - | - |
 | This repo (`MacOSAgenticNotch`) | All code, skills, guard, prompts, vault template |
-| `~/Jarvis` | Runtime: `briefing.md`, run logs, SQLite action log, reminder plists staging, librarian queue (`librarian/`), `cache/`, `logs/`, `.claude/skills` symlinks into this repo |
+| `~/Jarvis` | Runtime: `briefing.md`, run logs, SQLite action log (`actions.sqlite`), `notch.json` (app socket port and token), reminder plists staging, librarian queue (`librarian/`), `cache/`, `logs/`, `.claude/skills` symlinks into this repo |
 | `~/Jarvis-Memory` | Long-term memory vault |
 | macOS Keychain | Secrets, service names prefixed `jarvis/` |
 
@@ -39,14 +39,23 @@ Enforced in code by `guard/`, loaded by every run. Jarvis refuses, names the rul
 Enforcement layers:
 
 1. **Permission deny rules** in `guard/settings.json`: send tools for Slack, mail and messaging MCP servers (tool-name globs such as `mcp__*__slack_send_message*`, `mcp__*__*send_email*`), `Read`/`Edit` of credential paths (`~/.ssh`, `~/.aws`, `~/Library/Keychains`, `.env`), Bash `security` subcommands that read or write passwords, `osascript` against Messages and Mail send, `defaults write` on privacy domains, `tccutil`, `csrutil`, `spctl`. Deny rules apply in every permission mode and merge across settings levels, so Leo's own settings cannot loosen them.
-2. **PreToolUse hook** (`guard/hook.ts`, run with Bun) on `WebFetch`, `WebSearch`, `Bash`, `Write`, `Edit`, and Chrome tools (`mcp__claude-in-chrome__.*`). It returns `permissionDecision: "deny"` with a `permissionDecisionReason` of the form `guard:<rule-id>: <one-line reason>. Safe alternative: <offer>`. Claude reads that reason and relays it.
+2. **PreToolUse hook** (`guard/hook.ts`, run with Bun) on every tool (`matcher: "*"`, so MCP servers Leo adds later are covered too), registered with `onFailure: "block"` so a hook that can't start or crashes blocks the call. It returns `permissionDecision: "deny"` with a `permissionDecisionReason` of the form `guard:<rule-id>: <one-line reason>. Safe alternative: <offer>`. Claude reads that reason and relays it.
    - **Blocked domains**: `guard/blocked-domains.txt`, one pattern per line with a category tag. Seeded with the categories above and UK specifics: Student Finance England, gov.uk (all subdomains), HMRC, University of Southampton fees, payments and registration portals, every UK high-street and online bank, card issuers, PayPal/Stripe checkout, brokers and trading platforms, crypto exchanges, NHS login and insurers. Checked against WebFetch `url`, Chrome navigation URLs, and hosts found in Bash commands.
    - **Path allowlist**: `rm`, `unlink`, `rmdir`, `trash`, `mv` onto an existing file, `>` truncation, `find -delete`, `git clean`, and `Write` over an existing file are allowed only inside `~/Jarvis`, this repo, and `$TMPDIR`. Anywhere else they are denied under `no-harm`. Creating new files and renaming files (without overwriting) is allowed, since "find and rename files" is a day-one task.
-   - **Master vault**: any `Write`/`Edit`/shell write under the master vault path is denied unless the target is exactly `Kanban.md` at its root.
+   - **Master vault**: any `Write`/`Edit`/shell write under the master vault path is denied unless the target is exactly `Kanban.md` at its root (or a `.Kanban.md.*tmp*` file beside it, for the atomic rename). Obsidian MCP servers whose name matches `JARVIS_MASTER_VAULT_MCP` (default `obsidian`) get the same rule by tool input path.
+   - **Memory vault**: `~/Jarvis-Memory` may be overwritten (notes are rewritten in place) but not deleted from.
+   - **MCP tools by name**: send, reply, forward, share, invite, RSVP, comment and scheduled-message tools are denied under `no-contacting-as-leo`; draft tools (`create_draft`, `slack_send_message_draft`) are allowed. Calendar create/update with attendees is denied because it sends invitations. Buy, pay, deposit, withdraw, transfer, trade and order-changing tools are denied under `no-money`; reads (`get_`, `list_`, `search_`, `view_`, `analyze_` …) are allowed. Delete, reset, revoke, merge and similar tools on Leo's cloud data, and anything naming secrets, tokens or passwords, are denied under `no-harm`.
+   - **Browser**: upload and form-submit tools on any browser server are denied under `no-real-consequences`.
+   - **The guard protects itself**: writes, overwrites and deletes of `<repo>/guard/**`, `~/.claude/settings*.json`, `~/Jarvis/.claude/settings*.json`, `<repo>/.claude/settings*.json` and `~/.claude.json` are denied, so a run can't switch the guard off (e.g. with `disableAllHooks`).
+   - **Keychain**: `security find-generic-password -s jarvis/...` is allowed (the calendar skill needs it); every other `security` subcommand is denied.
 3. **`--permission-prompts none`** on every run: anything that would prompt is denied rather than hanging.
 4. **Auto mode classifier** (`--permission-mode auto`) as a second net, not relied on for the limits.
 
-Known limit, accepted for phase 1: Bash network blocking is best-effort. The hook extracts hosts from URLs and common tools (`curl`, `wget`, `open`, `python -c` with literal URLs), but an obfuscated command could evade it. The docs confirm deny rules don't match programs by path or inside `sh -c`. The Claude Code sandbox enforces network at OS level but only as an allowlist (`network.allowedDomains`), which doesn't fit a general agent, so it is not used in phase 1. Revisit if a deny-list sandbox option appears.
+Known limits, accepted for phase 1:
+
+- The guard sees tool calls, not what a click does. Clicking "Send" in Gmail in Chrome, or typing into a chat with computer use, isn't visible to the hook; those rely on the skills never doing it, Claude's instructions, and the auto-mode classifier. Navigation to blocked sites, upload and submit tools, and send tools are blocked.
+- Inline code (`python -c`, `node -e`, AppleScript) is scanned for delete and send primitives with literal paths; computed paths or obfuscated code can evade it.
+- Bash network blocking is best-effort. The hook extracts hosts from URLs and common tools (`curl`, `wget`, `open`, `python -c` with literal URLs), but an obfuscated command could evade it. The docs confirm deny rules don't match programs by path or inside `sh -c`. The Claude Code sandbox enforces network at OS level but only as an allowlist (`network.allowedDomains`), which doesn't fit a general agent, so it is not used in phase 1. Revisit if a deny-list sandbox option appears.
 
 `guard/` ships tests that feed recorded hook inputs for each limit (e.g. WebFetch to `www.gov.uk`, Chrome navigate to a bank, `rm -rf ~/Documents/x`, Slack send tool) and assert a deny with the right rule id, plus allowed controls (weather lookup, Kanban edit, Moodle read).
 
@@ -84,12 +93,13 @@ claude -p "<transcribed request>" \
 
 Notes:
 
-- `--mcp-config` adds the bridge server; Leo's own MCP servers and claude.ai connectors still load. No `--strict-mcp-config`.
+- `--mcp-config` adds the bridge server; Leo's own MCP servers and claude.ai connectors still load. No `--strict-mcp-config`. The bridge needs the run's session id as a literal argument, so the launcher writes the config per run (`{"mcpServers":{"jarvis":{"command":"bun","args":["<repo>/bridge/src/server.ts","--session-id","<uuid>"]}}}`); see 8.1.
 - Never `--bare`: it skips skills, hooks, MCP servers and CLAUDE.md, and doesn't use the claude.ai login, which Chrome needs.
 - `-n` is set only when the request matches an explicit saved intent ("start a research session on…", "write a brief…"). Other runs that end with keep=true stay unnamed in Claude Code; the notch log labels them with `summary` and they resume by ID.
 - Skills load from `~/Jarvis/.claude/skills/<name>`, symlinks into `<repo>/skills/` (symlinked skill folders are supported in the project location). `-p` runs load skills and hooks the same way interactive sessions do unless `--bare` is passed.
 - The launcher reads `system/init` and fails loudly if `permissionMode` isn't `auto` (auto mode falls back to Manual when unavailable, which under `--permission-prompts none` would deny every risky action), if the bridge isn't in `mcp_servers`, or if `mcp_server_errors` is non-empty.
-- Minimum Claude Code version: v2.1.285 (`claude --desktop --resume`). The launcher checks `claude --version` at startup.
+- Minimum Claude Code version: v2.1.295 (guard hook `onFailure: "block"`; `claude --desktop --resume` needs v2.1.285). The launcher checks `claude --version` at startup.
+- The launcher exports `JARVIS_REPO=<repo>` and makes sure `bun` is on `PATH`; the guard hook command is `bun "$JARVIS_REPO/guard/hook.ts"`. See `guard/README.md`.
 - Model: inherits Leo's default. If the ~4 s target is missed, the first lever is `--model sonnet` for ephemeral-intent runs; measured in the launcher thread.
 
 ### 4.3 Speaking while streaming
@@ -172,7 +182,81 @@ States: idle, listening, working, done, needs-you. Visual and motion spec: [NOTC
 
 ## 8. Bridge
 
-Bun MCP server over stdio to Claude Code, WebSocket on `127.0.0.1` to the app (random port written to `~/Jarvis/bridge.port`, with a per-boot token so other local processes can't drive the notch). Tools: `speak(text)`, `notify(title, body)`, `ask(question) -> string`, `log(row)`, `remind(when, text)`. Phase 1 `speak` shells out to `say`. When the app isn't running, `speak`/`notify` fall back to `say`/`osascript display notification` and `ask` returns "Leo isn't available" so the run doesn't hang.
+`bridge/` is a dependency-free Bun MCP server over stdio (`bun <repo>/bridge/src/server.ts --session-id <uuid>`, server name `jarvis`, so tools are `mcp__jarvis__<name>`), plus a CLI and library the launcher and reminder jobs use without MCP. None of the tool names trips guard's MCP rules. Details and commands: `bridge/README.md`.
+
+### 8.1 Tools
+
+| Tool | Does | Without the app |
+| - | - | - |
+| `speak(text)` | Queues `say`, returns at once; sentences play in order. Tells the app what is being said (`speak_start`/`speak_end`) for the caption. Meant for progress lines; the final reply is spoken by the launcher. | Still speaks. |
+| `notify(title, body)` | Notch notification; the app also posts the macOS one. Only Leo sees it. | `osascript display notification` (text passed as argv, never into the script). |
+| `ask(question, options?, timeout_seconds?) -> string` | Needs-you question in the notch, up to two answer buttons, voice answer allowed. Blocks until answered, dismissed, or the timeout (default 120 s, 10 to 600). Returns `Leo answered: …`, or a sentence telling Claude to carry on with the safe default or stop. A cancelled MCP request withdraws the question. | Returns "Leo isn't available…" at once so the run never hangs. |
+| `log(summary, detail?, kind?)` | Appends to `~/Jarvis/actions.sqlite` (kind `action` or `note`) and sends the row to the app. | Still logs. |
+| `remind(when, text)` | Parses `when` (section 8.3), hands the absolute time to the launcher's scheduler, says back "Reminder set for today at 18:00 (UK time)". Fails out loud if the time is unreadable or past, or the scheduler is missing or fails. | Same. |
+
+Speech is one utterance at a time across processes: a lock directory `~/Jarvis/run/speech.lock` (holder pid inside; taken over if the holder died or after 60 s) keeps the launcher's streamed reply and Claude's `speak` calls from talking over each other. When Claude Code closes the bridge's stdin, the bridge finishes queued speech (up to 30 s) and exits.
+
+**Session id (decision):** the bridge takes the run's id from `--session-id <uuid>` in its args, else `JARVIS_SESSION_ID`. The docs document `${VAR}` expansion for `.mcp.json` but not for `--mcp-config`, and don't say whether stdio servers inherit the environment, so the launcher writes a per-run MCP config with the literal id (`~/Jarvis/runs/<session-id>.mcp.json`) rather than relying on either.
+
+### 8.2 Notch socket (protocol 1)
+
+**Decision (differs from the earlier draft):** the app hosts the WebSocket, not the bridge. Each run spawns its own bridge, and reminders must reach the notch with no run active, so the one long-lived process is the server. The app listens on `127.0.0.1` on a random port (Network.framework `NWListener` with `NWProtocolWebSocket`, no third-party code) and, once listening, writes `~/Jarvis/notch.json` atomically with mode 0600:
+
+```json
+{"port": 52731, "token": "<random 32+ bytes, hex>", "pid": 4242, "protocol": 1}
+```
+
+A new token every app launch. The app deletes the file on quit; clients also ignore it when `pid` is dead.
+
+Frames are JSON text, one message each, with a `type`. The first client frame must be `hello`; the app answers `welcome`, or `error` and closes (code 4001) on a wrong token or protocol. Unknown types are ignored by both sides so either can add messages. `id`s are opaque strings chosen by the sender of the request.
+
+Client to app:
+
+| type | Fields | App does |
+| - | - | - |
+| `hello` | `protocol`, `token`, `client` (`bridge` \| `launcher` \| `reminder` \| `cli`), `pid`, `session_id` | Authenticates; replies `welcome {protocol}` |
+| `speak_start` | `id`, `text`, `session_id` | Shows `text` as the Done caption, speaking bars on |
+| `speak_end` | `id` | Speaking bars off for that id |
+| `notify` | `id`, `title`, `body`, `session_id` | Notch notification + macOS notification |
+| `ask` | `id`, `question`, `options` (0 to 2), `timeout_ms`, `session_id` | Needs-you question state + macOS notification; later sends `answer` |
+| `ask_cancel` | `id`, `reason` (`timeout` \| `cancelled`) | Drops that question if still shown |
+| `reminder` | `id`, `text` | Reminder state + macOS notification |
+| `log` | `row` (an `actions` row, 8.4) | Refreshes the hover log (phase 2) |
+| `run_event` | `session_id`, `event` (`started` \| `tool` \| `speaking` \| `done` \| `denied` \| `failed`), optional `text`, `keep`, `summary`, `rule` | Optional channel for the launcher's run state (working status line, saved chip, guard block with `rule` = guard rule id) if it doesn't report over stdout |
+
+App to client:
+
+| type | Fields |
+| - | - |
+| `welcome` | `protocol` |
+| `answer` | `id`, `text`, `via` (`button` \| `voice` \| `dismissed`; `text` empty when dismissed) |
+| `error` | optional `id`, `message` |
+
+If the socket closes while an `ask` is open, the bridge treats it as no answer. Message types and fields are in `bridge/src/protocol.ts`; the app's Swift types mirror them. `bridge/test/helpers.ts` has a fake app that shows the server side.
+
+### 8.3 Reminders (bridge and launcher)
+
+- `when` accepts ISO 8601 (no offset means London time), relative times ("in 20 minutes", "in an hour and a half", "in 1h30m") and clock times with an optional day ("6pm", "18:00", "at 5", "tonight at 8", "tomorrow at 9am", "monday 14:30", "noon", "midnight"). Times are Europe/London, across clock changes. A clock time with no day is its next occurrence; an ambiguous hour with no day is the next future h:00 or (h+12):00 (section 6). On an explicit later day, an ambiguous 1 to 6 is pm and 7 to 11 am. "today at 9am" after 9am is an error, not tomorrow. At most a year ahead.
+- The bridge runs `bun <repo>/launcher/src/reminders.ts schedule` with stdin `{"at": "<ISO 8601 UTC>", "text": "…", "session_id": "<uuid>|null"}` and expects exit 0 with stdout (last line) `{"id": "<id>", "at": "<ISO>"}`. Non-zero exit: the last stderr line is relayed to Leo and nothing is claimed. `JARVIS_REMIND_SCHEDULER` overrides the command (tests).
+- When the launchd job fires, the launcher runs `bun <repo>/bridge/src/cli.ts reminder --text "<text>"` (or calls `fireReminder` from `bridge/src/notch.ts`): notch reminder via the socket, else a macOS notification plus `say`. It also logs a `reminder` row.
+
+### 8.4 Action log
+
+The bridge owns `~/Jarvis/actions.sqlite` (WAL, busy timeout 3 s):
+
+```sql
+CREATE TABLE actions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,          -- ISO 8601 UTC
+  session_id TEXT,
+  kind TEXT NOT NULL,        -- run | action | note | guard | reminder
+  summary TEXT NOT NULL,
+  detail TEXT,
+  saved INTEGER NOT NULL DEFAULT 0   -- 1: row opens the session (claude --desktop --resume)
+);
+```
+
+Claude writes `action`/`note` through the `log` tool; the launcher writes `run` and `guard` rows with `bun <repo>/bridge/src/cli.ts log --kind run --summary "…" [--saved] --session-id <id>` or `appendAction` from `bridge/src/actions.ts`. The app reads the newest 8 rows by `id` for the hover log.
 
 ## 9. Obsidian Kanban file format (verified)
 
@@ -237,6 +321,7 @@ Lane names `Not Started`, `In-progress`, `Completed` are Leo's; the script reads
 | Claude in Chrome from a `-p` run | **Unverifiable from docs** | `--chrome` is a documented CLI flag; the docs neither confirm nor rule out `-p`. Requires claude.ai login (not an API key or `setup-token`), a direct Anthropic plan, extension v1.0.36+. Launcher thread smoke-tests it; if it fails, the Moodle skill says so instead of working around it. | [chrome](https://code.claude.com/docs/en/chrome) |
 | Obsidian Kanban file format | **Confirmed, with additions** | Leo's description is right; the file also has `kanban-plugin: board` frontmatter, an optional `**Complete**` lane marker, an archive section, and a trailing settings block. See section 9. | [obsidian-kanban source](https://github.com/mgmeyers/obsidian-kanban/blob/main/src/parsers/formats/list.ts) |
 | "Named session in my Code tab" (implied by the spec) | **Wrong** | CLI sessions don't appear in Desktop's Code tab; Desktop keeps its own list. See 4.1. | [desktop](https://code.claude.com/docs/en/desktop#coming-from-the-cli) |
+| Hook `onFailure: "block"`, `matcher: "*"`, deny-rule tool-name globs (`mcp__*__slack_send_message`) | **Confirmed** | `onFailure` needs v2.1.295. Deny globs must match the whole tool name and remove the tool from context. `mcp__` rules with parentheses are skipped in settings files. Checked 2026-10-11 for guard/. | [hooks](https://code.claude.com/docs/en/hooks), [permissions](https://code.claude.com/docs/en/permissions#tool-name-wildcards) |
 | `--permission-mode auto` in `-p` | **Confirmed** | Falls back to Manual if unavailable; launcher checks `system/init`. Pair with `--permission-prompts none` (v2.1.259+). | [permission-modes](https://code.claude.com/docs/en/permission-modes), [headless](https://code.claude.com/docs/en/headless#turn-off-permission-prompts-in-unattended-runs) |
 
 ## 11. Phase 1 build order
