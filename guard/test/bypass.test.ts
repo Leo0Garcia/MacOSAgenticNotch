@@ -42,8 +42,8 @@ const denied: [string, string][] = [
   ["cp ~/.ssh/id_rsa ~/Jarvis/key", "no-harm"],
   ["security find-generic-password -s jarvisx -w", "no-harm"],
   ["mv \"$VAULT/Uni/COMP1234.md\" ~/Jarvis/", "no-harm"],
-  ["touch \"$VAULT/new.md\"", "no-harm"],
-  ["sed -i '' 's/a/b/' \"$VAULT/Uni/COMP1234.md\"", "no-harm"],
+  ["touch \"$VAULT/.obsidian/workspace.json\"", "no-harm"],
+  ["rm \"$VAULT/Uni/COMP1234.md\"", "no-harm"],
   ["mail -s hi mum@example.com < ~/Jarvis/briefing.md", "no-contacting-as-leo"],
   ["open -a 'Coinbase.app'", "no-money"],
   ["ls; (rm -rf ~/Documents)", "no-harm"],
@@ -65,6 +65,9 @@ for (const [cmd, rule] of denied) {
 }
 
 const allowed = [
+  // Leo, 2026-10-11: notes in the master vault may be created and edited
+  "touch \"$VAULT/new.md\"",
+  "sed -i '' 's/a/b/' \"$VAULT/Uni/COMP1234.md\"",
   "ls -la ~/Documents",
   "cat ~/Documents/essay.md | wc -w",
   "echo hello > ~/Jarvis/out.txt",

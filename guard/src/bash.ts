@@ -7,6 +7,7 @@ import {
   canDelete,
   canOverwrite,
   forbiddenVaultWrite,
+  inMasterVault,
   forbiddenWrite,
   isCredentialPath,
   isGuardProtected,
@@ -138,7 +139,7 @@ function checkVaultWrite(prog: string, target: string, st: State, env: ShellEnv)
   const abs = res(target, st, env);
   if (abs && isGuardProtected(abs, env.ctx)) return deny("no-harm", forbiddenWrite(abs, env.ctx)!);
   if (abs && forbiddenVaultWrite(abs, env.ctx)) {
-    return deny("no-harm", `the master vault is read-only except Kanban.md (${prog} on ${abs})`);
+    return deny("no-harm", `Obsidian's own settings and plugins in the master vault are off limits (${prog} on ${abs})`);
   }
   return null;
 }
@@ -301,11 +302,14 @@ function checkSimple(raw: SimpleCommand, st: State, env: ShellEnv): Denial | nul
       if (!dest || sources.length === 0) return null;
       const destAbs = res(dest, st, env);
       if (!destAbs) return deny("no-harm", `${prog} destination "${dest}" can't be checked against the allowlist`);
-      // moving files out of the master vault changes it too
+      // Moving a note out of the master vault removes it from the vault; renaming within it is fine.
       if (prog === "mv") {
         for (const s of sources) {
           const d = checkVaultWrite("mv", s, st, env);
           if (d) return d;
+          const srcAbs = res(s, st, env);
+          if (srcAbs && inMasterVault(srcAbs, ctx) && !inMasterVault(destAbs, ctx))
+            return deny("no-harm", `moving ${srcAbs} out of the master vault would remove it from Leo's notes`);
           const sa = res(s, st, env);
           if (sa && isCredentialPath(sa, ctx)) return deny("no-harm", `${sa} holds credentials`);
         }
@@ -316,7 +320,7 @@ function checkSimple(raw: SimpleCommand, st: State, env: ShellEnv): Denial | nul
           : [destAbs];
       for (const t of targets) {
         if (isGuardProtected(t, ctx)) return deny("no-harm", forbiddenWrite(t, ctx)!);
-        if (forbiddenVaultWrite(t, ctx)) return deny("no-harm", `the master vault is read-only except Kanban.md (${prog} into ${t})`);
+        if (forbiddenVaultWrite(t, ctx)) return deny("no-harm", `Obsidian's own settings and plugins in the master vault are off limits (${prog} into ${t})`);
         if (!noClobber && ctx.exists(t) && !ctx.isDir(t) && !canOverwrite(t, ctx)) {
           return deny("no-harm", `${prog} would overwrite ${t}, which isn't inside ~/Jarvis, ~/Jarvis-Memory or the Jarvis repo`);
         }
@@ -329,7 +333,7 @@ function checkSimple(raw: SimpleCommand, st: State, env: ShellEnv): Denial | nul
       if (/^[^/]*:/.test(dest)) return null; // remote destination
       const destAbs = res(dest, st, env);
       if (!destAbs) return deny("no-harm", `rsync destination "${dest}" can't be checked against the allowlist`);
-      if (forbiddenVaultWrite(destAbs, ctx)) return deny("no-harm", `the master vault is read-only except Kanban.md (rsync into ${destAbs})`);
+      if (forbiddenVaultWrite(destAbs, ctx)) return deny("no-harm", `Obsidian's own settings and plugins in the master vault are off limits (rsync into ${destAbs})`);
       const deletes = rest.some((w) => w.startsWith("--delete") || w === "--remove-source-files");
       if (deletes && !canDelete(destAbs, ctx)) {
         return deny("no-harm", `rsync --delete would remove files in ${destAbs}, outside ~/Jarvis and the Jarvis repo`);

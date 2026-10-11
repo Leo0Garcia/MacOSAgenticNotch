@@ -73,12 +73,16 @@ export function canDelete(abs: string, ctx: GuardContext): boolean {
   return deleteRoots(ctx).some((r) => isStrictlyInside(abs, r) || isStrictlyInside(c, r));
 }
 
-/** Overwriting an existing file is allowed in the delete roots, the memory vault, and Kanban.md. */
+/**
+ * Overwriting an existing file is allowed in the delete roots and in both
+ * vaults (notes are rewritten in place). Leo, 2026-10-11: Jarvis may edit
+ * notes in the master vault too; deleting from either vault stays blocked.
+ */
 export function canOverwrite(abs: string, ctx: GuardContext): boolean {
   if (canDelete(abs, ctx)) return true;
+  if (forbiddenVaultWrite(abs, ctx)) return false;
   const c = canonical(abs, ctx);
-  if (roots(ctx, [ctx.jarvisMemory]).some((r) => isStrictlyInside(abs, r) || isStrictlyInside(c, r))) return true;
-  return isKanbanFile(abs, ctx);
+  return roots(ctx, [ctx.jarvisMemory, ctx.masterVault]).some((r) => isStrictlyInside(abs, r) || isStrictlyInside(c, r));
 }
 
 export function inMasterVault(abs: string, ctx: GuardContext): boolean {
@@ -97,9 +101,13 @@ export function isKanbanFile(abs: string, ctx: GuardContext): boolean {
   return name === "Kanban.md" || /^\.?Kanban\.md\.[A-Za-z0-9_.-]*tmp[A-Za-z0-9_.-]*$/.test(name);
 }
 
-/** A write to the master vault that isn't Kanban.md. */
+/** Obsidian's own settings and plugins (and its trash) inside the master vault: never written. */
 export function forbiddenVaultWrite(abs: string, ctx: GuardContext): boolean {
-  return inMasterVault(abs, ctx) && !isKanbanFile(abs, ctx);
+  if (!inMasterVault(abs, ctx)) return false;
+  const c = canonical(abs, ctx);
+  return roots(ctx, [ctx.masterVault]).some((r) =>
+    [".obsidian", ".trash"].some((d) => isInside(abs, join(r, d)) || isInside(c, join(r, d))),
+  );
 }
 
 /** The guard itself and the settings files that could switch it off. */
@@ -118,7 +126,7 @@ export function isGuardProtected(abs: string, ctx: GuardContext): boolean {
 /** Why a write, overwrite or delete of this path is never allowed, or null. */
 export function forbiddenWrite(abs: string, ctx: GuardContext): string | null {
   if (isGuardProtected(abs, ctx)) return `${abs} is part of the guard or the settings that load it, and only Leo changes those`;
-  if (forbiddenVaultWrite(abs, ctx)) return `the master vault is read-only except Kanban.md (${abs})`;
+  if (forbiddenVaultWrite(abs, ctx)) return `Obsidian's own settings and plugins in the master vault are off limits (${abs})`;
   if (isCredentialPath(abs, ctx)) return `${abs} holds credentials`;
   return null;
 }
