@@ -50,14 +50,16 @@ final class VoicePipeline: VoiceInput {
         }
     }
 
-    func start() throws {
+    func start() throws { try start(preroll: []) }
+
+    func start(preroll: [Float]) throws {
         if case let .failed(message) = model?.speechModel {
             throw NSError(domain: "Jarvis", code: 1, userInfo: [NSLocalizedDescriptionKey: "The speech model didn't load: \(message)"])
         }
         if AudioCapture.permission == .notDetermined, !simulating {
             throw NSError(domain: "Jarvis", code: 2, userInfo: [NSLocalizedDescriptionKey: "Allow microphone access in the macOS dialog, then hold the hotkey again."])
         }
-        if !simulating { try capture.start() }
+        if !simulating { try capture.start(preroll: preroll) }
         previous = []
         loop?.cancel()
         loop = Task { [weak self] in

@@ -17,6 +17,7 @@
 		51E60FA9741A53D4BEB0423B /* JarvisApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F82B5B950AB1E8797CCDB5F3 /* JarvisApp.swift */; };
 		54FAD99F08583AD874037FF0 /* NotchProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8658147A374608398F17A8A8 /* NotchProtocol.swift */; };
 		5606AF204D7D2EE3EC92EB08 /* NotchServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87F560B5D01E95B8EE62180 /* NotchServer.swift */; };
+		5CD26BA5E07CA040E3A9D535 /* WakeWord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96CD752F98C50BE99787ECD7 /* WakeWord.swift */; };
 		5D1F5B56C68B814B4008AD91 /* NotchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AA085A4901CE3801C9A88F1 /* NotchController.swift */; };
 		622074694C067EBF468C556F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF361CB78B96375DB41C47D9 /* AppDelegate.swift */; };
 		7133A0F99F8F1049A215CE02 /* HotKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9B29D46C38BECE52C023D3 /* HotKey.swift */; };
@@ -66,6 +67,7 @@
 		7E8CE23C76139818D8F09644 /* FlowText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowText.swift; sourceTree = "<group>"; };
 		8658147A374608398F17A8A8 /* NotchProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchProtocol.swift; sourceTree = "<group>"; };
 		91164898664277B5D50905E6 /* NotchViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchViews.swift; sourceTree = "<group>"; };
+		96CD752F98C50BE99787ECD7 /* WakeWord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeWord.swift; sourceTree = "<group>"; };
 		A40FCE4078864C56A9189ADB /* Aurora.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Aurora.swift; sourceTree = "<group>"; };
 		AB30A56BEBAB614A9399B2D7 /* Launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Launcher.swift; sourceTree = "<group>"; };
 		D758DDA5F42A49B6CB275DED /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -163,6 +165,7 @@
 				0DF730C9F89F0B4290CAA7FA /* AudioCapture.swift */,
 				53425C9A136675D37536EFA7 /* Transcriber.swift */,
 				EC0B74F072FAB468DCADE6C2 /* VoicePipeline.swift */,
+				96CD752F98C50BE99787ECD7 /* WakeWord.swift */,
 			);
 			path = Voice;
 			sourceTree = "<group>";
@@ -337,6 +340,7 @@
 				A6CEEF5AB6921E7C3A45E1B8 /* Transcriber.swift in Sources */,
 				1460C3FA36476C886A1E044E /* VoicePipeline.swift in Sources */,
 				75F6C7FC09162F02910BA943 /* VoiceSettings.swift in Sources */,
+				5CD26BA5E07CA040E3A9D535 /* WakeWord.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

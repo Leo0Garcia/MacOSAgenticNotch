@@ -6,6 +6,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var voice: VoiceSettings
+    @AppStorage(AppDelegate.wakeEnabledKey) private var wakeEnabled = true
+    @AppStorage(AppDelegate.wakeWordKey) private var wakeWord = "Jarvis"
     let model: AppModel
     let socket: URL
 
@@ -56,6 +58,12 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         Form {
+            Section("Hands-free") {
+                Toggle("Listen for the wake word", isOn: $wakeEnabled)
+                TextField("Wake word", text: $wakeWord, prompt: Text("Jarvis"))
+                Text("Say \u{201C}\(wakeWord.isEmpty ? "Jarvis" : wakeWord), what's the weather\u{201D} in one breath. Jarvis stops listening when you pause. The mic stays on while this is enabled, but speech is only checked on this Mac and then dropped: nothing is recorded or sent.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             LabeledContent("Push-to-talk", value: "Hold ⌥ Space")
             LabeledContent("Hover", value: "Rest the pointer on the notch for recent actions")
             LabeledContent("Speech recognition", value: speechStatus)
