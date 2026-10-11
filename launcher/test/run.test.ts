@@ -7,7 +7,7 @@ import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, rmSync
 import { join } from "node:path";
 import { finalize } from "../src/finalize";
 import { type LauncherEvent, run } from "../src/run";
-import { GUARD_BANK, runs } from "./fixtures";
+import { GUARD_BANK, init, jsonl, result, runs, structured, toolResult, toolUse } from "./fixtures";
 import { makeWorld } from "./helpers";
 
 const w = makeWorld();
@@ -248,4 +248,18 @@ test("finalize refuses paths that aren't a session's own files", async () => {
   const f = { keep: false, request: "", summary: "" };
   await expect(finalize(w.config(), { ...f, sessionId: "../../etc", runLog: join(jarvis, "runs", "x.jsonl") })).rejects.toThrow("not a session id");
   await expect(finalize(w.config(), { ...f, sessionId: "11111111-1111-4111-8111-111111111111", runLog: join(w.home, "notes.jsonl") })).rejects.toThrow("not a run file");
+});
+
+test("a run that ends without a spoken answer speaks its summary instead of going silent", async () => {
+  const silent = jsonl([
+    init(),
+    ...toolUse("toolu_b", "Bash", { command: "curl wttr.in", description: "Fetch weather" }),
+    toolResult("toolu_b", "15C overcast"),
+    structured(false, "Checked the weather: 15 degrees and overcast"),
+    result({ structured: { keep: false, summary: "Checked the weather: 15 degrees and overcast" } }),
+  ]);
+  const { out, said, events } = await go("what's the weather", silent);
+  expect(said).toEqual(["Checked the weather: 15 degrees and overcast"]);
+  expect(out.reply).toBe("Checked the weather: 15 degrees and overcast");
+  expect(events.filter((e) => e.event === "status")).toEqual([{ event: "status", text: "Running a command", detail: "Fetch weather" }]);
 });

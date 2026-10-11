@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { initProblem, RunMonitor } from "../src/stream";
-import { GUARD_BANK, runs } from "./fixtures";
+import { GUARD_BANK, init, jsonl, result, runs, structured, text, toolResult, toolUse } from "./fixtures";
 
 function play(fixture: string) {
   const said: string[] = [];
@@ -67,4 +67,13 @@ test("init is refused unless auto mode, the bridge and every MCP entry loaded", 
   expect(initProblem({ ...ok, bridgeStatus: "failed" })).toContain("bridge didn't connect (status: failed)");
   expect(initProblem({ ...ok, bridgeStatus: undefined })).toContain("status: missing");
   expect(initProblem({ ...ok, mcpServerErrors: [{ name: "jarvis", type: "invalid_config" }] })).toContain("skipped");
+});
+
+test("a run that ends with only structured output is flagged as silent", () => {
+  const silent = jsonl([init(), ...toolUse("toolu_b", "Bash", { command: "curl wttr.in" }), toolResult("toolu_b", "15C"), structured(false, "Checked the weather: 15°C"), result({ structured: { keep: false, summary: "Checked the weather: 15°C" } })]);
+  expect(play(silent).res.endedSilently).toBe(true);
+  // A progress line before the last tool doesn't count as the answer.
+  const progress = jsonl([init(), text(["Still researching."]), ...toolUse("toolu_w", "Write", { file_path: "/x.md" }), toolResult("toolu_w", "ok"), structured(true, "Saved the notes"), result({ structured: { keep: true, summary: "Saved the notes" } })]);
+  expect(play(progress).res.endedSilently).toBe(true);
+  expect(play(runs.weather()).res.endedSilently).toBe(false);
 });

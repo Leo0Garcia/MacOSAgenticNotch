@@ -21,6 +21,8 @@ export interface RunResult {
   summary: string;
   reply: string;
   denials: Denial[];
+  /** The run ended without a spoken answer after its last tool call (e.g. only a progress line). */
+  endedSilently: boolean;
   /** Why keep was forced to true, or why the run failed. */
   problem?: string;
   isError: boolean;
@@ -60,6 +62,8 @@ export class RunMonitor {
   private splitter = new SentenceSplitter();
   private replyParts: string[] = [];
   private sawTextDelta = false;
+  /** Whether Claude said anything after its last real tool call. */
+  private spokeSinceTool = false;
   private denials = new Map<string, Denial>();
   private result?: Record<string, any>;
   private toolNames = new Map<string, string>();
@@ -92,6 +96,7 @@ export class RunMonitor {
         for (const b of ev.message?.content ?? []) {
           if (b?.type === "tool_use") {
             this.toolNames.set(b.id, b.name);
+            if (b.name !== "StructuredOutput") this.spokeSinceTool = false;
             this.hooks.onTool?.(b.name, b.input ?? {});
           }
           // Without partial messages the text only arrives here.
@@ -138,6 +143,7 @@ export class RunMonitor {
 
   private addText(text: string, flush: boolean): void {
     this.replyParts.push(text);
+    if (text.trim()) this.spokeSinceTool = true;
     for (const s of this.splitter.push(text)) this.hooks.onSentence?.(s);
     if (flush) for (const s of this.splitter.flush()) this.hooks.onSentence?.(s);
   }
@@ -162,7 +168,7 @@ export class RunMonitor {
     const reply = this.replyParts.join("").replace(/\n{3,}/g, "\n\n").trim();
     const denials = [...this.denials.values()];
     const r = this.result;
-    const base = { sessionId: r?.session_id ?? this.init?.sessionId, reply, denials, costUsd: r?.total_cost_usd };
+    const base = { sessionId: r?.session_id ?? this.init?.sessionId, reply, denials, costUsd: r?.total_cost_usd, endedSilently: !this.spokeSinceTool };
     if (!r) {
       return { ...base, keep: true, summary: "", isError: true, problem: `the run ended without a result (exit ${exitCode})` };
     }

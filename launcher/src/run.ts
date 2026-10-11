@@ -184,11 +184,14 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   const keep = plan.resumed ? true : res.keep;
   if (res.problem) log(c, "run result problem", { sessionId, problem: res.problem, exitCode, stderr: stderr.slice(-2000) });
 
-  if (!res.reply) {
-    const guard = res.denials.find((d) => d.reason);
-    if (guard?.reason) speak(guard.reason.replace(/^guard:[a-z-]+:\s*/, "I can't do that: "));
-    else if (res.isError) speak("Something went wrong with that run. It's in the log.");
-  }
+  const guard = res.denials.find((d) => d.reason);
+  if (!res.reply && guard?.reason) speak(guard.reason.replace(/^guard:[a-z-]+:\s*/, "I can't do that: "));
+  else if (res.endedSilently && res.summary && !res.isError) {
+    // Claude finished with only the structured output (or just a progress
+    // line earlier): say the summary so Leo never gets silence.
+    speak(res.summary);
+    res.reply = res.reply ? `${res.reply}\n${res.summary}` : res.summary;
+  } else if (!res.reply && res.isError) speak("Something went wrong with that run. It's in the log.");
 
   const status = res.isError && !res.reply ? "error" : res.denials.length ? "needs-you" : "done";
   const endedAt = now();
