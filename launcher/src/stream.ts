@@ -31,6 +31,8 @@ export interface MonitorHooks {
   onSentence?: (s: string) => void;
   onInit?: (init: InitInfo) => void;
   onDenial?: (d: Denial) => void;
+  /** A tool call in the main conversation (not a subagent's). */
+  onTool?: (name: string, input: Record<string, unknown>) => void;
 }
 
 export interface InitInfo {
@@ -88,7 +90,10 @@ export class RunMonitor {
       case "assistant":
         if (ev.parent_tool_use_id) return;
         for (const b of ev.message?.content ?? []) {
-          if (b?.type === "tool_use") this.toolNames.set(b.id, b.name);
+          if (b?.type === "tool_use") {
+            this.toolNames.set(b.id, b.name);
+            this.hooks.onTool?.(b.name, b.input ?? {});
+          }
           // Without partial messages the text only arrives here.
           if (b?.type === "text" && !this.sawTextDelta) this.addText(b.text + "\n", true);
         }

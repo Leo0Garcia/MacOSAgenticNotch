@@ -72,7 +72,7 @@ Rules:
 - Needs-you always wins: it interrupts any state and stays until resolved. A macOS notification is posted at the same time.
 - A second request while one is running: hotkey down still opens Listening; the running job drops to the compact pill when Listening ends.
 - Phase 1 speech is `say` in the bridge, which reports no word timing, so the Done caption is paced by an estimate (about 48 ms per character at the default rate). Exact word sync needs in-app speech (`AVSpeechSynthesizer` delegate), which belongs with phase 2 TTS.
-- The hotkey label "⌥ Space" is a placeholder; the app thread picks the real one.
+- The hotkey is ⌥ Space (picked by the app thread; DESIGN section 7).
 
 ## 3. Motion
 
