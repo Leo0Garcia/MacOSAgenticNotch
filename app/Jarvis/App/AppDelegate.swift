@@ -47,6 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.snooze = { text, minutes in launcher.snooze(text: text, minutes: minutes) }
         model.postNotification = { [weak self] title, body in self?.notify(title: title, body: body) }
         model.announce = { [weak self] text in self?.notifier.announce(text) }
+        let actions = paths.home.appendingPathComponent("actions.sqlite")
+        model.loadRecent = { ActionsStore.newest(8, file: actions) }
 
         let voice = VoicePipeline(capture: capture, transcriber: WhisperTranscriber(downloadBase: paths.models), model: model)
         self.voice = voice

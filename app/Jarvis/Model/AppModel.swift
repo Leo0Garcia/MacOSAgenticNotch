@@ -8,7 +8,7 @@ import Observation
 
 /// Rim colours, character mood and labels hang off this.
 enum StateKind: Equatable, Sendable {
-    case idle, listening, working, done, needs, reminder, notice
+    case idle, listening, working, done, needs, reminder, notice, log
 }
 
 enum NotchSize: Equatable, Sendable {
@@ -54,6 +54,8 @@ enum Panel: Equatable, Sendable {
     case blocked(BlockedInfo)
     case reminder(ReminderInfo)
     case notice(title: String, body: String)
+    /// Hover log: the pointer rests on the notch while nothing else is shown.
+    case recent([ActionItem])
 
     var kind: StateKind {
         switch self {
@@ -64,6 +66,7 @@ enum Panel: Equatable, Sendable {
         case .question, .access, .blocked: .needs
         case .reminder: .reminder
         case .notice: .notice
+        case .recent: .log
         }
     }
 
@@ -172,6 +175,7 @@ final class AppModel {
     @ObservationIgnored var sendToClient: ((NotchServer.ClientID, NotchProtocol.AppMessage) -> Void)?
     @ObservationIgnored var postNotification: ((_ title: String, _ body: String) -> Void)?
     @ObservationIgnored var announce: ((String) -> Void)?
+    @ObservationIgnored var loadRecent: (() -> [ActionItem])?
 
     @ObservationIgnored private var timers: [String: Scheduled] = [:]
     @ObservationIgnored private var speakingIDs: Set<String> = []
@@ -702,6 +706,32 @@ final class AppModel {
 
     // MARK: - Hover
 
+    /// The pointer is over the hardware notch while Jarvis is hidden (the
+    /// notch window ignores the mouse then, so the controller watches globally).
+    func notchHover(_ inside: Bool) {
+        guard panel == .idle, size == .hidden else { return }
+        if inside {
+            guard timers["hoverIdle"] == nil else { return }
+            schedule("hoverIdle", Timing.hoverIn) { [weak self] in
+                guard let self, self.panel == .idle else { return }
+                self.show(.recent(self.loadRecent?() ?? []), size: .expanded)
+                // If the pointer never reaches the panel, don't leave it open.
+                self.schedule("hover", 1.5) { [weak self] in
+                    guard let self, case .recent = self.panel, !self.hovering else { return }
+                    self.finishAndHide()
+                }
+            }
+        } else {
+            cancelTimer("hoverIdle")
+        }
+    }
+
+    func openRecent(_ item: ActionItem) {
+        guard item.saved, let id = item.sessionId else { return }
+        launcher?.open(sessionId: id)
+        finishAndHide()
+    }
+
     func hoverChanged(_ isHovering: Bool) {
         hovering = isHovering
         cancelTimer("hover")
@@ -722,6 +752,8 @@ final class AppModel {
                     self.evaluateEnd()
                 case .reminder:
                     self.setSize(.compact)
+                case .recent:
+                    self.finishAndHide()
                 default: break
                 }
             }
@@ -768,6 +800,7 @@ final class AppModel {
             case .done: self.evaluateEnd()
             case .working, .reminder: self.setSize(.compact)
             case .notice: self.resolveNeedsYou()
+            case .recent: self.finishAndHide()
             default: break
             }
         }
@@ -784,7 +817,7 @@ final class AppModel {
         case .notice: 1
         case .listening, .reminder: 2
         case .working, .question, .access: 3
-        case .done, .blocked: 4
+        case .done, .blocked, .recent: 4
         }
     }
 

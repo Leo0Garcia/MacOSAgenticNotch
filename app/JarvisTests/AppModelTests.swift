@@ -275,3 +275,56 @@ import Testing
         #expect(m.size == .hidden)
     }
 }
+
+@MainActor
+@Suite struct HoverLogTests {
+    @Test func restingOnTheNotchOpensRecentAndLeavingHidesIt() {
+        let (m, s, l, _) = makeModel()
+        let item = ActionItem(id: 1, date: Date(), sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", kind: "run", summary: "Research", saved: true)
+        m.loadRecent = { [item] }
+        m.notchHover(true)
+        s.advance(0.29)
+        #expect(m.size == .hidden)
+        s.advance(0.02)
+        #expect(m.panel == .recent([item]))
+        #expect(m.size == .expanded)
+        m.hoverChanged(true)
+        s.advance(10)
+        #expect(m.size == .expanded) // stays while the pointer is on it
+        m.hoverChanged(false)
+        s.advance(0.41)
+        #expect(m.size == .hidden)
+        // Clicking a saved row opens it.
+        m.notchHover(true); m.notchHover(false); m.notchHover(true)
+        s.advance(0.31)
+        m.openRecent(item)
+        #expect(l.opened == ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"])
+    }
+
+    @Test func passingOverTheNotchQuicklyDoesNothing() {
+        let (m, s, _, _) = makeModel()
+        m.notchHover(true)
+        s.advance(0.1)
+        m.notchHover(false)
+        s.advance(1)
+        #expect(m.size == .hidden)
+    }
+
+    @Test func recentClosesIfThePointerNeverReachesIt() {
+        let (m, s, _, _) = makeModel()
+        m.notchHover(true)
+        s.advance(0.31)
+        #expect(m.size == .expanded)
+        s.advance(1.6)
+        #expect(m.size == .hidden)
+    }
+
+    @Test func hoverDoesNothingWhileSomethingIsShowing() {
+        let (m, s, _, _) = makeModel()
+        m.submit("x")
+        s.advance(3.1)
+        m.notchHover(true)
+        s.advance(1)
+        #expect(m.panel == .working)
+    }
+}

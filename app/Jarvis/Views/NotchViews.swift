@@ -97,6 +97,9 @@ struct ExpandedView: View {
                     .font(.system(size: 12, weight: .medium).monospacedDigit())
                     .foregroundStyle(Theme.reminder)
             }
+        case let .recent(items):
+            let today = items.filter { Calendar.current.isDateInToday($0.date) }.count
+            Text("\(today) today").font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.6))
         default: EmptyView()
         }
     }
@@ -125,6 +128,7 @@ struct ExpandedView: View {
         case let .question(a): "q-\(a.id)"
         case let .reminder(r): "r-\(r.firedAt.timeIntervalSince1970)"
         case let .notice(t, _): "n-\(t)"
+        case .recent: "recent"
         default: "\(panel.kind)"
         }
     }
@@ -139,6 +143,7 @@ struct ExpandedView: View {
         case let .blocked(b): blocked(b)
         case let .reminder(r): reminder(r)
         case let .notice(title, body): notice(title, body)
+        case let .recent(items): recent(items)
         }
     }
 
@@ -333,6 +338,25 @@ struct ExpandedView: View {
         }
     }
 
+    private func recent(_ items: [ActionItem]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("WHAT JARVIS DID").font(.system(size: 11.5, weight: .medium)).tracking(0.46)
+                Spacer()
+                Text("Hold \(env.hotkeyLabel) to talk").font(.system(size: 11.5))
+            }
+            .foregroundStyle(.white.opacity(0.4))
+            .padding(.bottom, 6)
+            if items.isEmpty {
+                Text("Nothing yet. Hold \(env.hotkeyLabel) and ask for something.")
+                    .font(Theme.sub).foregroundStyle(.white.opacity(secondary))
+            }
+            ForEach(items) { item in
+                RecentRow(item: item) { model.openRecent(item) }
+            }
+        }
+    }
+
     private func notice(_ title: String, _ body: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title).font(Theme.body).foregroundStyle(.white)
@@ -342,6 +366,49 @@ struct ExpandedView: View {
 }
 
 // MARK: - Pieces
+
+/// One hover-log row: time, summary, badge (NOTCH-DESIGN Large layout, 26 pt).
+struct RecentRow: View {
+    var item: ActionItem
+    var open: () -> Void
+    @State private var hover = false
+
+    private var badge: (String, Color, Color)? {
+        if item.saved { return ("Saved ↗", Theme.savedText, Color(hex: 0x5AC8FA, opacity: 0.14)) }
+        switch item.kind {
+        case "guard": return ("Guard", Theme.attentionText, Theme.attention.opacity(0.14))
+        case "reminder": return ("Reminder", Theme.reminder, Theme.reminder.opacity(0.12))
+        default: return nil
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(item.date, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute())
+                .font(.system(size: 12).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.4))
+                .frame(width: 44, alignment: .leading)
+            Text(item.summary)
+                .font(.system(size: 13.5))
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let b = badge {
+                Text(b.0).font(.system(size: 11)).foregroundStyle(b.1)
+                    .padding(.horizontal, 7).frame(height: 18)
+                    .background(Capsule().fill(b.2))
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 26)
+        .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(item.saved && hover ? 0.08 : 0)))
+        .padding(.horizontal, -8)
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+        .onTapGesture { if item.saved { open() } }
+    }
+}
 
 struct StepRow: View {
     var step: RunStep

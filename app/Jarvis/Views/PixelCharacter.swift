@@ -14,7 +14,7 @@ enum Mood: Equatable, Sendable {
         case .done: self = .happy
         case .needs: self = .wave
         case .reminder: self = .look
-        case .idle, .notice: self = .read
+        case .idle, .notice, .log: self = .read
         }
     }
 }
@@ -119,7 +119,7 @@ struct PixelCharacter: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        if mood == .listen {
+        if mood == .listen || OffscreenRender.active {
             // Listening hops on loud syllables, so it follows the live mic level.
             liveCanvas
         } else {

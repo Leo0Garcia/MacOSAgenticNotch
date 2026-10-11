@@ -16,12 +16,12 @@ bun ${CLAUDE_SKILL_DIR}/apple.ts --day today|tomorrow|monday|YYYY-MM-DD [--days 
 
 - Times are Europe/London. `--days 7` for "this week".
 - `ics.ts` reads the timetable link from Keychain (`jarvis/uni-ical`) itself and caches it for an hour. Never read, print or repeat that link; it is a secret.
-- `apple.ts` uses `osascript` against Calendar and never creates, changes or deletes events. If Leo asks to add or move an event, say you can only read his calendar and offer a reminder instead (reminders skill).
+- `apple.ts` reads Calendar through EventKit (a small helper it builds once into `~/Jarvis/bin`), falling back to `osascript`; it never creates, changes or deletes events. It answers in under a second; if it reports Calendar took too long, say so rather than retrying. If Leo asks to add or move an event, say you can only read his calendar and offer a reminder instead (reminders skill).
 
 Exit codes:
 
 - `ics.ts` exit `3`: the Keychain item is missing. Run `bun "$JARVIS_REPO/skills/needs-access/ask.ts" key uni-ical` and say what it prints.
-- `apple.ts` exit `4`: macOS hasn't allowed Calendar automation. Run `bun "$JARVIS_REPO/skills/needs-access/ask.ts" permission automation:Calendar` and say what it prints. Don't try another route to the calendar.
+- `apple.ts` exit `4`: macOS hasn't allowed Jarvis to read Calendar. Run `bun "$JARVIS_REPO/skills/needs-access/ask.ts" permission calendars` and say what it prints. Don't try another route to the calendar.
 - Exit `1`: say the printed message. If the timetable output starts with the stale-cache note, mention that it may be out of date.
 
 Answer for speech: the next relevant thing first ("Your next lecture is COMP2211 at 11 in 32/1015"), then the rest briefly. Free/busy questions: say the gaps. End with keep=false.

@@ -56,7 +56,7 @@ enum Theme {
         case .done: ([Color(hex: 0x30D158), Color(hex: 0x63E6BE), Color(hex: 0x5AC8FA)], 5, 0.8, 0.3)
         case .needs: ([Color(hex: 0xFF9F0A), Color(hex: 0xFF6B3D), Color(hex: 0xFFD60A)], 2.4, 0.95, 0.45)
         case .reminder: ([Color(hex: 0xFFD60A), Color(hex: 0xFF9F0A), Color(hex: 0xFFF3B0)], 3, 0.9, 0.3)
-        case .notice: ([Color(hex: 0x9AA4B2), Color(hex: 0x4B5563), Color(hex: 0xE5E7EB)], 8, 0.4, 0)
+        case .notice, .log: ([Color(hex: 0x9AA4B2), Color(hex: 0x4B5563), Color(hex: 0xE5E7EB)], 8, 0.4, 0)
         }
     }
 
@@ -69,6 +69,7 @@ enum Theme {
         case .needs: "Needs you"
         case .reminder: "Reminder"
         case .notice: "Jarvis"
+        case .log: "Recent"
         }
     }
 }
