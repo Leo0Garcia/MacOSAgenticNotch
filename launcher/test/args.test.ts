@@ -10,7 +10,7 @@ test("a new run uses the DESIGN 4.2 flags with a launcher-chosen session id", ()
     "-p", "weather?",
     "--session-id", "11111111-1111-4111-8111-111111111111",
     "--settings", "/repo/guard/settings.json",
-    "--mcp-config", "/repo/launcher/jarvis.json",
+    "--mcp-config", "/Users/leo/Jarvis/runs/11111111-1111-4111-8111-111111111111.mcp.json",
     "--append-system-prompt-file", "/Users/leo/Jarvis/state/system-prompt.md",
     "--permission-mode", "auto",
     "--permission-prompts", "none",

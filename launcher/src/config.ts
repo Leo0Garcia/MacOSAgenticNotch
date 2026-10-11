@@ -16,11 +16,8 @@ export interface Config {
   claudeConfigDir: string; // where Claude Code keeps projects/<dir>/<session>.jsonl
   bunBin: string;
   model?: string;
-  say: string | null; // null: don't speak, the app does it
   launchctl: string;
-  osascript: string;
   launchAgentsDir: string;
-  timeZone: string;
   env: Record<string, string | undefined>;
 }
 
@@ -31,15 +28,12 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
     repo,
     home: env.JARVIS_HOME ?? join(home, "Jarvis"),
     memory: env.JARVIS_MEMORY ?? join(home, "Jarvis-Memory"),
-    claudeBin: env.JARVIS_CLAUDE ?? "claude",
+    claudeBin: env.JARVIS_CLAUDE_BIN ?? "claude",
     claudeConfigDir: env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"),
     bunBin: process.execPath,
     model: env.JARVIS_MODEL || undefined,
-    say: env.JARVIS_SAY !== undefined ? env.JARVIS_SAY || null : process.platform === "darwin" ? "say" : null,
     launchctl: env.JARVIS_LAUNCHCTL ?? "launchctl",
-    osascript: env.JARVIS_OSASCRIPT ?? "osascript",
     launchAgentsDir: env.JARVIS_LAUNCH_AGENTS ?? join(home, "Library", "LaunchAgents"),
-    timeZone: env.JARVIS_TZ ?? "Europe/London",
     env,
   };
 }
@@ -52,23 +46,23 @@ export const paths = (c: Config) => ({
   runLog: (sessionId: string) => join(c.home, "runs", `${sessionId}.jsonl`),
   state: join(c.home, "state"),
   lastRun: join(c.home, "state", "last-run.json"),
+  /** Per-run MCP config with the session id as a literal argument (DESIGN 8.1). */
+  mcpConfig: (sessionId: string) => join(c.home, "runs", `${sessionId}.mcp.json`),
   versionCache: join(c.home, "state", "claude-version.json"),
-  librarianLock: join(c.home, "state", "librarian.lock"),
   logs: join(c.home, "logs"),
   launcherLog: join(c.home, "logs", "launcher.log"),
-  db: join(c.home, "actions.sqlite"),
   skillsDir: join(c.home, ".claude", "skills"),
   reminders: join(c.home, "reminders"),
-  remindersFired: join(c.home, "reminders", "fired.jsonl"),
   guardSettings: join(c.repo, "guard", "settings.json"),
-  mcpConfig: join(c.repo, "launcher", "jarvis.json"),
+  bridgeServer: join(c.repo, "bridge", "src", "server.ts"),
+  bridgeCli: join(c.repo, "bridge", "src", "cli.ts"),
+  librarianCli: join(c.repo, "librarian", "src", "cli.ts"),
+  remindersCli: join(c.repo, "launcher", "src", "reminders.ts"),
   repoSkills: join(c.repo, "skills"),
-  librarian: join(c.repo, "librarian", "run.sh"),
-  cli: join(c.repo, "launcher", "src", "cli.ts"),
 });
 
-// Environment for anything the launcher starts: guard needs JARVIS_REPO and
-// bun on PATH, the bridge needs JARVIS_HOME.
+// Environment for anything the launcher starts: guard and skills need
+// JARVIS_REPO and bun on PATH, the bridge and librarian need JARVIS_HOME.
 export function childEnv(c: Config, extra: Record<string, string> = {}): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(c.env)) if (v !== undefined) out[k] = v;

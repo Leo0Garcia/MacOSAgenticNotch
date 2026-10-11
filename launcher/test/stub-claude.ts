@@ -18,7 +18,7 @@ const at = (f: string) => (argv.includes(f) ? argv[argv.indexOf(f) + 1] : undefi
 const sid = at("--session-id") ?? at("--resume") ?? "none";
 const env = process.env;
 if (env.STUB_CALLS)
-  appendFileSync(env.STUB_CALLS, JSON.stringify({ argv, cwd: process.cwd(), env: { JARVIS_REPO: env.JARVIS_REPO, JARVIS_HOME: env.JARVIS_HOME, JARVIS_RUN_SESSION_ID: env.JARVIS_RUN_SESSION_ID, PATH: env.PATH } }) + "\n");
+  appendFileSync(env.STUB_CALLS, JSON.stringify({ argv, cwd: process.cwd(), mcp: at("--mcp-config") ? JSON.parse(readFileSync(at("--mcp-config")!, "utf8")) : null, env: { JARVIS_REPO: env.JARVIS_REPO, JARVIS_HOME: env.JARVIS_HOME, JARVIS_RUN_SESSION_ID: env.JARVIS_RUN_SESSION_ID, PATH: env.PATH } }) + "\n");
 
 // What Claude Code would leave on disk for this session.
 const project = join(env.CLAUDE_CONFIG_DIR!, "projects", "-Users-leogarcia-Jarvis");

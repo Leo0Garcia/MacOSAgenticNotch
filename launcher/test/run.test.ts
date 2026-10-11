@@ -1,8 +1,9 @@
 // End to end against the stub claude binary: no model is ever called.
 
 import { Database } from "bun:sqlite";
+import type { FinalizeInput } from "../src/finalize";
 import { afterAll, beforeEach, expect, test } from "bun:test";
-import { chmodSync, existsSync, lstatSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { finalize } from "../src/finalize";
 import { type LauncherEvent, run } from "../src/run";
@@ -16,15 +17,21 @@ const projects = join(w.home, ".claude", "projects", "-Users-leogarcia-Jarvis");
 
 beforeEach(() => {
   rmSync(join(jarvis, "state", "last-run.json"), { force: true });
-  rmSync(join(w.root, "said.txt"), { force: true });
+  w.said.length = 0;
 });
 
 async function go(request: string, fixture: string, extra: Record<string, string> = {}, now?: () => number) {
   w.setFixture(fixture);
   const events: LauncherEvent[] = [];
-  const finals: [string, boolean, string][] = [];
-  const out = await run(w.config(extra), request, { emit: (e) => events.push(e), finalize: (...a) => finals.push(a), now });
-  return { out, events, finals, said: w.read("said.txt").trim().split("\n").filter(Boolean) };
+  const finals: FinalizeInput[] = [];
+  w.said.length = 0;
+  const out = await run(w.config(extra), request, {
+    emit: (e) => events.push(e),
+    finalize: async (f) => void finals.push(f),
+    speechRunner: w.speechRunner,
+    now,
+  });
+  return { out, events, finals, said: [...w.said] };
 }
 
 test("weather: runs claude with the design flags from ~/Jarvis, speaks, and finalizes as ephemeral", async () => {
@@ -42,7 +49,14 @@ test("weather: runs claude with the design flags from ~/Jarvis, speaks, and fina
   expect(said).toEqual(["It's 14 degrees and cloudy in Southampton.", "Light rain is likely after 6pm."]);
   const kinds = events.map((e) => (e.event === "state" ? `state:${e.state}` : e.event));
   expect(kinds).toEqual(["state:working", "speak", "speak", "done", "state:done"]);
-  expect(finals).toEqual([[out.sessionId!, false, join(jarvis, "runs", `${out.sessionId}.jsonl`)]]);
+  expect(finals).toEqual([
+    { sessionId: out.sessionId!, keep: false, runLog: join(jarvis, "runs", `${out.sessionId}.jsonl`), request: "what's the weather in Southampton", summary: "Told Leo the Southampton weather" },
+  ]);
+  // The bridge entry for this run is written with the literal id, then removed.
+  const mcpPath = call.argv[call.argv.indexOf("--mcp-config") + 1];
+  expect(mcpPath).toBe(join(jarvis, "runs", `${out.sessionId}.mcp.json`));
+  expect(call.mcp).toEqual({ mcpServers: { jarvis: { command: process.execPath, args: [join(w.repo, "bridge", "src", "server.ts"), "--session-id", out.sessionId], env: { JARVIS_REPO: w.repo, JARVIS_HOME: jarvis } } } });
+  expect(existsSync(mcpPath)).toBe(false);
   // The raw stream is on disk for the librarian.
   expect(readFileSync(join(jarvis, "runs", `${out.sessionId}.jsonl`), "utf8")).toContain('"structured_output"');
   // Instructions plus a briefing placeholder, since the librarian hasn't run.
@@ -70,25 +84,25 @@ test("skills are symlinked into ~/Jarvis/.claude/skills; stale links into the re
   expect(existsSync(link)).toBe(false);
 });
 
-test("a saved run is named and kept; the runs table shows it", async () => {
+const actions = (sessionId: string) => {
+  const db = new Database(join(jarvis, "actions.sqlite"));
+  const rows = db.query("SELECT kind, summary, detail, saved FROM actions WHERE session_id = ? ORDER BY id").all(sessionId);
+  db.close();
+  return rows;
+};
+
+test("a saved run is named, kept, and logged as a saved run row in the bridge's action log", async () => {
   const { out, finals } = await go("start a research session on solid-state batteries", runs.research());
   expect(out.keep).toBe(true);
   const argv = w.lastCall().argv;
   expect(argv[argv.indexOf("--name") + 1]).toBe("Jarvis: Research: solid-state batteries");
-  expect(finals[0][1]).toBe(true);
-  const db = new Database(join(jarvis, "actions.sqlite"));
-  const row = db.query("SELECT * FROM runs WHERE session_id = ?").get(out.sessionId!) as any;
-  expect(row).toMatchObject({ status: "done", keep: 1, summary: "Researched solid-state batteries", name: "Jarvis: Research: solid-state batteries" });
-  expect(row.request).toBe("start a research session on solid-state batteries");
-  db.close();
+  expect(finals[0].keep).toBe(true);
+  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Researched solid-state batteries", detail: null, saved: 1 }]);
 });
 
-test("an ephemeral run's row keeps the summary but not the request", async () => {
-  const { out } = await go("what's my bank balance pin", runs.weather());
-  const db = new Database(join(jarvis, "actions.sqlite"));
-  const row = db.query("SELECT request, summary, keep FROM runs WHERE session_id = ?").get(out.sessionId!) as any;
-  expect(row).toEqual({ request: "", summary: "Told Leo the Southampton weather", keep: 0 });
-  db.close();
+test("an ephemeral run's row isn't saved", async () => {
+  const { out } = await go("what's the weather", runs.weather());
+  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Told Leo the Southampton weather", detail: null, saved: 0 }]);
 });
 
 test("'and also' within 2 minutes of a saved run resumes it and can't discard it", async () => {
@@ -100,7 +114,7 @@ test("'and also' within 2 minutes of a saved run resumes it and can't discard it
   expect(argv.slice(0, 4)).toEqual(["-p", "and also look at costs in the UK", "--resume", first.out.sessionId]);
   expect(argv).not.toContain("--session-id");
   expect(second.out.keep).toBe(true); // fixture said false
-  expect(second.finals[0][2]).toMatch(new RegExp(`${first.out.sessionId}\\.followup-\\d+\\.jsonl$`));
+  expect(second.finals[0].runLog).toMatch(new RegExp(`${first.out.sessionId}\\.followup-\\d+\\.jsonl$`));
 });
 
 test("'and also' after an ephemeral run starts a new run with the last exchange as context", async () => {
@@ -144,7 +158,7 @@ test("bridge not connected: fails loudly", async () => {
 test("no structured_output: kept, so nothing is lost", async () => {
   const { out, finals } = await go("hi", runs.noStructured());
   expect(out.keep).toBe(true);
-  expect(finals[0][1]).toBe(true);
+  expect(finals[0].keep).toBe(true);
   expect(readFileSync(join(jarvis, "logs", "launcher.log"), "utf8")).toContain("no valid structured_output");
 });
 
@@ -153,6 +167,7 @@ test("guard denial: reported as an event and the run needs Leo", async () => {
   expect(events).toContainEqual({ event: "denied", tool: "mcp__claude-in-chrome__navigate", rule: "no-money", reason: GUARD_BANK });
   expect(events.at(-1)).toMatchObject({ event: "state", state: "needs-you" });
   expect(out.denials![0].rule).toBe("no-money");
+  expect(actions(out.sessionId!)).toContainEqual({ kind: "guard", summary: GUARD_BANK, detail: "mcp__claude-in-chrome__navigate", saved: 0 });
 });
 
 test("Chrome not connected is a warning, not a failure", async () => {
@@ -187,21 +202,25 @@ test("empty request", async () => {
 
 // ---- finalize -----------------------------------------------------------------
 
-function librarian(script: string) {
-  const p = join(w.repo, "librarian", "run.sh");
-  writeFileSync(p, `#!/bin/sh\n${script}\n`);
-  chmodSync(p, 0o755);
-  return p;
+/** A stand-in librarian CLI that records how it was called and what existed then. */
+function librarian(body: string) {
+  writeFileSync(join(w.repo, "librarian", "src", "cli.ts"), body);
 }
 
-test("finalize: the librarian reads the run before an ephemeral run is deleted", async () => {
+test("finalize: the librarian enqueues the run before an ephemeral run is deleted", async () => {
   const { out } = await go("what's the weather", runs.weather());
   const sid = out.sessionId!;
   const runLog = join(jarvis, "runs", `${sid}.jsonl`);
-  const seen = join(w.root, "librarian-saw.txt");
-  librarian(`echo "$@" > "${seen}"; test -f "${runLog}" && test -f "${join(projects, sid + ".jsonl")}" && echo both-present >> "${seen}"; echo "skip=$CLAUDE_CODE_SKIP_PROMPT_HISTORY" >> "${seen}"`);
-  await finalize(w.config(), sid, false, runLog);
-  expect(readFileSync(seen, "utf8")).toBe(`--run-log ${runLog} --session-id ${sid} --keep false\nboth-present\nskip=1\n`);
+  const seen = join(w.root, "librarian-saw.json");
+  librarian(`import { existsSync, writeFileSync } from "node:fs";
+writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ argv: process.argv.slice(2), log: existsSync(${JSON.stringify(runLog)}), transcript: existsSync(${JSON.stringify(join(projects, sid + ".jsonl"))}), home: process.env.JARVIS_HOME }));`);
+  await finalize(w.config(), { sessionId: sid, keep: false, runLog, request: "what's the weather", summary: "Told Leo" });
+  expect(JSON.parse(readFileSync(seen, "utf8"))).toEqual({
+    argv: ["enqueue", "--stream-log", runLog, "--request", "what's the weather", "--session-id", sid, "--keep", "false", "--summary", "Told Leo"],
+    log: true,
+    transcript: true,
+    home: jarvis,
+  });
   expect(existsSync(runLog)).toBe(false);
   expect(existsSync(join(projects, `${sid}.jsonl`))).toBe(false);
   expect(existsSync(join(projects, sid))).toBe(false);
@@ -210,21 +229,22 @@ test("finalize: the librarian reads the run before an ephemeral run is deleted",
 test("finalize: a saved run keeps everything; a failing librarian is logged", async () => {
   const { out } = await go("start a research session on tides", runs.research());
   const runLog = join(jarvis, "runs", `${out.sessionId}.jsonl`);
-  librarian("echo boom >&2; exit 3");
-  await finalize(w.config(), out.sessionId!, true, runLog);
+  librarian(`console.error("boom"); process.exit(3);`);
+  await finalize(w.config(), { sessionId: out.sessionId!, keep: true, runLog, request: "x", summary: "" });
   expect(existsSync(runLog)).toBe(true);
   expect(existsSync(join(projects, `${out.sessionId}.jsonl`))).toBe(true);
-  expect(readFileSync(join(jarvis, "logs", "launcher.log"), "utf8")).toMatch(/"librarian failed".*"code":3.*boom/);
+  expect(readFileSync(join(jarvis, "logs", "launcher.log"), "utf8")).toMatch(/"librarian enqueue failed".*"code":3.*boom/);
 });
 
-test("finalize: no librarian yet still deletes an ephemeral run", async () => {
-  rmSync(join(w.repo, "librarian", "run.sh"), { force: true });
+test("finalize: no librarian still deletes an ephemeral run", async () => {
+  rmSync(join(w.repo, "librarian", "src", "cli.ts"), { force: true });
   const { out } = await go("hi", runs.weather());
-  await finalize(w.config(), out.sessionId!, false, join(jarvis, "runs", `${out.sessionId}.jsonl`));
+  await finalize(w.config(), { sessionId: out.sessionId!, keep: false, runLog: join(jarvis, "runs", `${out.sessionId}.jsonl`), request: "hi", summary: "" });
   expect(existsSync(join(projects, `${out.sessionId}.jsonl`))).toBe(false);
 });
 
 test("finalize refuses paths that aren't a session's own files", async () => {
-  await expect(finalize(w.config(), "../../etc", false, join(jarvis, "runs", "x.jsonl"))).rejects.toThrow("not a session id");
-  await expect(finalize(w.config(), "11111111-1111-4111-8111-111111111111", false, join(w.home, "notes.jsonl"))).rejects.toThrow("not a run log");
+  const f = { keep: false, request: "", summary: "" };
+  await expect(finalize(w.config(), { ...f, sessionId: "../../etc", runLog: join(jarvis, "runs", "x.jsonl") })).rejects.toThrow("not a session id");
+  await expect(finalize(w.config(), { ...f, sessionId: "11111111-1111-4111-8111-111111111111", runLog: join(w.home, "notes.jsonl") })).rejects.toThrow("not a run file");
 });

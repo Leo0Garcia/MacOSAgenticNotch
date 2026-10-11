@@ -1,22 +1,23 @@
 // Reminders that fire with no run active: one launchd agent per reminder,
-// com.jarvis.reminder.<id>, removed after it fires (DESIGN 2 and 6).
+// com.jarvis.reminder.<id>, removed after it fires (DESIGN 2, 6 and 8.3).
+// The bridge has already turned Leo's words into an instant; this file only
+// schedules it, and hands the firing back to the bridge for the notch.
 //
 // The agent runs at load and at its calendar minute. `fire` does nothing
 // until the reminder is due, so a Mac that was off at the time still fires
 // it (late) at next login instead of dropping it.
 
 import { randomBytes } from "node:crypto";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { childEnv, type Config, paths } from "../config";
 import { log, writeFileAtomic } from "../store";
-import { parseWhen } from "./when";
 
 export interface Reminder {
   id: string;
   text: string;
-  fireAt: string; // ISO
-  when: string; // what Leo said
+  at: string; // ISO 8601 UTC, rounded up to the minute
+  sessionId: string | null;
   createdAt: string;
 }
 
@@ -27,6 +28,7 @@ export const realExec: Exec = (cmd) => {
   return { code: p.exitCode ?? 1, stdout: p.stdout.toString(), stderr: p.stderr.toString() };
 };
 
+const ID = /^[0-9a-f]{10}$/;
 const label = (id: string) => `com.jarvis.reminder.${id}`;
 const recordPath = (c: Config, id: string) => join(paths(c).reminders, `${id}.json`);
 const stagedPlist = (c: Config, id: string) => join(paths(c).reminders, `${label(id)}.plist`);
@@ -38,7 +40,7 @@ const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 /** launchd fires StartCalendarInterval in the Mac's local time, so use local fields. */
 export function plist(c: Config, r: Reminder): string {
   const p = paths(c);
-  const t = new Date(r.fireAt);
+  const t = new Date(r.at);
   const env = childEnv(c);
   const envXml = ["PATH", "HOME", "JARVIS_REPO", "JARVIS_HOME", "JARVIS_MEMORY"]
     .filter((k) => env[k])
@@ -53,8 +55,7 @@ export function plist(c: Config, r: Reminder): string {
 \t<key>ProgramArguments</key>
 \t<array>
 \t\t<string>${xml(c.bunBin)}</string>
-\t\t<string>${xml(p.cli)}</string>
-\t\t<string>remind</string>
+\t\t<string>${xml(p.remindersCli)}</string>
 \t\t<string>fire</string>
 \t\t<string>${r.id}</string>
 \t</array>
@@ -84,13 +85,19 @@ ${envXml}
 `;
 }
 
-export function addReminder(c: Config, when: string, text: string, now = Date.now(), exec: Exec = realExec): Reminder {
-  text = text.trim();
+const YEAR_MS = 366 * 864e5;
+
+/** Schedules a reminder at an absolute time (the bridge parsed Leo's words). */
+export function addReminder(c: Config, input: { at: string; text: string; sessionId?: string | null }, now = Date.now(), exec: Exec = realExec): Reminder {
+  const text = input.text?.trim();
   if (!text) throw new Error("a reminder needs some text");
-  let at = parseWhen(when, now, c.timeZone).getTime();
-  // launchd has minute resolution: fire in the first whole minute at or after the time.
-  at = Math.ceil(at / 6e4) * 6e4;
-  const r: Reminder = { id: randomBytes(5).toString("hex"), text, fireAt: new Date(at).toISOString(), when, createdAt: new Date(now).toISOString() };
+  let at = Date.parse(input.at);
+  if (Number.isNaN(at)) throw new Error(`not a time: ${input.at}`);
+  if (at < now - 60_000) throw new Error(`${input.at} is in the past`);
+  if (at > now + YEAR_MS) throw new Error(`${input.at} is more than a year away`);
+  // launchd has minute resolution: the first whole minute at or after the time, and after now.
+  at = Math.max(Math.ceil(at / 6e4) * 6e4, Math.ceil((now + 1) / 6e4) * 6e4);
+  const r: Reminder = { id: randomBytes(5).toString("hex"), text, at: new Date(at).toISOString(), sessionId: input.sessionId ?? null, createdAt: new Date(now).toISOString() };
   const p = paths(c);
   mkdirSync(p.reminders, { recursive: true });
   mkdirSync(p.logs, { recursive: true });
@@ -103,7 +110,7 @@ export function addReminder(c: Config, when: string, text: string, now = Date.no
     removeFiles(c, r.id);
     throw new Error(`launchctl bootstrap failed (${res.code}): ${res.stderr.trim()}`);
   }
-  log(c, "reminder added", { id: r.id, fireAt: r.fireAt });
+  log(c, "reminder added", { id: r.id, at: r.at });
   return r;
 }
 
@@ -113,7 +120,7 @@ export function listReminders(c: Config): Reminder[] {
   return readdirSync(dir)
     .filter((f) => /^[0-9a-f]{10}\.json$/.test(f))
     .map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")) as Reminder)
-    .sort((a, b) => a.fireAt.localeCompare(b.fireAt));
+    .sort((a, b) => a.at.localeCompare(b.at));
 }
 
 function removeFiles(c: Config, id: string): void {
@@ -125,22 +132,21 @@ function unload(c: Config, id: string, exec: Exec): void {
 }
 
 export function cancelReminder(c: Config, id: string, exec: Exec = realExec): boolean {
-  if (!/^[0-9a-f]{10}$/.test(id)) throw new Error(`not a reminder id: ${id}`);
+  if (!ID.test(id)) throw new Error(`not a reminder id: ${id}`);
   const existed = existsSync(recordPath(c, id));
   removeFiles(c, id);
   unload(c, id, exec);
   return existed;
 }
 
-const osaString = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-
 /**
- * Called by launchd. Not yet due: exit quietly. Due: macOS notification,
- * a line in reminders/fired.jsonl for the notch, spoken if TTS is on, then
- * remove the agent. bootout goes last because it stops this process.
+ * Called by launchd. Not yet due: exit quietly (RunAtLoad). Due: hand it to
+ * the bridge (`bridge/src/cli.ts reminder`: notch via the socket, else a
+ * macOS notification and `say`, plus a `reminder` row), then remove the
+ * agent. bootout goes last because it stops this process.
  */
 export function fireReminder(c: Config, id: string, now = Date.now(), exec: Exec = realExec): "fired" | "not-due" | "unknown" {
-  if (!/^[0-9a-f]{10}$/.test(id)) throw new Error(`not a reminder id: ${id}`);
+  if (!ID.test(id)) throw new Error(`not a reminder id: ${id}`);
   let r: Reminder;
   try {
     r = JSON.parse(readFileSync(recordPath(c, id), "utf8"));
@@ -150,11 +156,14 @@ export function fireReminder(c: Config, id: string, now = Date.now(), exec: Exec
     unload(c, id, exec);
     return "unknown";
   }
-  if (Date.parse(r.fireAt) - now > 30_000) return "not-due";
-  exec([c.osascript, "-e", `display notification ${osaString(r.text)} with title "Jarvis" subtitle "Reminder" sound name "default"`]);
-  appendFileSync(paths(c).remindersFired, JSON.stringify({ id, text: r.text, fireAt: r.fireAt, firedAt: new Date(now).toISOString() }) + "\n");
-  if (c.say) exec([c.say, `Reminder: ${r.text}`]);
-  log(c, "reminder fired", { id, late: Math.max(0, now - Date.parse(r.fireAt)) });
+  if (Date.parse(r.at) - now > 30_000) return "not-due";
+  const res = exec([c.bunBin, paths(c).bridgeCli, "reminder", "--text", r.text]);
+  if (res.code !== 0) {
+    // Even the bridge's fallback failed: keep the agent so it tries again at next login.
+    log(c, "reminder delivery failed", { id, code: res.code, stderr: res.stderr.slice(-500) });
+    throw new Error(`the bridge couldn't deliver reminder ${id}: ${res.stderr.trim().split("\n").pop() || `exit ${res.code}`}`);
+  }
+  log(c, "reminder fired", { id, late: Math.max(0, now - Date.parse(r.at)) });
   removeFiles(c, id);
   unload(c, id, exec);
   return "fired";

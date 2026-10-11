@@ -11,10 +11,10 @@ export function makeWorld() {
   const home = join(root, "home");
   const repo = join(root, "repo");
   const bin = join(root, "bin");
-  for (const d of [home, bin, join(repo, "guard"), join(repo, "launcher", "src"), join(repo, "skills", "kanban"), join(repo, "skills", "not-a-skill"), join(repo, "librarian")])
+  for (const d of [home, bin, join(repo, "guard"), join(repo, "launcher", "src"), join(repo, "skills", "kanban"), join(repo, "skills", "not-a-skill"), join(repo, "librarian", "src"), join(repo, "bridge", "src")])
     mkdirSync(d, { recursive: true });
   writeFileSync(join(repo, "guard", "settings.json"), "{}\n");
-  copyFileSync(join(launcherDir, "jarvis.json"), join(repo, "launcher", "jarvis.json"));
+  writeFileSync(join(repo, "bridge", "src", "server.ts"), "// stand-in: the stub claude never starts it\n");
   copyFileSync(join(launcherDir, "prompt.md"), join(repo, "launcher", "prompt.md"));
   writeFileSync(join(repo, "skills", "kanban", "SKILL.md"), "---\nname: kanban\n---\n");
 
@@ -25,9 +25,7 @@ export function makeWorld() {
     return p;
   };
   const claude = exe("claude", `exec "${process.execPath}" "${join(launcherDir, "test", "stub-claude.ts")}" "$@"`);
-  const say = exe("say", `printf '%s\\n' "$*" >> "${join(root, "said.txt")}"`);
   const launchctl = exe("launchctl", `printf '%s\\n' "$*" >> "${join(root, "launchctl.txt")}"; exit \${STUB_LAUNCHCTL_EXIT:-0}`);
-  const osascript = exe("osascript", `printf '%s\\n' "$*" >> "${join(root, "osascript.txt")}"`);
   const fixture = join(root, "fixture.jsonl");
   const calls = join(root, "calls.jsonl");
 
@@ -35,11 +33,9 @@ export function makeWorld() {
     PATH: `${bin}:/usr/bin:/bin`,
     HOME: home,
     JARVIS_REPO: repo,
-    JARVIS_CLAUDE: "claude",
+    JARVIS_CLAUDE_BIN: "claude",
     CLAUDE_CONFIG_DIR: join(home, ".claude"),
-    JARVIS_SAY: say,
     JARVIS_LAUNCHCTL: launchctl,
-    JARVIS_OSASCRIPT: osascript,
     STUB_FIXTURE: fixture,
     STUB_CALLS: calls,
   };
@@ -53,5 +49,11 @@ export function makeWorld() {
     }
   };
   const lastCall = () => JSON.parse(read("calls.jsonl").trim().split("\n").at(-1)!);
-  return { root, home, repo, bin, env, config, fixture, calls, read, lastCall, setFixture: (s: string) => writeFileSync(fixture, s) };
+  // Records what the shared Speaker would have said, instead of running `say`.
+  const said: string[] = [];
+  const speechRunner = async (cmd: string[], opts?: { stdin?: string }) => {
+    said.push(opts?.stdin ?? cmd.join(" "));
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  return { said, speechRunner, root, home, repo, bin, env, config, fixture, calls, read, lastCall, setFixture: (s: string) => writeFileSync(fixture, s) };
 }

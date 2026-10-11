@@ -1,7 +1,7 @@
 // The claude -p command line for a run (docs/DESIGN.md section 4.2). Every
 // flag here is checked against code.claude.com/docs and `claude --help`.
 
-import { type Config, paths } from "./config";
+import { BRIDGE_SERVER, type Config, paths } from "./config";
 
 export const RESULT_SCHEMA = {
   type: "object",
@@ -23,8 +23,22 @@ export interface RunPlan {
   name?: string;
 }
 
+/** The bridge entry for this run, written to ~/Jarvis/runs/<id>.mcp.json (DESIGN 8.1). */
+export function mcpConfig(c: Config, sessionId: string): object {
+  return {
+    mcpServers: {
+      [BRIDGE_SERVER]: {
+        command: c.bunBin,
+        args: [paths(c).bridgeServer, "--session-id", sessionId],
+        env: { JARVIS_REPO: c.repo, JARVIS_HOME: c.home },
+      },
+    },
+  };
+}
+
 export function claudeArgs(c: Config, plan: RunPlan): string[] {
   const p = paths(c);
+  const id = plan.resume ?? plan.sessionId;
   const args = ["-p", plan.prompt];
   if (plan.resume) args.push("--resume", plan.resume);
   else if (plan.sessionId) args.push("--session-id", plan.sessionId);
@@ -33,7 +47,7 @@ export function claudeArgs(c: Config, plan: RunPlan): string[] {
   if (c.model) args.push("--model", c.model);
   args.push(
     "--settings", p.guardSettings,
-    "--mcp-config", p.mcpConfig,
+    "--mcp-config", p.mcpConfig(id!),
     "--append-system-prompt-file", p.systemPrompt,
     "--permission-mode", "auto",
     "--permission-prompts", "none",

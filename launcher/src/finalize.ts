@@ -1,8 +1,8 @@
 // After a run: hand the run log to the librarian, then delete everything an
-// ephemeral run left behind. Runs detached so Leo never waits for it.
+// ephemeral run left behind. The librarian's `enqueue` is quick (no model
+// call) and starts its own detached worker, so Leo never waits on filing.
 
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { childEnv, type Config, paths } from "./config";
 import { log } from "./store";
@@ -32,79 +32,42 @@ export function deleteTranscript(c: Config, sessionId: string): string[] {
   return removed;
 }
 
-/** Deletes a run log, refusing anything outside ~/Jarvis/runs. */
-export function deleteRunLog(c: Config, runLog: string): void {
-  const p = resolve(runLog);
-  if (dirname(p) !== resolve(paths(c).runs) || !p.endsWith(".jsonl")) throw new Error(`not a run log: ${runLog}`);
+/** Deletes a run's own files in ~/Jarvis/runs, refusing anything else. */
+export function deleteRunFile(c: Config, file: string): void {
+  const p = resolve(file);
+  if (dirname(p) !== resolve(paths(c).runs) || !/\.jsonl?$/.test(p)) throw new Error(`not a run file: ${file}`);
   rmSync(p, { force: true });
 }
 
-const LOCK_STALE_MS = 15 * 60 * 1000;
-
-/** One librarian at a time (DESIGN 5): a mkdir lock, broken when stale. */
-async function withLibrarianLock<T>(c: Config, fn: () => Promise<T>, waitMs = LOCK_STALE_MS): Promise<T> {
-  const lock = paths(c).librarianLock;
-  const deadline = Date.now() + waitMs;
-  for (;;) {
-    try {
-      mkdirSync(lock);
-      break;
-    } catch {
-      try {
-        if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) rmSync(lock, { recursive: true, force: true });
-      } catch {}
-      if (Date.now() > deadline) throw new Error("timed out waiting for the librarian lock");
-      await Bun.sleep(500);
-    }
-  }
-  try {
-    return await fn();
-  } finally {
-    rmSync(lock, { recursive: true, force: true });
-  }
+export interface FinalizeInput {
+  sessionId: string;
+  keep: boolean;
+  runLog: string;
+  request: string;
+  summary: string;
 }
 
 /**
- * Runs the librarian on a finished run, waits for it, then deletes the
- * transcript and run log if the run was ephemeral. A missing or failing
- * librarian is logged, and never stops the delete.
+ * `librarian/src/cli.ts enqueue` copies what it needs out of the run log
+ * before it returns (DESIGN 5), so once it has exited an ephemeral run's
+ * transcript and log can go. A missing or failing librarian is logged and
+ * never keeps an ephemeral run on disk.
  */
-export async function finalize(c: Config, sessionId: string, keep: boolean, runLog: string): Promise<void> {
+export async function finalize(c: Config, f: FinalizeInput): Promise<void> {
+  if (!UUID.test(f.sessionId)) throw new Error(`not a session id: ${f.sessionId}`);
   const p = paths(c);
-  if (existsSync(p.librarian) && existsSync(runLog)) {
-    try {
-      await withLibrarianLock(c, async () => {
-        const proc = Bun.spawn([p.librarian, "--run-log", runLog, "--session-id", sessionId, "--keep", String(keep)], {
-          cwd: c.home,
-          env: childEnv(c, { CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1" }),
-          stdout: "ignore",
-          stderr: "pipe",
-        });
-        const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-        if (code !== 0) log(c, "librarian failed", { sessionId, code, stderr: err.slice(-2000) });
-      });
-    } catch (e) {
-      log(c, "librarian didn't run", { sessionId, error: String(e) });
-    }
+  if (existsSync(p.librarianCli) && existsSync(f.runLog)) {
+    const args = [p.librarianCli, "enqueue", "--stream-log", f.runLog, "--request", f.request, "--session-id", f.sessionId, "--keep", String(f.keep)];
+    if (f.summary) args.push("--summary", f.summary);
+    const proc = Bun.spawn([c.bunBin, ...args], { cwd: c.home, env: childEnv(c), stdin: "ignore", stdout: "ignore", stderr: "pipe" });
+    const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+    if (code !== 0) log(c, "librarian enqueue failed", { sessionId: f.sessionId, code, stderr: err.slice(-2000) });
   } else {
-    log(c, "librarian skipped", { sessionId, librarian: existsSync(p.librarian), runLog: existsSync(runLog) });
+    log(c, "librarian skipped", { sessionId: f.sessionId, librarian: existsSync(p.librarianCli), runLog: existsSync(f.runLog) });
   }
-  if (!keep) {
-    const removed = deleteTranscript(c, sessionId);
-    deleteRunLog(c, runLog);
-    log(c, "deleted ephemeral run", { sessionId, removed: removed.length });
+  if (!f.keep) {
+    const removed = deleteTranscript(c, f.sessionId);
+    deleteRunFile(c, f.runLog);
+    log(c, "deleted ephemeral run", { sessionId: f.sessionId, removed: removed.length });
   }
-}
-
-/** Starts `cli.ts finalize` in the background and returns at once. */
-export function startFinalize(c: Config, sessionId: string, keep: boolean, runLog: string): void {
-  const p = paths(c);
-  mkdirSync(p.logs, { recursive: true });
-  const child = spawn(c.bunBin, [p.cli, "finalize", "--session", sessionId, "--keep", String(keep), "--run-log", runLog], {
-    cwd: c.home,
-    env: childEnv(c),
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
 }

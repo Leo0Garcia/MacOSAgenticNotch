@@ -1,0 +1,9 @@
+ECS Moodle
+Log in to the site
+Username
+Password
+Remember username
+Log in
+Forgotten your username or password?
+Cookies must be enabled in your browser
+You are not logged in.
