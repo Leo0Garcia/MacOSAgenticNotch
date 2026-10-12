@@ -3,7 +3,7 @@
 // streamed reply, Claude calling the speak tool) a lock directory at
 // ~/Jarvis/run/speech.lock keeps them from talking over each other.
 
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { speechLock } from "./config";
@@ -119,11 +119,25 @@ export interface SpeakerOptions {
   voice?: string | null;
   /** Neural voice; default Kokoro when installed in ~/Jarvis/tts. null: always `say`. */
   synth?: Synth | null;
+  /** How long to keep the voice after the last queued sentence (tests). */
+  holdMs?: number;
 }
+
+/**
+ * How long a speaker keeps the voice after its last queued sentence, so a
+ * reply streaming in sentence by sentence isn't interleaved with another
+ * run's reply (Leo, 2026-10-12: several runs talking over each other).
+ */
+export const HOLD_AFTER_LAST_SENTENCE_MS = 1500;
 
 export class Speaker {
   private queue: Promise<void> = Promise.resolve();
   private count = 0;
+  private pending = 0;
+  private holding = false;
+  private releaseTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Written into the lock so this speaker can tell it still holds it. */
+  private readonly token = `${process.pid}:${Math.random().toString(36).slice(2)}`;
 
   private synth: Synth | null;
 
@@ -137,19 +151,58 @@ export class Speaker {
     if (!t) return Promise.resolve();
     // Render now, while earlier sentences are still playing, so there's no gap.
     const audio = this.synth ? this.synth.render(t).catch(() => null) : Promise.resolve(null);
-    const job = this.queue.then(() => this.speakNow(t, audio));
+    this.pending++;
+    if (this.releaseTimer) {
+      clearTimeout(this.releaseTimer);
+      this.releaseTimer = null;
+    }
+    const job = this.queue.then(() => this.speakNow(t, audio)).finally(() => {
+      this.pending--;
+      if (this.pending === 0) this.scheduleRelease();
+    });
     this.queue = job.catch(() => {});
     return job;
   }
 
-  /** Resolves when everything queued so far has been spoken. */
-  idle(): Promise<void> {
-    return this.queue;
+  /** Resolves when everything queued so far has been spoken, and gives the voice back. */
+  async idle(): Promise<void> {
+    await this.queue;
+    if (this.pending === 0) this.letGo();
+  }
+
+  /** One reply at a time: keep the lock briefly in case the reply has more sentences coming. */
+  private scheduleRelease() {
+    if (this.releaseTimer) clearTimeout(this.releaseTimer);
+    this.releaseTimer = setTimeout(() => {
+      this.releaseTimer = null;
+      if (this.pending === 0) this.letGo();
+    }, this.opts.holdMs ?? HOLD_AFTER_LAST_SENTENCE_MS);
+    (this.releaseTimer as { unref?: () => void }).unref?.();
+  }
+
+  private letGo() {
+    if (this.releaseTimer) {
+      clearTimeout(this.releaseTimer);
+      this.releaseTimer = null;
+    }
+    if (!this.holding) return;
+    this.holding = false;
+    const lock = speechLock(this.opts.home);
+    if (lockOwner(lock) === this.token) release(lock);
   }
 
   private async speakNow(text: string, audio: Promise<string | null>) {
     const lock = speechLock(this.opts.home);
-    await acquire(lock, this.opts.pollMs ?? 50);
+    if (!this.holding || lockOwner(lock) !== this.token) {
+      await acquire(lock, this.opts.pollMs ?? 50, this.token);
+      this.holding = true;
+    } else {
+      // Still ours: refresh it so nobody takes it over as stale mid-reply.
+      try {
+        const now = new Date();
+        utimesSync(lock, now, now);
+      } catch {}
+    }
     const id = `${process.pid}-${++this.count}`;
     const link = this.opts.link;
     try {
@@ -170,14 +223,13 @@ export class Speaker {
       if (r.code !== 0) throw new Error(`say failed (exit ${r.code}): ${r.stderr.trim() || "no output"}`);
     } finally {
       await link?.send({ type: "speak_end", id });
-      release(lock);
     }
   }
 }
 
 function ownerAlive(lock: string): boolean {
   try {
-    const pid = Number(readFileSync(join(lock, "pid"), "utf8"));
+    const pid = Number(readFileSync(join(lock, "pid"), "utf8").split(":")[0]);
     if (!pid) return false;
     process.kill(pid, 0);
     return true;
@@ -186,12 +238,20 @@ function ownerAlive(lock: string): boolean {
   }
 }
 
-async function acquire(lock: string, pollMs: number) {
+function lockOwner(lock: string): string | null {
+  try {
+    return readFileSync(join(lock, "pid"), "utf8").trim();
+  } catch {
+    return null;
+  }
+}
+
+async function acquire(lock: string, pollMs: number, token = String(process.pid)) {
   mkdirSync(dirname(lock), { recursive: true });
   for (;;) {
     try {
       mkdirSync(lock);
-      writeFileSync(join(lock, "pid"), String(process.pid));
+      writeFileSync(join(lock, "pid"), token);
       return;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;

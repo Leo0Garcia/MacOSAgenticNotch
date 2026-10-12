@@ -28,7 +28,9 @@ async function main(): Promise<string> {
       if (!text.trim()) throw new Error("speak needs text");
       const link = new NotchLink({ home: config.home, client: "cli", sessionId: config.sessionId });
       try {
-        await new Speaker({ home: config.home, link, sessionId: config.sessionId }).say(text);
+        const speaker = new Speaker({ home: config.home, link, sessionId: config.sessionId });
+        await speaker.say(text);
+        await speaker.idle(); // give the voice back before exiting
       } finally {
         link.close();
       }

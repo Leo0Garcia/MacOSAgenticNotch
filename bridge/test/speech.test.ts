@@ -32,11 +32,34 @@ test("two speakers (launcher and bridge) never overlap", async () => {
   const a = new Speaker({ home, run, pollMs: 5 });
   const b = new Speaker({ home, run, pollMs: 5 });
   await Promise.all([a.say("a1"), b.say("b1"), a.say("a2"), b.say("b2")]);
+  await Promise.all([a.idle(), b.idle()]);
   for (let i = 0; i < log.length; i += 2) {
     expect(log[i]!.startsWith("start")).toBe(true);
     expect(log[i + 1]).toBe(log[i]!.replace("start", "end"));
   }
   expect(log).toHaveLength(8);
+  expect(existsSync(join(home, "run", "speech.lock"))).toBe(false);
+});
+
+test("two runs replying at once take turns by whole reply, not sentence by sentence", async () => {
+  const log: string[] = [];
+  const run = timedRunner(log, 30);
+  const a = new Speaker({ home, run, pollMs: 5, holdMs: 300 });
+  const b = new Speaker({ home, run, pollMs: 5, holdMs: 300 });
+  // a's reply streams in with gaps (as sentences arrive); b starts talking in the middle.
+  const aDone = (async () => {
+    const p1 = a.say("a1");
+    await Bun.sleep(50);
+    const p2 = a.say("a2");
+    await Bun.sleep(50);
+    await Promise.all([p1, p2, a.say("a3")]);
+  })();
+  await Bun.sleep(10);
+  const bDone = Promise.all([b.say("b1"), b.say("b2")]);
+  await Promise.all([aDone, bDone]);
+  await Promise.all([a.idle(), b.idle()]);
+  const spoken = log.filter((l) => l.startsWith("start")).map((l) => l.slice(6));
+  expect(spoken).toEqual(["a1", "a2", "a3", "b1", "b2"]);
   expect(existsSync(join(home, "run", "speech.lock"))).toBe(false);
 });
 

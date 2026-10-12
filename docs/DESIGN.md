@@ -132,7 +132,7 @@ Under `-p` with `--permission-prompts none` there is no permission prompt for th
 `launcher/run.sh` sets `JARVIS_REPO` and a PATH with bun and claude, then runs `launcher/src/cli.ts`:
 
 - `run.sh run "<request>"` (or the request on stdin): one run. NDJSON events on stdout, exit 0, or 1 on error.
-- `run.sh open <session-id>`: `claude --desktop --resume <id>` from `~/Jarvis`, for the notch row or "open it".
+- `run.sh open <session-id>`: `claude --desktop --resume <id>` from `~/Jarvis`, for the notch row or "open it". It runs under `script -q /dev/null` because `claude --desktop` refuses to run without a terminal and the notch app has none.
 - `run.sh warm`: starts claude now (`--input-format stream-json`, no prompt yet), prints `{"event":"ready","sessionId"}`, then reads the request as one line on stdin and continues as `run`. The notch app keeps one warm run ready (replaced after 10 minutes so its briefing stays fresh, and started again after each run), which saves Claude Code's start-up, about 2.4 s per request (measured: first word 6.4 s warm against 8.8 s cold for "what's the time"). A follow-up (4.4) or a saved intent falls back to a cold run, since neither can be set after start; a closed stdin means no request, and the warm run cleans up and exits.
 - `bun launcher/src/reminders.ts schedule | fire <id> | list | cancel <id>`: the reminder scheduler (section 8.3).
 
@@ -228,7 +228,7 @@ Built (app/, see `app/README.md`):
 | `log(summary, detail?, kind?)` | Appends to `~/Jarvis/actions.sqlite` (kind `action` or `note`) and sends the row to the app. | Still logs. |
 | `remind(when, text)` | Parses `when` (section 8.3), hands the absolute time to the launcher's scheduler, says back "Reminder set for today at 18:00 (UK time)". Fails out loud if the time is unreadable or past, or the scheduler is missing or fails. | Same. |
 
-Speech is one utterance at a time across processes: a lock directory `~/Jarvis/run/speech.lock` (holder pid inside; taken over if the holder died or after 60 s) keeps the launcher's streamed reply and Claude's `speak` calls from talking over each other. When Claude Code closes the bridge's stdin, the bridge finishes queued speech (up to 30 s) and exits.
+Speech is one reply at a time across processes: a lock directory `~/Jarvis/run/speech.lock` (holder pid and a per-speaker token inside; taken over if the holder died or after 60 s without a refresh). A speaker keeps the lock while it has sentences queued and for 1.5 s after the last one, refreshing it per sentence, so a reply that streams in sentence by sentence finishes before another run's reply starts; `idle()` gives it back at once. **Decision (Leo, 2026-10-12, several runs talking over each other):** whole replies take turns, first come first served, instead of interleaving per sentence. When Claude Code closes the bridge's stdin, the bridge finishes queued speech (up to 30 s) and exits.
 
 **Session id (decision):** the bridge takes the run's id from `--session-id <uuid>` in its args, else `JARVIS_SESSION_ID`. The docs document `${VAR}` expansion for `.mcp.json` but not for `--mcp-config`, and don't say whether stdio servers inherit the environment, so the launcher writes a per-run MCP config with the literal id (`~/Jarvis/runs/<session-id>.mcp.json`) rather than relying on either.
 
