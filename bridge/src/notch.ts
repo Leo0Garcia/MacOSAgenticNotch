@@ -201,7 +201,9 @@ export async function fireReminder(opts: {
     const id = `r-${process.pid}-${Date.now()}`;
     if (await link.send({ type: "reminder", id, text: opts.text })) return "notch";
     await osNotify(run, "Reminder", opts.text);
-    await new Speaker({ home: opts.home, run }).say(`Reminder: ${opts.text}`);
+    const speaker = new Speaker({ home: opts.home, run });
+    await speaker.say(`Reminder: ${opts.text}`);
+    await speaker.idle(); // give the voice back before exiting
     return "macos";
   } finally {
     link.close();

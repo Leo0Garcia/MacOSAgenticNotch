@@ -16,6 +16,10 @@ function usage(): never {
   process.exit(64);
 }
 
+export function desktopOpenCommand(claudeBin: string, sessionId: string): string[] {
+  return ["/usr/bin/script", "-q", "/dev/null", claudeBin, "--desktop", "--resume", sessionId];
+}
+
 export async function main(argv: string[]): Promise<number> {
   const c = configFromEnv();
   const [cmd, ...args] = argv;
@@ -41,7 +45,9 @@ export async function main(argv: string[]): Promise<number> {
       const id = args[0];
       if (!id || !/^[0-9a-f-]{36}$/i.test(id)) usage();
       // DESIGN 4.1: the documented way to open a CLI session in the Code tab.
-      const p = Bun.spawn([c.claudeBin, "--desktop", "--resume", id], { cwd: c.home, stdio: ["ignore", "inherit", "inherit"] });
+      // `claude --desktop` refuses to run without a terminal ("can't run
+      // non-interactively"), and the notch app has none: `script` gives it a pty.
+      const p = Bun.spawn(desktopOpenCommand(c.claudeBin, id), { cwd: c.home, stdio: ["ignore", "inherit", "inherit"] });
       return await p.exited;
     }
     default:

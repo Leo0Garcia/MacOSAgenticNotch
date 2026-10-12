@@ -55,3 +55,8 @@ test("quick asks get the fast model; research, writing and long requests the sma
   expect(modelFor(configFromEnv({ HOME: "/h", JARVIS_MODEL: "opus" }), "what's the time")).toBe("opus"); // pinned
   expect(modelFor(configFromEnv({ HOME: "/h", JARVIS_FAST_MODEL: "" }), "what's the time")).toBeUndefined(); // routing off
 });
+
+test("opening a saved run in Desktop goes through a pty (claude --desktop refuses without one)", async () => {
+  const { desktopOpenCommand } = await import("../src/cli");
+  expect(desktopOpenCommand("claude", "abc")).toEqual(["/usr/bin/script", "-q", "/dev/null", "claude", "--desktop", "--resume", "abc"]);
+});
