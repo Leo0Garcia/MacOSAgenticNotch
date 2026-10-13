@@ -40,6 +40,7 @@ enum Snapshots {
     final class NoLauncher: LauncherRunning {
         func run(_ request: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws {}
         func open(sessionId: String) {}
+        func hushAll() {}
         func cancelAll() {}
     }
 

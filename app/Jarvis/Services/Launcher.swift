@@ -40,6 +40,8 @@ enum LauncherEvent: Equatable, Sendable {
 
 @MainActor
 protocol LauncherRunning: AnyObject {
+    /// Leo interrupted: runs already going stop talking.
+    func hushAll()
     /// Starts a run. Events arrive on the main actor; `exited` fires once with the exit code.
     func run(_ request: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws
     func open(sessionId: String)
@@ -234,6 +236,21 @@ final class Launcher: LauncherRunning {
             try? input.fileHandleForWriting.close()
         } catch {
             AppLog.write("snooze failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Leo interrupted: every run already going stops talking (it keeps working, silently).
+    /// The warm run hasn't said anything yet, so it's left alone.
+    func hushAll() {
+        for p in running where p.isRunning && p !== warm?.process {
+            kill(p.processIdentifier, SIGUSR1)
+        }
+        // shortcut: stops every afplay/say on the Mac, not just Jarvis's; track the player pids if another app ever relies on them.
+        for name in ["afplay", "say"] {
+            let k = Process()
+            k.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+            k.arguments = ["-x", name]
+            try? k.run()
         }
     }
 

@@ -142,5 +142,6 @@ final class DemoLauncher: LauncherRunning {
 
     func exit(model: AppModel, _ code: Int32) { exited?(code) }
     func open(sessionId: String) {}
+    func hushAll() {}
     func cancelAll() {}
 }

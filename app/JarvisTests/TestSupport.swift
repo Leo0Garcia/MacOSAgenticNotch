@@ -41,6 +41,8 @@ final class FakeLauncher: LauncherRunning {
     func emit(_ e: LauncherEvent, run: Int? = nil) { handlers[run ?? handlers.count - 1].event(e) }
     func exit(_ code: Int32 = 0, run: Int? = nil) { handlers[run ?? handlers.count - 1].exited(code) }
     func open(sessionId: String) { opened.append(sessionId) }
+    var hushes = 0
+    func hushAll() { hushes += 1 }
     func cancelAll() {}
 }
 

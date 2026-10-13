@@ -168,3 +168,21 @@ test("JARVIS_MUTE=1 sends captions but plays nothing", async () => {
   }
   expect(run.calls).toHaveLength(0);
 });
+
+test("muting drops what's queued and keeps the run quiet, bridge included", async () => {
+  const log: string[] = [];
+  const run = timedRunner(log, 30);
+  const a = new Speaker({ home, run, synth: null, voice: null, sessionId: "s-old", holdMs: 10 });
+  const first = a.say("one");
+  const rest = [a.say("two"), a.say("three")];
+  await Bun.sleep(10);
+  a.mute(); // Leo pressed Option-Space during "one"
+  await Promise.all([first, ...rest]);
+  await a.say("four"); // the old run keeps working, silently
+  const bridge = new Speaker({ home, run, synth: null, voice: null, sessionId: "s-old" });
+  await bridge.say("progress line from the same run");
+  const fresh = new Speaker({ home, run, synth: null, voice: null, sessionId: "s-new" });
+  await fresh.say("new reply");
+  await Promise.all([a.idle(), bridge.idle(), fresh.idle()]);
+  expect(log.filter((l) => l.startsWith("start")).map((l) => l.slice(6))).toEqual(["one", "new reply"]);
+});
