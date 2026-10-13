@@ -9,6 +9,7 @@ Claude Code skills every Jarvis run loads, through `~/Jarvis/.claude/skills/<nam
 | slack-digest | `todos.ts channels\|add` | Project to Slack channel map; to-dos into `~/Jarvis-Memory` |
 | calendar | `ics.ts`, `apple.ts` | Timetable fetch/cache from Keychain URL; Apple Calendar read; recurrence |
 | moodle | `page.ts classify\|deadlines` | Login-page detection and deadline parsing from page text |
+| lights | `lights.ts status\|set\|scene` | Room lights through the local Homebridge API; lights and scenes live in `lights.json` |
 | needs-access | `ask.ts <kind> <name>` | The one sentence Leo hears when access is missing or guard blocks |
 
 Shared code is in `lib/` (paths, Europe/London time, recurrence, atomic writes).

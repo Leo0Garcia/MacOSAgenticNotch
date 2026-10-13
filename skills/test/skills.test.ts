@@ -7,8 +7,8 @@ import { parseFrontmatter } from "../slack-digest/todos.ts";
 const ROOT = join(import.meta.dir, "..");
 const SKILLS = readdirSync(ROOT).filter((d) => existsSync(join(ROOT, d, "SKILL.md")));
 
-test("the six phase 1 skills exist", () => {
-  expect(SKILLS.sort()).toEqual(["calendar", "kanban", "moodle", "needs-access", "reminders", "slack-digest"]);
+test("every skill exists", () => {
+  expect(SKILLS.sort()).toEqual(["calendar", "kanban", "lights", "moodle", "needs-access", "reminders", "slack-digest"]);
 });
 
 describe.each(SKILLS)("%s", (name) => {

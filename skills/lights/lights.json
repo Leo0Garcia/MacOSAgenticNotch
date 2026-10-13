@@ -1,0 +1,37 @@
+{
+  "homebridge": "http://localhost:8581",
+  "lights": {
+    "main": { "accessory": "Main Light", "aliases": ["main light", "main", "ceiling", "big light", "overhead"] },
+    "lamp": { "accessory": "Smart Bulb", "aliases": ["lamp", "smart bulb", "bulb"] },
+    "bed": { "accessory": "Bed lights", "aliases": ["bed lights", "bed", "bed light"] },
+    "desk": { "accessory": "Desk lights", "aliases": ["desk lights", "desk", "desk light"] }
+  },
+  "scenes": {
+    "bright": { "all": { "on": true, "brightness": 100, "temp": "neutral" } },
+    "relax": {
+      "main": { "on": false },
+      "lamp": { "on": true, "brightness": 50, "temp": "warm" },
+      "bed": { "on": true, "brightness": 35, "colour": "orange" },
+      "desk": { "on": true, "brightness": 35, "colour": "orange" }
+    },
+    "focus": {
+      "main": { "on": true, "brightness": 100, "temp": "cool" },
+      "lamp": { "on": true, "brightness": 80, "temp": "neutral" },
+      "desk": { "on": true, "brightness": 100, "temp": "cool" },
+      "bed": { "on": false }
+    },
+    "movie": {
+      "main": { "on": false },
+      "lamp": { "on": false },
+      "bed": { "on": true, "brightness": 20, "colour": "purple" },
+      "desk": { "on": true, "brightness": 20, "colour": "blue" }
+    },
+    "night": {
+      "main": { "on": false },
+      "desk": { "on": false },
+      "lamp": { "on": true, "brightness": 10, "temp": "warm" },
+      "bed": { "on": true, "brightness": 10, "colour": "red" }
+    },
+    "off": { "all": { "on": false } }
+  }
+}
