@@ -43,6 +43,8 @@ enum NotchProtocol {
         case runEvent(sessionId: String?, event: String, text: String?, keep: Bool?, summary: String?, rule: String?)
         /// The calendar skill asks the app (which holds the Calendars permission) for events.
         case calendarEvents(id: String, from: String, to: String)
+        /// The calendar skill adds an event to Apple Calendar through the app.
+        case calendarAdd(id: String, event: NewCalendarEvent)
         case unknown(type: String)
     }
 
@@ -53,6 +55,20 @@ enum NotchProtocol {
         case error(id: String?, message: String)
         case calendarEventsResult(id: String, events: [CalendarEvent])
         case calendarEventsError(id: String, code: String, message: String)
+        case calendarAddResult(id: String, calendar: String)
+        case calendarAddError(id: String, code: String, message: String)
+    }
+
+    /// An event to add. `repeat` is daily, weekly, monthly or yearly (on the start's day); `until` ends the series.
+    struct NewCalendarEvent: Equatable, Sendable {
+        var title: String
+        var start: String
+        var end: String
+        var allDay: Bool
+        var location: String?
+        var calendar: String?
+        var `repeat`: String?
+        var until: String?
     }
 
     /// One calendar occurrence, in the shape the calendar skill's apple.ts reads.
@@ -124,6 +140,10 @@ enum NotchProtocol {
                 keep: obj["keep"] as? Bool, summary: optStr("summary"), rule: optStr("rule"))
         case "calendar_events":
             return .calendarEvents(id: try str("id"), from: try str("from"), to: try str("to"))
+        case "calendar_add":
+            return .calendarAdd(id: try str("id"), event: NewCalendarEvent(
+                title: try str("title"), start: try str("start"), end: try str("end"), allDay: obj["allDay"] as? Bool ?? false,
+                location: optStr("location"), calendar: optStr("calendar"), repeat: optStr("repeat"), until: optStr("until")))
         default:
             return .unknown(type: type)
         }
@@ -146,6 +166,10 @@ enum NotchProtocol {
             }]
         case let .calendarEventsError(id, code, message):
             obj = ["type": "calendar_events_result", "id": id, "error": ["code": code, "message": message]]
+        case let .calendarAddResult(id, calendar):
+            obj = ["type": "calendar_add_result", "id": id, "calendar": calendar]
+        case let .calendarAddError(id, code, message):
+            obj = ["type": "calendar_add_result", "id": id, "error": ["code": code, "message": message]]
         }
         let data = (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])) ?? Data()
         return String(decoding: data, as: UTF8.self)

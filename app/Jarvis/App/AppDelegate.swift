@@ -268,8 +268,17 @@ extension AppDelegate: NotchServerDelegate {
             Task {
                 switch await calendar.events(fromISO: from, toISO: to) {
                 case let .success(events): server.send(.calendarEventsResult(id: id, events: events), to: client)
-                case .failure(.denied): server.send(.calendarEventsError(id: id, code: "denied", message: "Calendars access is off for Jarvis."), to: client)
                 case .failure(.badRange): server.send(.calendarEventsError(id: id, code: "bad_range", message: "from and to must be ISO 8601, from before to."), to: client)
+                case let .failure(f): server.send(.calendarEventsError(id: id, code: f.code, message: f.message), to: client)
+                }
+            }
+            return
+        }
+        if case let .calendarAdd(id, event) = message {
+            Task {
+                switch await calendar.add(event) {
+                case let .success(name): server.send(.calendarAddResult(id: id, calendar: name), to: client)
+                case let .failure(f): server.send(.calendarAddError(id: id, code: f.code, message: f.message), to: client)
                 }
             }
             return

@@ -78,7 +78,20 @@ export interface CalendarEvents {
   from: string; // ISO 8601
   to: string;
 }
-export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents;
+/** The calendar skill adds an event to Apple Calendar through the app. */
+export interface CalendarAdd {
+  type: "calendar_add";
+  id: string;
+  title: string;
+  start: string; // ISO 8601
+  end: string;
+  allDay?: boolean;
+  location?: string;
+  calendar?: string; // calendar name; default calendar when absent
+  repeat?: "daily" | "weekly" | "monthly" | "yearly";
+  until?: string; // ISO 8601, ends the series
+}
+export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents | CalendarAdd;
 
 // App -> client
 export interface Welcome {
@@ -102,7 +115,13 @@ export interface CalendarEventsResult {
   events?: { calendar: string; title: string; start: string; end: string; allDay: boolean; location: string | null; recurrence: null }[];
   error?: { code: "denied" | "bad_range"; message: string };
 }
-export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult;
+export interface CalendarAddResult {
+  type: "calendar_add_result";
+  id: string;
+  calendar?: string; // the calendar it went into
+  error?: { code: "denied" | "bad_range" | "no_calendar" | "bad_repeat" | "save_failed"; message: string };
+}
+export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult | CalendarAddResult;
 
 /** One row of ~/Jarvis/actions.sqlite, as stored and as sent in `log`. */
 export interface ActionRow {
