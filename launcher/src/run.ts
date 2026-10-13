@@ -14,6 +14,7 @@ import { deleteRunFile, deleteTranscript, finalize, type FinalizeInput } from ".
 import { buildSystemPrompt, checkClaudeVersion, linkSkills } from "./setup";
 import { ensureDirs, type LastRun, log, recentRun, saveLastRun, writeFileAtomic } from "./store";
 import { withContext } from "./context";
+import { lightsConfig, parseLights, statusSentence } from "./fast";
 import { toolStatus } from "./status";
 import { type Denial, initProblem, RunMonitor } from "./stream";
 
@@ -103,6 +104,14 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     return { exitCode: 1, sessionId, error: message };
   };
 
+  // The fast path speaks through a notch link too, so the caption shows as the audio starts.
+  const fastWithCaptions = async (req: string) => {
+    if (!lightsConfig(c.repo) || c.env.JARVIS_FAST === "0") return null;
+    link = new NotchLink({ home: c.home, client: "launcher", sessionId: null, connectTimeoutMs: 300 });
+    speaker = new Speaker({ home: c.home, link, run: opts.speechRunner });
+    return tryFast(c, req, speak, emit, finish, now());
+  };
+
   const warm = opts.awaitRequest;
   request = request.trim();
   if (!request && !warm) return fail("empty request", undefined, "I didn't catch that.");
@@ -123,6 +132,8 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     // Warm runs are for quick asks, so they start on the fast model.
     plan = { prompt: "", sessionId: id, runLog: p.runLog(id), resumed: false, streamInput: true, model: c.model ?? c.fastModel };
   } else {
+    const fast = await fastWithCaptions(request);
+    if (fast) return fast;
     plan = planRun(c, request, now());
     // A follow-up stays on the model its session started with.
     if (!plan.resume) plan.model = modelFor(c, request);
@@ -157,12 +168,21 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
       if (!req) return { exitCode: 0 };
       return run(c, req, { ...opts, awaitRequest: undefined });
     }
+    const fast = await fastWithCaptions(req);
+    if (fast) {
+      proc.kill("SIGTERM");
+      await proc.exited;
+      rmSync(mcpFile, { force: true });
+      deleteTranscript(c, sessionId);
+      return fast;
+    }
     request = req;
     const sink = proc.stdin as import("bun").FileSink;
     sink.write(JSON.stringify({ type: "user", message: { role: "user", content: withContext(c, request, now()) } }) + "\n");
     await sink.end();
   }
 
+  link?.close();
   link = new NotchLink({ home: c.home, client: "launcher", sessionId, connectTimeoutMs: 300 });
   speaker = new Speaker({ home: c.home, link, sessionId, run: opts.speechRunner });
   emit({ event: "state", state: "working", sessionId });
@@ -269,4 +289,41 @@ export function sweepStaleMcpConfigs(dir: string, now = Date.now()): void {
       if (now - statSync(path).mtimeMs > 12 * 3600 * 1000) rmSync(path, { force: true });
     }
   } catch {}
+}
+
+/**
+ * Simple light commands straight to the lights skill's script: no Claude run.
+ * Null when the request isn't one, or the script couldn't do it (Claude then
+ * handles it, asking Leo if needed).
+ * shortcut: fast-path runs skip the librarian, so they show in the action log but not the daily log; enqueue them if Leo wants them there.
+ */
+async function tryFast(
+  c: Config,
+  request: string,
+  speak: (t: string) => void,
+  emit: (e: LauncherEvent) => void,
+  finish: () => Promise<void>,
+  at: number,
+): Promise<RunOutcome | null> {
+  if (c.env.JARVIS_FAST === "0") return null;
+  const config = lightsConfig(c.repo);
+  const cmd = config && parseLights(request, config);
+  if (!cmd) return null;
+  const script = `${c.repo}/skills/lights/lights.ts`;
+  const p = Bun.spawn([c.bunBin, script, ...cmd.args], { cwd: c.home, env: childEnv(c), stdout: "pipe", stderr: "pipe" });
+  const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);
+  if (code !== 0) {
+    log(c, "fast path fell back to Claude", { request, args: cmd.args, code });
+    return null;
+  }
+  const reply = cmd.args[0] === "status" ? statusSentence(out) : cmd.say ?? "Done.";
+  emit({ event: "state", state: "working" });
+  speak(reply);
+  const summary = cmd.args[0] === "status" ? `Checked the lights: ${out.trim().replace(/\n/g, "; ")}` : `Lights: ${cmd.args.join(" ")}`;
+  saveLastRun(c, { sessionId: "fast", keep: false, endedAt: at, request, reply });
+  action(c, { kind: "action", summary });
+  emit({ event: "done", sessionId: "", keep: false, summary, reply });
+  emit({ event: "state", state: "done" });
+  await finish();
+  return { exitCode: 0, keep: false, summary, reply };
 }
