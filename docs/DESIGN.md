@@ -109,6 +109,8 @@ Notes:
 
 The launcher parses `stream_event` text deltas from the main conversation (`parent_tool_use_id` null), cuts at the first sentence boundary, strips markdown and speaks it immediately; the rest is spoken as complete sentences arrive. It speaks through the bridge's `Speaker` library (`bridge/src/speech.ts`), so it shares the speech lock with Claude's `speak` calls and sends `speak_start`/`speak_end` captions to the app. The final `result` event carries `structured_output` and `session_id` (confirmed with stream-json, section 10). `structured_output` arrives as a `StructuredOutput` tool call, so its `input_json_delta`s are never spoken.
 
+**Only two things are spoken (Leo, 2026-10-13):** the run's opening line when it goes on to use tools ("Adding that to your Kanban."), and its final answer. `RunMonitor` holds each message's sentences until it sees whether a tool call follows: narration before a tool is dropped (except the run's first line, marked `opener`), the text before `StructuredOutput` or the end of the turn is the answer. The notch shows the opener as the Working line and no longer lists steps. If a run ends with no text, its structured `say` line is spoken (the `summary` only as a last resort, since it reads like a log line). "Thanks" and greetings get an instant natural reply from the fast path.
+
 ### 4.4 Follow-ups
 
 "Jarvis, and also…" within 2 minutes of the last run:

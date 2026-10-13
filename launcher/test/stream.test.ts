@@ -77,3 +77,31 @@ test("a run that ends with only structured output is flagged as silent", () => {
   expect(play(progress).res.endedSilently).toBe(true);
   expect(play(runs.weather()).res.endedSilently).toBe(false);
 });
+
+test("only the opening line and the final answer are spoken", () => {
+  const said: [string, string][] = [];
+  const m = new RunMonitor({ onSentence: (s, k) => said.push([k, s]) });
+  // As Claude streams it: one API message with a text block and then a tool_use block.
+  let n = 0;
+  const se = (event: object) => ({ type: "stream_event", event, parent_tool_use_id: null, session_id: "sid-1", uuid: `q${n++}` });
+  const msg = (textBody: string, tool?: string) => [
+    se({ type: "message_start", message: { id: `m${n}`, role: "assistant", content: [] } }),
+    se({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+    se({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: textBody } }),
+    se({ type: "content_block_stop", index: 0 }),
+    ...(tool ? [se({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: `t${n}`, name: tool, input: {} } }), se({ type: "content_block_stop", index: 1 })] : []),
+    se({ type: "message_stop" }),
+  ];
+  const stream = [
+    init(),
+    ...msg("Adding that to your Kanban. Let me find the board.", "Bash"),
+    toolResult("t1", "ok"),
+    ...msg("Checking it went in.", "Bash"),
+    toolResult("t2", "ok"),
+    ...msg("Done, buy chalk is on your board.", "StructuredOutput"),
+    result({ structured: { keep: false, summary: "Added buy chalk" } }),
+  ];
+  for (const e of stream) m.line(JSON.stringify(e));
+  m.finish(0);
+  expect(said).toEqual([["opener", "Adding that to your Kanban."], ["reply", "Done, buy chalk is on your board."]]);
+});

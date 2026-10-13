@@ -28,6 +28,8 @@ export interface SpeakStart {
   id: string;
   text: string;
   session_id: string | null;
+  /** The run's opening line ("Adding that to your Kanban"), not its answer: the notch shows it as Working. */
+  opener?: boolean;
 }
 export interface SpeakEnd {
   type: "speak_end";

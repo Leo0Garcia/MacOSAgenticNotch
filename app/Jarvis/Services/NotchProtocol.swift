@@ -33,7 +33,7 @@ enum NotchProtocol {
     /// Client to app. Unknown types decode as `.unknown` and are ignored.
     enum ClientMessage: Equatable, Sendable {
         case hello(protocol: Int, token: String, client: ClientKind, pid: Int32?, sessionId: String?)
-        case speakStart(id: String, text: String, sessionId: String?)
+        case speakStart(id: String, text: String, sessionId: String?, opener: Bool = false)
         case speakEnd(id: String)
         case notify(id: String, title: String, body: String, sessionId: String?)
         case ask(id: String, question: String, options: [String], timeoutMs: Int, sessionId: String?)
@@ -98,7 +98,7 @@ enum NotchProtocol {
                 protocol: try int("protocol"), token: try str("token"), client: client,
                 pid: (obj["pid"] as? NSNumber)?.int32Value, sessionId: optStr("session_id"))
         case "speak_start":
-            return .speakStart(id: try str("id"), text: try str("text"), sessionId: optStr("session_id"))
+            return .speakStart(id: try str("id"), text: try str("text"), sessionId: optStr("session_id"), opener: obj["opener"] as? Bool ?? false)
         case "speak_end":
             return .speakEnd(id: try str("id"))
         case "notify":

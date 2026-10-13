@@ -119,6 +119,7 @@ import Testing
 
     @Test func statusLinesCoalesceTo350ms() {
         let (m, s, l, _) = makeModel()
+        m.showSteps = true
         m.submit("weather")
         l.emit(.status(text: "Searching the web", detail: "weather"))
         l.emit(.status(text: "Reading BBC Weather", detail: "bbc.co.uk/weather"))
@@ -417,5 +418,23 @@ import Testing
         let (m, _, l, _) = makeModel()
         m.hotkeyDown()
         #expect(l.hushes == 0)
+    }
+}
+
+
+@MainActor
+@Suite struct QuietRunTests {
+    @Test func theOpeningLineIsTheWorkingStatusNotACaption() {
+        let (m, _, l, _) = makeModel()
+        m.submit("add buy chalk to my Kanban")
+        m.received(.speakStart(id: "1", text: "Adding that to your Kanban.", sessionId: nil, opener: true), from: 1)
+        #expect(m.panel == .working)
+        #expect(m.run?.status == "Adding that to your Kanban.")
+        #expect(m.run?.captions.isEmpty == true)
+        l.emit(.status(text: "Running a command", detail: "kanban add"))
+        #expect(m.run?.status == "Adding that to your Kanban.") // no step updates
+        m.speechEnded(id: "1")
+        m.speechStarted(id: "2", text: "Done, it's on the board.")
+        #expect(m.panel == .done)
     }
 }

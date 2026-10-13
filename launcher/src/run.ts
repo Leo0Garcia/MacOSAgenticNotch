@@ -14,7 +14,7 @@ import { deleteRunFile, deleteTranscript, finalize, type FinalizeInput } from ".
 import { buildSystemPrompt, checkClaudeVersion, linkSkills } from "./setup";
 import { ensureDirs, type LastRun, log, recentRun, saveLastRun, writeFileAtomic } from "./store";
 import { withContext } from "./context";
-import { lightsConfig, parseLights, statusSentence } from "./fast";
+import { lightsConfig, parseLights, smallTalk, statusSentence } from "./fast";
 import { toolStatus } from "./status";
 import { type Denial, initProblem, RunMonitor } from "./stream";
 
@@ -22,7 +22,7 @@ import { type Denial, initProblem, RunMonitor } from "./stream";
 export type LauncherEvent =
   | { event: "ready"; sessionId: string }
   | { event: "state"; state: "working" | "done" | "needs-you" | "error"; sessionId?: string }
-  | { event: "speak"; text: string }
+  | { event: "speak"; text: string; opener?: boolean }
   | { event: "status"; text: string; detail?: string }
   | { event: "denied"; tool: string; rule?: string; reason?: string }
   | { event: "warning"; message: string }
@@ -92,10 +92,10 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     hushed = true;
     speaker.mute();
   });
-  const speak = (text: string) => {
+  const speak = (text: string, kind: "opener" | "reply" = "reply") => {
     if (hushed) return;
-    emit({ event: "speak", text });
-    speaker.say(text).catch((err) => log(c, "speech failed", { error: String(err) }));
+    emit({ event: "speak", text, ...(kind === "opener" ? { opener: true } : {}) });
+    speaker.say(text, { opener: kind === "opener" }).catch((err) => log(c, "speech failed", { error: String(err) }));
   };
   const finish = async () => {
     await speaker.idle();
@@ -113,7 +113,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
 
   // The fast path speaks through a notch link too, so the caption shows as the audio starts.
   const fastWithCaptions = async (req: string) => {
-    if (!lightsConfig(c.repo) || c.env.JARVIS_FAST === "0") return null;
+    if ((!lightsConfig(c.repo) && !smallTalk(req)) || c.env.JARVIS_FAST === "0") return null;
     link = new NotchLink({ home: c.home, client: "launcher", sessionId: null, connectTimeoutMs: 300 });
     speaker = new Speaker({ home: c.home, link, run: opts.speechRunner });
     return tryFast(c, req, speak, emit, finish, now());
@@ -256,11 +256,13 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
 
   const guard = res.denials.find((d) => d.reason);
   if (!res.reply && guard?.reason) speak(guard.reason.replace(/^guard:[a-z-]+:\s*/, "I can't do that: "));
-  else if (res.endedSilently && res.summary && !res.isError) {
+  else if (res.endedSilently && (res.say || res.summary) && !res.isError) {
     // Claude finished with only the structured output (or just a progress
-    // line earlier): say the summary so Leo never gets silence.
-    speak(res.summary);
-    res.reply = res.reply ? `${res.reply}\n${res.summary}` : res.summary;
+    // line earlier): say its `say` line, so Leo never gets silence. The
+    // summary is a log line ("Acknowledged Leo's thanks"), so only a last resort.
+    const line = res.say ?? res.summary;
+    speak(line);
+    res.reply = res.reply ? `${res.reply}\n${line}` : line;
   } else if (!res.reply && res.isError) speak("Something went wrong with that run. It's in the log.");
 
   const status = res.isError && !res.reply ? "error" : res.denials.length ? "needs-you" : "done";
@@ -315,6 +317,15 @@ async function tryFast(
   at: number,
 ): Promise<RunOutcome | null> {
   if (c.env.JARVIS_FAST === "0") return null;
+  const hello = smallTalk(request);
+  if (hello) {
+    emit({ event: "state", state: "working" });
+    speak(hello);
+    emit({ event: "done", sessionId: "", keep: false, summary: hello, reply: hello });
+    emit({ event: "state", state: "done" });
+    await finish();
+    return { exitCode: 0, keep: false, summary: hello, reply: hello };
+  }
   const config = lightsConfig(c.repo);
   const cmd = config && parseLights(request, config);
   if (!cmd) return null;
