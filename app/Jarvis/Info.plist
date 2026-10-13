@@ -38,7 +38,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Jarvis reads your calendar to answer questions about your day. It never changes events.</string>
+	<string>Jarvis reads your calendar to answer questions about your day, and adds events when you ask.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
 	<key>NSMicrophoneUsageDescription</key>

@@ -206,6 +206,26 @@ import Testing
         #expect(err.contains(#""code":"denied""#))
     }
 
+    @Test func decodesAnAddAndEncodesTheResult() throws {
+        let msg = try NotchProtocol.decode(#"{"type":"calendar_add","id":"a1","title":"Group project","start":"2026-10-20T10:00:00.000Z","end":"2026-10-20T11:00:00.000Z","repeat":"weekly"}"#)
+        #expect(msg == .calendarAdd(id: "a1", event: .init(
+            title: "Group project", start: "2026-10-20T10:00:00.000Z", end: "2026-10-20T11:00:00.000Z", allDay: false,
+            location: nil, calendar: nil, repeat: "weekly", until: nil)))
+        #expect(throws: NotchProtocol.DecodeError.missingField("title")) {
+            try NotchProtocol.decode(#"{"type":"calendar_add","id":"a1","start":"x","end":"y"}"#)
+        }
+        #expect(NotchProtocol.encode(.calendarAddResult(id: "a1", calendar: "Home")).contains(#""calendar":"Home""#))
+        #expect(NotchProtocol.encode(.calendarAddError(id: "a1", code: "denied", message: "off")).contains(#""type":"calendar_add_result""#))
+    }
+
+    @Test func buildsRecurrenceRules() throws {
+        #expect(try CalendarService.recurrence(nil, until: nil).get() == nil)
+        #expect(try CalendarService.recurrence("weekly", until: nil).get()?.frequency == .weekly)
+        #expect(try CalendarService.recurrence("Daily", until: "2026-12-01T00:00:00Z").get()?.recurrenceEnd?.endDate != nil)
+        #expect(throws: CalendarService.Failure.self) { try CalendarService.recurrence("fortnightly", until: nil).get() }
+        #expect(throws: CalendarService.Failure.self) { try CalendarService.recurrence(nil, until: "2026-12-01T00:00:00Z").get() }
+    }
+
     @Test func parsesBothISOForms() {
         #expect(CalendarService.date("2026-10-12T00:00:00Z") != nil)
         #expect(CalendarService.date("2026-10-12T00:00:00.000Z") != nil)
