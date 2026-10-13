@@ -208,6 +208,11 @@ export class Speaker {
     try {
       const file = await audio;
       await link?.send({ type: "speak_start", id, text, session_id: this.opts.sessionId ?? null });
+      // JARVIS_MUTE=1: captions only, no sound (for test runs while Leo is around).
+      if (process.env.JARVIS_MUTE === "1") {
+        if (file) rmSync(file, { force: true });
+        return;
+      }
       if (file) {
         try {
           const r = await (this.opts.run ?? runCommand)(["afplay", file]);

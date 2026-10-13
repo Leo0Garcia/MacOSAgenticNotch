@@ -157,3 +157,14 @@ test("Kokoro is used only when installed, and JARVIS_TTS=say turns it off", asyn
   expect(KokoroSynth.available(home)).toBe(true);
   expect(KokoroSynth.available(home, { JARVIS_TTS: "say" })).toBe(false);
 });
+
+test("JARVIS_MUTE=1 sends captions but plays nothing", async () => {
+  const run = stubRunner();
+  process.env.JARVIS_MUTE = "1";
+  try {
+    await new Speaker({ home, run, synth: null }).say("quiet please");
+  } finally {
+    delete process.env.JARVIS_MUTE;
+  }
+  expect(run.calls).toHaveLength(0);
+});
