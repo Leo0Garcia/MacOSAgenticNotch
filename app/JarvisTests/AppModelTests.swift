@@ -400,3 +400,22 @@ import Testing
         #expect(l.requests == ["add buy chalk to my Kanban"])
     }
 }
+
+
+@MainActor
+@Suite struct InterruptTests {
+    @Test func pressingTheHotkeyWhileJarvisTalksSilencesIt() {
+        let (m, _, l, _) = makeModel()
+        m.submit("tell me about the Itchen bridge")
+        m.speechStarted(id: "a", text: "The Itchen Bridge opened in 1977.")
+        m.hotkeyDown()
+        #expect(l.hushes == 1)
+        #expect(m.panel == .listening)
+    }
+
+    @Test func nothingToHushWhenIdle() {
+        let (m, _, l, _) = makeModel()
+        m.hotkeyDown()
+        #expect(l.hushes == 0)
+    }
+}

@@ -257,6 +257,8 @@ final class AppModel {
 
     private func beginListening(preroll: [Float]?) {
         if panel == .listening { return }
+        // Leo starts talking: Jarvis stops (Leo, 2026-10-13).
+        if speaking || runActive { launcher?.hushAll() }
         captureContext?()
         handsFree = preroll != nil
         if case let .question(ask) = panel { listenTarget = .answer(ask) } else { listenTarget = .request }
@@ -323,6 +325,7 @@ final class AppModel {
 
     /// Sends a request to the launcher (spoken, typed with --request, or a button).
     func submit(_ request: String) {
+        if speaking { launcher?.hushAll() } // a typed or linked request interrupts too
         let now = scheduler.now
         runTokens += 1
         let token = runTokens

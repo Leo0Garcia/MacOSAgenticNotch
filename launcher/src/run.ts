@@ -86,7 +86,14 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   let speaker = new Speaker({ home: c.home, run: opts.speechRunner });
   const notch = (e: Omit<RunEvent, "type" | "session_id">, sessionId?: string) =>
     void link?.send({ type: "run_event", session_id: sessionId ?? null, ...e });
+  // SIGUSR1 from the notch app: Leo interrupted. This run goes quiet (and keeps working).
+  let hushed = false;
+  process.on("SIGUSR1", () => {
+    hushed = true;
+    speaker.mute();
+  });
   const speak = (text: string) => {
+    if (hushed) return;
     emit({ event: "speak", text });
     speaker.say(text).catch((err) => log(c, "speech failed", { error: String(err) }));
   };
@@ -142,6 +149,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
 
   mkdirSync(p.runs, { recursive: true });
   sweepStaleMcpConfigs(p.runs, now());
+  sweepStaleMcpConfigs(`${c.home}/run/muted`, now(), "");
   const mcpFile = p.mcpConfig(sessionId);
   writeFileAtomic(mcpFile, JSON.stringify(mcpConfig(c, sessionId)));
   let initFailure: string | undefined;
@@ -185,6 +193,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   link?.close();
   link = new NotchLink({ home: c.home, client: "launcher", sessionId, connectTimeoutMs: 300 });
   speaker = new Speaker({ home: c.home, link, sessionId, run: opts.speechRunner });
+  if (hushed) speaker.mute();
   emit({ event: "state", state: "working", sessionId });
   notch({ event: "started", text: request }, sessionId);
   const logFile = Bun.file(plan.runLog).writer();
@@ -280,11 +289,11 @@ function action(c: Config, a: Parameters<typeof appendAction>[1]): void {
   }
 }
 
-/** Per-run MCP configs left by runs that were killed (over 12 hours old). */
-export function sweepStaleMcpConfigs(dir: string, now = Date.now()): void {
+/** Per-run files left by runs that were killed or hushed (over 12 hours old): MCP configs, mute markers. */
+export function sweepStaleMcpConfigs(dir: string, now = Date.now(), suffix = ".mcp.json"): void {
   try {
     for (const f of readdirSync(dir)) {
-      if (!f.endsWith(".mcp.json")) continue;
+      if (!f.endsWith(suffix)) continue;
       const path = `${dir}/${f}`;
       if (now - statSync(path).mtimeMs > 12 * 3600 * 1000) rmSync(path, { force: true });
     }

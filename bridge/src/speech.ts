@@ -140,6 +140,7 @@ export class Speaker {
   private readonly token = `${process.pid}:${Math.random().toString(36).slice(2)}`;
 
   private synth: Synth | null;
+  private muted = false;
 
   constructor(private opts: SpeakerOptions) {
     this.synth = opts.synth !== undefined ? opts.synth : KokoroSynth.available(opts.home) ? new KokoroSynth(opts.home) : null;
@@ -162,6 +163,27 @@ export class Speaker {
     });
     this.queue = job.catch(() => {});
     return job;
+  }
+
+  /**
+   * Leo interrupted (Option-Space or a new request): drop everything this
+   * speaker still has to say, now and later. The run's bridge (same session)
+   * goes quiet too, through ~/Jarvis/run/muted/<session>. The notch app kills
+   * the sentence that is playing.
+   */
+  mute(): void {
+    this.muted = true;
+    const id = this.opts.sessionId;
+    if (id && /^[\w-]+$/.test(id)) {
+      mkdirSync(join(this.opts.home, "run", "muted"), { recursive: true });
+      writeFileSync(join(this.opts.home, "run", "muted", id), "");
+    }
+  }
+
+  private silenced(): boolean {
+    if (this.muted) return true;
+    const id = this.opts.sessionId;
+    return Boolean(id && existsSync(join(this.opts.home, "run", "muted", id)));
   }
 
   /** Resolves when everything queued so far has been spoken, and gives the voice back. */
@@ -192,6 +214,11 @@ export class Speaker {
   }
 
   private async speakNow(text: string, audio: Promise<string | null>) {
+    if (this.silenced()) {
+      const f = await audio;
+      if (f) rmSync(f, { force: true });
+      return;
+    }
     const lock = speechLock(this.opts.home);
     if (!this.holding || lockOwner(lock) !== this.token) {
       await acquire(lock, this.opts.pollMs ?? 50, this.token);
@@ -216,7 +243,7 @@ export class Speaker {
       if (file) {
         try {
           const r = await (this.opts.run ?? runCommand)(["afplay", file]);
-          if (r.code === 0) return;
+          if (r.code === 0 || this.silenced()) return; // killed because Leo interrupted: no say fallback
         } finally {
           rmSync(file, { force: true });
         }
@@ -225,6 +252,7 @@ export class Speaker {
       const voice = this.opts.voice !== undefined ? this.opts.voice : await defaultVoice();
       const args = voice ? ["say", "-v", voice, "-f", "-"] : ["say", "-f", "-"];
       const r = await (this.opts.run ?? runCommand)(args, { stdin: text });
+      if (r.code !== 0 && this.silenced()) return;
       if (r.code !== 0) throw new Error(`say failed (exit ${r.code}): ${r.stderr.trim() || "no output"}`);
     } finally {
       await link?.send({ type: "speak_end", id });
