@@ -147,7 +147,7 @@ export class Speaker {
   }
 
   /** Queues text and resolves when it has been spoken (or failed). */
-  say(text: string): Promise<void> {
+  say(text: string, opts: { opener?: boolean } = {}): Promise<void> {
     const t = text.trim().slice(0, MAX_SPEAK_CHARS);
     if (!t) return Promise.resolve();
     // Render now, while earlier sentences are still playing, so there's no gap.
@@ -157,7 +157,7 @@ export class Speaker {
       clearTimeout(this.releaseTimer);
       this.releaseTimer = null;
     }
-    const job = this.queue.then(() => this.speakNow(t, audio)).finally(() => {
+    const job = this.queue.then(() => this.speakNow(t, audio, opts.opener === true)).finally(() => {
       this.pending--;
       if (this.pending === 0) this.scheduleRelease();
     });
@@ -213,7 +213,7 @@ export class Speaker {
     if (lockOwner(lock) === this.token) release(lock);
   }
 
-  private async speakNow(text: string, audio: Promise<string | null>) {
+  private async speakNow(text: string, audio: Promise<string | null>, opener = false) {
     if (this.silenced()) {
       const f = await audio;
       if (f) rmSync(f, { force: true });
@@ -234,7 +234,7 @@ export class Speaker {
     const link = this.opts.link;
     try {
       const file = await audio;
-      await link?.send({ type: "speak_start", id, text, session_id: this.opts.sessionId ?? null });
+      await link?.send({ type: "speak_start", id, text, session_id: this.opts.sessionId ?? null, ...(opener ? { opener: true } : {}) });
       // JARVIS_MUTE=1: captions only, no sound (for test runs while Leo is around).
       if (process.env.JARVIS_MUTE === "1") {
         if (file) rmSync(file, { force: true });

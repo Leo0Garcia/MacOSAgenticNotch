@@ -88,7 +88,7 @@ struct RunState: Equatable, Sendable {
     var request: String
     var startedAt: Double
     var sessionId: String?
-    var status: String = "Thinking"
+    var status: String = "Working on it"
     var steps: [RunStep] = []
     var hosts: [String] = []
     var captions: [Caption] = []
@@ -182,6 +182,8 @@ final class AppModel {
     @ObservationIgnored var postNotification: ((_ title: String, _ body: String) -> Void)?
     @ObservationIgnored var announce: ((String) -> Void)?
     @ObservationIgnored var loadRecent: (() -> [ActionItem])?
+    /// The old step-by-step Working list; off since Leo asked for no progress updates.
+    @ObservationIgnored var showSteps = false
     /// Notes what Leo was doing when listening starts, and writes it just before a request goes out.
     @ObservationIgnored var captureContext: (() -> Void)?
     @ObservationIgnored var willSubmit: ((String) -> Void)?
@@ -373,7 +375,8 @@ final class AppModel {
             if state != "working" { run?.finalState = state }
         case let .status(text, detail):
             queueStatus(text, detail)
-        case let .speak(text):
+        case let .speak(text, opener):
+            if opener { run?.status = text; return } // shown as the Working line, not a caption
             // Captions come from the socket (speak_start/speak_end, timed to the
             // audio). Without the socket, fall back to the launcher's stdout.
             stdoutSpeechCount += 1
@@ -416,6 +419,8 @@ final class AppModel {
         if let host = Self.host(in: detail ?? ""), run?.hosts.contains(host) == false, text.hasPrefix("Reading") || text.hasPrefix("Opening") {
             run?.hosts.append(host)
         }
+        // Leo (2026-10-13): no step-by-step updates; the Working line is the run's opening sentence.
+        guard showSteps else { return }
         pendingStatus = (text, detail)
         let wait = Timing.statusMinInterval - (now - lastStatusAt)
         if wait <= 0 {
@@ -567,8 +572,17 @@ final class AppModel {
 
     func received(_ msg: NotchProtocol.ClientMessage, from client: NotchServer.ClientID) {
         switch msg {
-        case let .speakStart(id, text, _):
-            speechStarted(id: id, text: text)
+        case let .speakStart(id, text, _, opener):
+            if opener, runActive {
+                // "Adding that to your Kanban": what it's working on, not the answer.
+                run?.socketSpeech = true
+                run?.status = text
+                speakingIDs.insert(id)
+                speaking = true
+                bumpLayout(.expand)
+            } else {
+                speechStarted(id: id, text: text)
+            }
         case let .speakEnd(id):
             speechEnded(id: id)
         case let .notify(_, title, body, _):

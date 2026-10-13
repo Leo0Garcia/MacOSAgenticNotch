@@ -16,6 +16,8 @@ export interface Denial {
 }
 
 export interface RunResult {
+  /** The structured output's `say`: the spoken line when the run wrote no text reply. */
+  say?: string;
   sessionId?: string;
   keep: boolean;
   summary: string;
@@ -30,7 +32,13 @@ export interface RunResult {
 }
 
 export interface MonitorHooks {
-  onSentence?: (s: string) => void;
+  /**
+   * A sentence to speak. Only two kinds reach Leo (2026-10-13: "tell me what
+   * it's working on and then when it's finished"): the first line of a run
+   * that goes on to use tools ("opener"), and the final answer ("reply").
+   * Narration between tool calls is dropped.
+   */
+  onSentence?: (s: string, kind: "opener" | "reply") => void;
   onInit?: (init: InitInfo) => void;
   onDenial?: (d: Denial) => void;
   /** A tool call in the main conversation (not a subagent's). */
@@ -62,6 +70,9 @@ export class RunMonitor {
   private splitter = new SentenceSplitter();
   private replyParts: string[] = [];
   private sawTextDelta = false;
+  /** Sentences of the current message, held until we know if a tool call follows. */
+  private held: string[] = [];
+  private openerSaid = false;
   /** Whether Claude said anything after its last real tool call. */
   private spokeSinceTool = false;
   private denials = new Map<string, Denial>();
@@ -91,9 +102,11 @@ export class RunMonitor {
       case "stream_event":
         if (ev.parent_tool_use_id) return; // subagent output isn't Jarvis's reply
         return this.onStreamEvent(ev.event);
-      case "assistant":
+      case "assistant": {
         if (ev.parent_tool_use_id) return;
-        for (const b of ev.message?.content ?? []) {
+        const content: any[] = ev.message?.content ?? [];
+        const usesTools = content.some((b) => b?.type === "tool_use" && b.name !== "StructuredOutput");
+        for (const b of content) {
           if (b?.type === "tool_use") {
             this.toolNames.set(b.id, b.name);
             if (b.name !== "StructuredOutput") this.spokeSinceTool = false;
@@ -102,7 +115,9 @@ export class RunMonitor {
           // Without partial messages the text only arrives here.
           if (b?.type === "text" && !this.sawTextDelta) this.addText(b.text + "\n", true);
         }
+        if (!this.sawTextDelta) this.settle(usesTools ? "working" : "final");
         return;
+      }
       case "user":
         for (const b of ev.message?.content ?? []) {
           if (b?.type !== "tool_result" || !b.is_error) continue;
@@ -134,18 +149,34 @@ export class RunMonitor {
     if (e?.type === "content_block_delta" && e.delta?.type === "text_delta") {
       this.sawTextDelta = true;
       this.addText(e.delta.text, false);
+    } else if (e?.type === "content_block_start" && e.content_block?.type === "tool_use") {
+      // Now we know what the text so far was: narration before a tool, or the answer.
+      this.held.push(...this.splitter.flush());
+      this.settle(e.content_block.name === "StructuredOutput" ? "final" : "working");
     } else if (e?.type === "message_stop") {
       // A message that ends mid-sentence ("Let me check") before a tool call.
-      for (const s of this.splitter.flush()) this.hooks.onSentence?.(s);
+      this.held.push(...this.splitter.flush());
+      this.settle("final");
       if (this.replyParts.length && !/\s$/.test(this.replyParts.at(-1)!)) this.replyParts.push("\n");
+    }
+  }
+
+  private settle(kind: "working" | "final"): void {
+    const held = this.held;
+    this.held = [];
+    if (kind === "final") {
+      for (const s of held) this.hooks.onSentence?.(s, "reply");
+    } else if (!this.openerSaid && held.length) {
+      this.openerSaid = true;
+      this.hooks.onSentence?.(held[0]!, "opener");
     }
   }
 
   private addText(text: string, flush: boolean): void {
     this.replyParts.push(text);
     if (text.trim()) this.spokeSinceTool = true;
-    for (const s of this.splitter.push(text)) this.hooks.onSentence?.(s);
-    if (flush) for (const s of this.splitter.flush()) this.hooks.onSentence?.(s);
+    this.held.push(...this.splitter.push(text));
+    if (flush) this.held.push(...this.splitter.flush());
   }
 
   private addDenial(tool: string, toolUseId: string | undefined, text: string): void {
@@ -164,7 +195,8 @@ export class RunMonitor {
 
   /** Call when the stream ends. */
   finish(exitCode: number | null): RunResult {
-    for (const s of this.splitter.flush()) this.hooks.onSentence?.(s);
+    this.held.push(...this.splitter.flush());
+    this.settle("final");
     const reply = this.replyParts.join("").replace(/\n{3,}/g, "\n\n").trim();
     const denials = [...this.denials.values()];
     const r = this.result;
@@ -175,7 +207,7 @@ export class RunMonitor {
     const so = r.structured_output;
     const isError = Boolean(r.is_error) || (r.subtype !== undefined && r.subtype !== "success");
     if (so && typeof so.keep === "boolean" && typeof so.summary === "string") {
-      return { ...base, keep: so.keep, summary: so.summary, isError };
+      return { ...base, keep: so.keep, summary: so.summary, isError, say: typeof so.say === "string" && so.say.trim() ? so.say.trim() : undefined };
     }
     // DESIGN 4.1: no valid structured_output means keep, so nothing is lost silently.
     return {
