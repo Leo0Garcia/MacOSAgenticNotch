@@ -113,6 +113,9 @@ The launcher parses `stream_event` text deltas from the main conversation (`pare
 
 ### 4.4 Follow-ups
 
+**Mid-task and just-after requests know the task (Leo, 2026-10-14).** Each run writes `state/active/<session>.json` (request, start time, opening line or latest step, launcher pid) while it works. Every new run gets a `<jarvis-activity>` block in front of the request listing those runs and the exchange that ended in the last two minutes, so "how's it going" or "make it three" isn't met with "what do you mean?". Files from a dead launcher are dropped. Asking something while a run works quietly no longer hushes it, so its answer still comes; only speech in progress is cut off.
+
+
 "Jarvis, and also…" within 2 minutes of the last run:
 
 - Last run saved: `claude -p "<request>" --resume <session-id>` (same flags). Resume by ID works from any directory; since v2.1.223 Claude Code searches every project on the machine. The original system prompt (briefing) is reused on resume until compaction, which is fine within 2 minutes.

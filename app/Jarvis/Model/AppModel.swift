@@ -259,8 +259,9 @@ final class AppModel {
 
     private func beginListening(preroll: [Float]?) {
         if panel == .listening { return }
-        // Leo starts talking: Jarvis stops (Leo, 2026-10-13).
-        if speaking || runActive { launcher?.hushAll() }
+        // Leo starts talking: Jarvis stops (Leo, 2026-10-13). A run working
+        // quietly isn't hushed, so its answer still comes when it's done.
+        if speaking { launcher?.hushAll() }
         captureContext?()
         handsFree = preroll != nil
         if case let .question(ask) = panel { listenTarget = .answer(ask) } else { listenTarget = .request }

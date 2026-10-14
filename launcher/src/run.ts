@@ -12,7 +12,7 @@ import { claudeArgs, mcpConfig, modelFor, needsSmartModel, type RunPlan, savedRu
 import { childEnv, type Config, paths } from "./config";
 import { deleteRunFile, deleteTranscript, finalize, type FinalizeInput } from "./finalize";
 import { buildSystemPrompt, checkClaudeVersion, linkSkills } from "./setup";
-import { ensureDirs, type LastRun, log, recentRun, saveLastRun, writeFileAtomic } from "./store";
+import { type ActiveRun, clearActiveRun, ensureDirs, type LastRun, log, recentRun, saveActiveRun, saveLastRun, writeFileAtomic } from "./store";
 import { withContext } from "./context";
 import { lightsConfig, parseLights, smallTalk, statusSentence } from "./fast";
 import { toolStatus } from "./status";
@@ -65,17 +65,8 @@ export function planRun(c: Config, request: string, now = Date.now()): RunPlan &
     return { prompt: request, resume: last.sessionId, runLog: `${p.runs}/${last.sessionId}.followup-${now}.jsonl`, resumed: true };
   }
   const sessionId = randomUUID();
-  let prompt = request;
-  if (last && !last.keep && last.request !== undefined) {
-    prompt = [
-      "This follows on from Leo's previous request a moment ago.",
-      `Leo: ${last.request}`,
-      `Jarvis: ${last.reply ?? ""}`,
-      "",
-      `Leo now says: ${request}`,
-    ].join("\n");
-  }
-  return { prompt: withContext(c, prompt, now), sessionId, name: savedRunName(request), runLog: p.runLog(sessionId), resumed: false };
+  // The last exchange (and any run still going) reaches Claude through the activity block.
+  return { prompt: withContext(c, request, now), sessionId, name: savedRunName(request), runLog: p.runLog(sessionId), resumed: false };
 }
 
 export async function run(c: Config, request: string, opts: RunOptions = {}): Promise<RunOutcome> {
@@ -186,10 +177,18 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     }
     request = req;
     const sink = proc.stdin as import("bun").FileSink;
-    sink.write(JSON.stringify({ type: "user", message: { role: "user", content: withContext(c, request, now()) } }) + "\n");
+    sink.write(JSON.stringify({ type: "user", message: { role: "user", content: withContext(c, request, now(), sessionId) } }) + "\n");
     await sink.end();
   }
 
+  const active: ActiveRun = { sessionId, pid: process.pid, request, startedAt: now() };
+  const markActive = (doing?: string) => {
+    if (doing) active.doing = doing;
+    try {
+      saveActiveRun(c, active);
+    } catch {}
+  };
+  markActive();
   link?.close();
   link = new NotchLink({ home: c.home, client: "launcher", sessionId, connectTimeoutMs: 300 });
   speaker = new Speaker({ home: c.home, link, sessionId, run: opts.speechRunner });
@@ -198,10 +197,14 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   notch({ event: "started", text: request }, sessionId);
   const logFile = Bun.file(plan.runLog).writer();
   const monitor = new RunMonitor({
-    onSentence: speak,
+    onSentence: (s, kind) => {
+      if (kind === "opener") markActive(s);
+      speak(s, kind);
+    },
     onTool: (name, input) => {
       const st = toolStatus(name, input);
       if (!st) return;
+      markActive(st.text);
       emit({ event: "status", text: st.text, ...(st.detail ? { detail: st.detail } : {}) });
       notch({ event: "tool", text: st.text }, sessionId);
     },
@@ -235,6 +238,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   const exitCode = await proc.exited;
   const stderr = await stderrText;
   rmSync(mcpFile, { force: true });
+  clearActiveRun(c, sessionId);
 
   if (initFailure) {
     // Nothing happened yet, so nothing to keep.
