@@ -414,6 +414,13 @@ import Testing
         #expect(m.panel == .listening)
     }
 
+    @Test func aQuietRunKeepsItsAnswerWhenLeoAsksSomethingElse() {
+        let (m, _, l, _) = makeModel()
+        m.submit("add my lectures to the Kanban")
+        m.hotkeyDown()
+        #expect(l.hushes == 0)
+    }
+
     @Test func nothingToHushWhenIdle() {
         let (m, _, l, _) = makeModel()
         m.hotkeyDown()

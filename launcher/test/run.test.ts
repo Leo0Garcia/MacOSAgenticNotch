@@ -125,9 +125,9 @@ test("'and also' after an ephemeral run starts a new run with the last exchange 
   const second = await go("Jarvis, and also tomorrow?", runs.weather(), {}, () => t);
   const argv = w.lastCall().argv;
   expect(argv[argv.indexOf("--session-id") + 1]).not.toBe(first.out.sessionId);
-  expect(argv[1]).toBe(
-    "This follows on from Leo's previous request a moment ago.\nLeo: what's the weather in Southampton\nJarvis: It's 14 degrees and cloudy in Southampton. Light rain is likely after 6pm.\n\nLeo now says: Jarvis, and also tomorrow?",
-  );
+  expect(argv[1]).toStartWith("<jarvis-activity>");
+  expect(argv[1]).toContain(`Just finished (60 seconds ago): Leo: "what's the weather in Southampton" Jarvis: "It's 14 degrees and cloudy in Southampton. Light rain is likely after 6pm."`);
+  expect(argv[1]).toEndWith("</jarvis-activity>\n\nJarvis, and also tomorrow?");
   expect(second.out.exitCode).toBe(0);
 });
 
