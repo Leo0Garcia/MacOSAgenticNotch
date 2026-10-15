@@ -48,6 +48,21 @@ export function defaultVoice(run: Runner = runCommand, env = process.env): Promi
 }
 const STALE_LOCK_MS = 60_000;
 
+/**
+ * The notch app keeps ~/Jarvis/run/listening while Leo is talking to it.
+ * Speech waits until it's gone (Leo, 2026-10-15: "it should wait till I'm
+ * finished"). A marker older than this is left over from a crash and ignored.
+ */
+export const LISTENING_MAX_MS = 60_000;
+
+export function leoIsTalking(home: string, now = Date.now()): boolean {
+  try {
+    return now - statSync(join(home, "run", "listening")).mtimeMs < LISTENING_MAX_MS;
+  } catch {
+    return false;
+  }
+}
+
 /** Renders a sentence to a WAV file; null means "use say instead". */
 export interface Synth {
   render(text: string): Promise<string | null>;
@@ -229,6 +244,19 @@ export class Speaker {
         const now = new Date();
         utimesSync(lock, now, now);
       } catch {}
+    }
+    while (leoIsTalking(this.opts.home)) {
+      await Bun.sleep(this.opts.pollMs ?? 50);
+      try {
+        const now = new Date();
+        utimesSync(lock, now, now);
+      } catch {}
+    }
+    if (this.silenced()) {
+      // Hushed while Leo was talking: drop this sentence.
+      const f = await audio;
+      if (f) rmSync(f, { force: true });
+      return;
     }
     const id = `${process.pid}-${++this.count}`;
     const link = this.opts.link;

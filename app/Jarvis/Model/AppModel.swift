@@ -187,6 +187,8 @@ final class AppModel {
     /// Notes what Leo was doing when listening starts, and writes it just before a request goes out.
     @ObservationIgnored var captureContext: (() -> Void)?
     @ObservationIgnored var willSubmit: ((String) -> Void)?
+    /// True while Listening shows, so Jarvis holds its speech until Leo has finished.
+    @ObservationIgnored var listeningChanged: ((Bool) -> Void)?
 
     @ObservationIgnored private var timers: [String: Scheduled] = [:]
     @ObservationIgnored private var speakingIDs: Set<String> = []
@@ -830,7 +832,10 @@ final class AppModel {
         motion = grows ? .expand : .collapse
         if p.kind != panel.kind, p != .idle { moodSince = Date() }
         if p != .idle, p != lastPanel { lastPanel = p }
-        if p != panel { panel = p }
+        if p != panel {
+            if (p == .listening) != (panel == .listening) { listeningChanged?(p == .listening) }
+            panel = p
+        }
         if s != size { size = s }
         if s == .expanded { expandedContentAt = scheduler.now }
         layoutRevision &+= 1

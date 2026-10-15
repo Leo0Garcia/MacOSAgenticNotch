@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdirSync, utimesSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, utimesSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { Speaker } from "../src/speech";
 import { NotchLink } from "../src/notch";
@@ -24,6 +24,26 @@ test("sentences play in order, one at a time", async () => {
   const s = new Speaker({ home, run: timedRunner(log) });
   await Promise.all([s.say("one"), s.say("two"), s.say("three")]);
   expect(log).toEqual(["start one", "end one", "start two", "end two", "start three", "end three"]);
+});
+
+test("waits while Leo is talking, then speaks; an old marker is ignored", async () => {
+  const log: string[] = [];
+  mkdirSync(join(home, "run"), { recursive: true });
+  const marker = join(home, "run", "listening");
+  writeFileSync(marker, "");
+  const s = new Speaker({ home, run: timedRunner(log), pollMs: 5, holdMs: 0 });
+  const said = s.say("Done.");
+  await Bun.sleep(80);
+  expect(log).toEqual([]);
+  rmSync(marker);
+  await said;
+  expect(log).toEqual(["start Done.", "end Done."]);
+
+  writeFileSync(marker, "");
+  const old = (Date.now() - 120_000) / 1000;
+  utimesSync(marker, old, old);
+  await s.say("Again.");
+  expect(log.slice(2)).toEqual(["start Again.", "end Again."]);
 });
 
 test("two speakers (launcher and bridge) never overlap", async () => {
