@@ -38,6 +38,8 @@ export class NotchLink {
   private ws: WebSocket | null = null;
   private connecting: Promise<boolean> | null = null;
   private waiters = new Map<string, (a: Answer | null) => void>();
+  private played = new Map<string, () => void>();
+  private canPlay = false;
   private closed = false;
 
   constructor(private opts: NotchLinkOptions) {}
@@ -98,6 +100,7 @@ export class NotchLink {
           return;
         }
         if (msg.type === "welcome") {
+          this.canPlay = msg.play === true;
           this.ws = ws;
           done(true);
         } else if (msg.type === "answer") {
@@ -106,6 +109,8 @@ export class NotchLink {
             this.waiters.delete(msg.id);
             w(msg);
           }
+        } else if (msg.type === "played") {
+          this.played.get(msg.id)?.();
         } else if (msg.type === "error" && !settled) {
           done(false);
         }
@@ -114,6 +119,7 @@ export class NotchLink {
       ws.onclose = () => {
         done(false);
         if (this.ws === ws) this.ws = null;
+        for (const done of this.played.values()) done();
         // Anyone waiting on an answer gets "no answer" rather than hanging.
         for (const [id, w] of this.waiters) {
           this.waiters.delete(id);
@@ -132,6 +138,31 @@ export class NotchLink {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Has the app play a WAV and waits until it has (or was stopped, or the app
+   * went away). False when the app can't play it, so the caller plays it itself.
+   */
+  async play(id: string, file: string, timeoutMs = 120_000): Promise<boolean> {
+    if (!(await this.connect()) || !this.canPlay) return false;
+    return new Promise((resolve) => {
+      const finish = () => {
+        clearTimeout(timer);
+        this.played.delete(id);
+        resolve(true);
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      this.played.set(id, finish);
+      if (!this.ws) return finish();
+      try {
+        this.ws.send(JSON.stringify({ type: "play", id, file } satisfies ClientMessage));
+      } catch {
+        this.played.delete(id);
+        clearTimeout(timer);
+        resolve(false);
+      }
+    });
   }
 
   /** Sends an ask and waits for its answer. Null on timeout, abort or disconnect. */

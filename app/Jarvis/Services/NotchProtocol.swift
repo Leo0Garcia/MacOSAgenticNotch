@@ -43,6 +43,8 @@ enum NotchProtocol {
         case runEvent(sessionId: String?, event: String, text: String?, keep: Bool?, summary: String?, rule: String?)
         /// The calendar skill asks the app (which holds the Calendars permission) for events.
         case calendarEvents(id: String, from: String, to: String)
+    /// Play a rendered WAV through the app (gapless); answered with `played`.
+    case play(id: String, file: String)
         case unknown(type: String)
     }
 
@@ -53,6 +55,7 @@ enum NotchProtocol {
         case error(id: String?, message: String)
         case calendarEventsResult(id: String, events: [CalendarEvent])
         case calendarEventsError(id: String, code: String, message: String)
+    case played(id: String)
     }
 
     /// One calendar occurrence, in the shape the calendar skill's apple.ts reads.
@@ -124,6 +127,8 @@ enum NotchProtocol {
                 keep: obj["keep"] as? Bool, summary: optStr("summary"), rule: optStr("rule"))
         case "calendar_events":
             return .calendarEvents(id: try str("id"), from: try str("from"), to: try str("to"))
+        case "play":
+            return .play(id: try str("id"), file: try str("file"))
         default:
             return .unknown(type: type)
         }
@@ -133,7 +138,7 @@ enum NotchProtocol {
         var obj: [String: Any]
         switch msg {
         case .welcome:
-            obj = ["type": "welcome", "protocol": version]
+            obj = ["type": "welcome", "protocol": version, "play": true]
         case let .answer(id, text, via):
             obj = ["type": "answer", "id": id, "text": text, "via": via.rawValue]
         case let .error(id, message):
@@ -146,6 +151,8 @@ enum NotchProtocol {
             }]
         case let .calendarEventsError(id, code, message):
             obj = ["type": "calendar_events_result", "id": id, "error": ["code": code, "message": message]]
+        case let .played(id):
+            obj = ["type": "played", "id": id]
         }
         let data = (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])) ?? Data()
         return String(decoding: data, as: UTF8.self)

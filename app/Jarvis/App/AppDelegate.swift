@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let wakeWordKey = "WakeWord"
     private let notifier = SystemNotifier()
     private let calendar = CalendarService()
+    private let speechPlayer = SpeechPlayer()
     private var notificationsRequested = false
     private var demo: DemoDriver?
     private var signalSources: [DispatchSourceSignal] = []
@@ -51,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env = NotchEnvironment(level: capture.level)
 
         let launcher = Launcher(paths: paths)
+        launcher.onHush = { [weak self] in self?.speechPlayer.stop() }
         self.launcher = launcher
         model.launcher = launcher
         env.snooze = { text, minutes in launcher.snooze(text: text, minutes: minutes) }
@@ -282,6 +284,10 @@ extension AppDelegate: NotchServerDelegate {
                 case .failure(.badRange): server.send(.calendarEventsError(id: id, code: "bad_range", message: "from and to must be ISO 8601, from before to."), to: client)
                 }
             }
+            return
+        }
+        if case let .play(id, file) = message {
+            speechPlayer.play(file) { server.send(.played(id: id), to: client) }
             return
         }
         model.received(message, from: client)

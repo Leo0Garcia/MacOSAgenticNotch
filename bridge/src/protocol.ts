@@ -80,12 +80,24 @@ export interface CalendarEvents {
   from: string; // ISO 8601
   to: string;
 }
-export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents;
+/** Play a rendered WAV in the app (one gapless player); answered with `played`. */
+export interface Play {
+  type: "play";
+  id: string;
+  file: string;
+}
+export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents | Play;
 
 // App -> client
 export interface Welcome {
   type: "welcome";
   protocol: number;
+  /** The app plays `play` files itself. */
+  play?: boolean;
+}
+export interface Played {
+  type: "played";
+  id: string;
 }
 export interface Answer {
   type: "answer";
@@ -104,7 +116,7 @@ export interface CalendarEventsResult {
   events?: { calendar: string; title: string; start: string; end: string; allDay: boolean; location: string | null; recurrence: null }[];
   error?: { code: "denied" | "bad_range"; message: string };
 }
-export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult;
+export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult | Played;
 
 /** One row of ~/Jarvis/actions.sqlite, as stored and as sent in `log`. */
 export interface ActionRow {

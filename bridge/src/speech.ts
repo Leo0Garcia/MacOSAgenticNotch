@@ -145,10 +145,14 @@ export interface SpeakerOptions {
  */
 export const HOLD_AFTER_LAST_SENTENCE_MS = 1500;
 
+/** Longest text rendered in one go (two sentences at most). */
+export const CHUNK_CHARS = 250;
+
 export class Speaker {
   private queue: Promise<void> = Promise.resolve();
   private count = 0;
   private pending = 0;
+  private batch: { text: string; opener: boolean; resolve: () => void; reject: (e: unknown) => void }[] = [];
   private holding = false;
   private releaseTimer: ReturnType<typeof setTimeout> | null = null;
   /** Written into the lock so this speaker can tell it still holds it. */
@@ -161,23 +165,47 @@ export class Speaker {
     this.synth = opts.synth !== undefined ? opts.synth : KokoroSynth.available(opts.home) ? new KokoroSynth(opts.home) : null;
   }
 
-  /** Queues text and resolves when it has been spoken (or failed). */
+  /**
+   * Queues text and resolves when it has been spoken (or failed). Sentences
+   * queued together are rendered two at a time (up to CHUNK_CHARS), so the
+   * intonation carries across instead of resetting every sentence.
+   */
   say(text: string, opts: { opener?: boolean } = {}): Promise<void> {
     const t = text.trim().slice(0, MAX_SPEAK_CHARS);
     if (!t) return Promise.resolve();
-    // Render now, while earlier sentences are still playing, so there's no gap.
-    const audio = this.synth ? this.synth.render(t).catch(() => null) : Promise.resolve(null);
-    this.pending++;
-    if (this.releaseTimer) {
-      clearTimeout(this.releaseTimer);
-      this.releaseTimer = null;
-    }
-    const job = this.queue.then(() => this.speakNow(t, audio, opts.opener === true)).finally(() => {
-      this.pending--;
-      if (this.pending === 0) this.scheduleRelease();
+    return new Promise<void>((resolve, reject) => {
+      this.batch.push({ text: t, opener: opts.opener === true, resolve, reject });
+      if (this.batch.length === 1) queueMicrotask(() => this.flush());
     });
-    this.queue = job.catch(() => {});
-    return job;
+  }
+
+  private flush() {
+    const items = this.batch.splice(0);
+    if (!items.length) return; // already flushed by idle()
+    const chunks: (typeof items)[] = [];
+    for (const it of items) {
+      const cur = chunks.at(-1);
+      const len = cur ? cur.reduce((n, c) => n + c.text.length + 1, 0) : 0;
+      // An opening line stays on its own: it's spoken before the work starts.
+      if (cur && !it.opener && !cur[0]!.opener && cur.length < 2 && len + it.text.length <= CHUNK_CHARS) cur.push(it);
+      else chunks.push([it]);
+    }
+    for (const chunk of chunks) {
+      const text = chunk.map((c) => c.text).join(" ");
+      // Render now, while earlier sentences are still playing, so there's no gap.
+      const audio = this.synth ? this.synth.render(text).catch(() => null) : Promise.resolve(null);
+      this.pending++;
+      if (this.releaseTimer) {
+        clearTimeout(this.releaseTimer);
+        this.releaseTimer = null;
+      }
+      const job = this.queue.then(() => this.speakNow(text, audio, chunk[0]!.opener)).finally(() => {
+        this.pending--;
+        if (this.pending === 0) this.scheduleRelease();
+      });
+      this.queue = job.catch(() => {});
+      job.then(() => chunk.forEach((c) => c.resolve()), (e) => chunk.forEach((c) => c.reject(e)));
+    }
   }
 
   /**
@@ -203,6 +231,7 @@ export class Speaker {
 
   /** Resolves when everything queued so far has been spoken, and gives the voice back. */
   async idle(): Promise<void> {
+    if (this.batch.length) this.flush();
     await this.queue;
     if (this.pending === 0) this.letGo();
   }
@@ -270,6 +299,8 @@ export class Speaker {
       }
       if (file) {
         try {
+          // The app's player first (no gap between sentences), afplay without it.
+          if (link && (await link.play(id, file))) return;
           const r = await (this.opts.run ?? runCommand)(["afplay", file]);
           if (r.code === 0 || this.silenced()) return; // killed because Leo interrupted: no say fallback
         } finally {

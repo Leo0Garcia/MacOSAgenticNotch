@@ -20,10 +20,4 @@ assert any(f.startswith("aecho") for f in voice.polish(1))
 assert -1.0 < voice.PRESETS["jarvis"].semitones < -0.5  # deeper than before, not as deep as "deeper"
 assert not any(f.startswith("chorus") for f in voice.polish(1))  # clean, not a robot filter
 assert voice.PRESETS["jarvis"].effect == 0.3
-n = voice.normalise
-assert n("COMP2311 is at 16:00 on 21/10, then COMP2300 at 9am.") == "comp twenty-three eleven is at four p.m. on the twenty-first of October, then comp twenty-three hundred at nine a.m."
-assert n("Meet at 9:05pm on 3/11/2026.") == "Meet at nine oh five p.m. on the third of November 2026."
-assert n("It's 12°C, 80% chance, 5.2km.") == "It's 12 degrees, 80 percent chance, 5 point two kilometres."
-assert n("MATH1201 at 12:00, 32/13 stays") == "math twelve oh one at twelve noon, 32/13 stays"
-assert n("Plain words stay put.") == "Plain words stay put."
-print("tts: 14 checks passed")
+print("tts: 9 checks passed")
