@@ -19,11 +19,19 @@ function timedRunner(log: string[], ms = 30) {
   });
 }
 
-test("sentences play in order, one at a time", async () => {
+test("sentences play in order, two at a time when queued together", async () => {
   const log: string[] = [];
   const s = new Speaker({ home, run: timedRunner(log) });
   await Promise.all([s.say("one"), s.say("two"), s.say("three")]);
-  expect(log).toEqual(["start one", "end one", "start two", "end two", "start three", "end three"]);
+  expect(log).toEqual(["start one two", "end one two", "start three", "end three"]);
+});
+
+test("an opening line is spoken on its own, and long sentences aren't joined", async () => {
+  const log: string[] = [];
+  const s = new Speaker({ home, run: timedRunner(log, 1) });
+  const long = "x".repeat(260);
+  await Promise.all([s.say("On it.", { opener: true }), s.say("a"), s.say(long), s.say("b")]);
+  expect(log.filter((l) => l.startsWith("start")).map((l) => l.slice(6))).toEqual(["On it.", "a", long, "b"]);
 });
 
 test("waits while Leo is talking, then speaks; an old marker is ignored", async () => {
@@ -57,7 +65,7 @@ test("two speakers (launcher and bridge) never overlap", async () => {
     expect(log[i]!.startsWith("start")).toBe(true);
     expect(log[i + 1]).toBe(log[i]!.replace("start", "end"));
   }
-  expect(log).toHaveLength(8);
+  expect(log).toHaveLength(4); // each speaker's two sentences in one chunk
   expect(existsSync(join(home, "run", "speech.lock"))).toBe(false);
 });
 
@@ -79,7 +87,7 @@ test("two runs replying at once take turns by whole reply, not sentence by sente
   await Promise.all([aDone, bDone]);
   await Promise.all([a.idle(), b.idle()]);
   const spoken = log.filter((l) => l.startsWith("start")).map((l) => l.slice(6));
-  expect(spoken).toEqual(["a1", "a2", "a3", "b1", "b2"]);
+  expect(spoken).toEqual(["a1", "a2", "a3", "b1 b2"]);
   expect(existsSync(join(home, "run", "speech.lock"))).toBe(false);
 });
 
@@ -100,6 +108,24 @@ test("say failing is reported and the lock released", async () => {
   await expect(s.say("hi")).rejects.toThrow(/say failed.*not found/);
   await s.say("again").catch(() => {});
   expect(run.calls).toHaveLength(2);
+});
+
+test("the app plays the audio when it can (gapless), and afplay is skipped", async () => {
+  const app = new FakeApp(home, { play: true });
+  const link = new NotchLink({ home, client: "launcher", sessionId: "s" });
+  const run = stubRunner();
+  const file = join(home, "jarvis-say-1.wav");
+  const synth = { render: async () => (writeFileSync(file, "RIFF"), file) };
+  try {
+    await new Speaker({ home, link, sessionId: "s", run, synth, voice: null }).say("It's 14 degrees.");
+    await app.next("speak_end");
+    expect(app.types()).toEqual(["hello", "speak_start", "play", "speak_end"]);
+    expect(run.calls).toHaveLength(0);
+    expect(existsSync(file)).toBe(false);
+  } finally {
+    link.close();
+    app.stop();
+  }
 });
 
 test("tells the app what is being said", async () => {
@@ -162,7 +188,9 @@ test("plays the neural voice's audio when it renders, and falls back to say when
     },
   };
   const s = new Speaker({ home, run, synth, voice: null });
-  await Promise.all([s.say("one"), s.say("fallback")]);
+  const one = s.say("one");
+  await Bun.sleep(0); // queued separately, so rendered separately
+  await Promise.all([one, s.say("fallback")]);
   expect(rendered).toEqual(["one", "fallback"]); // both rendered up front
   expect(run.calls.map((c) => c.cmd[0])).toEqual(["afplay", "say"]);
   expect(existsSync(join(home, "one.wav"))).toBe(false); // temp audio removed
@@ -204,5 +232,5 @@ test("muting drops what's queued and keeps the run quiet, bridge included", asyn
   const fresh = new Speaker({ home, run, synth: null, voice: null, sessionId: "s-new" });
   await fresh.say("new reply");
   await Promise.all([a.idle(), bridge.idle(), fresh.idle()]);
-  expect(log.filter((l) => l.startsWith("start")).map((l) => l.slice(6))).toEqual(["one", "new reply"]);
+  expect(log.filter((l) => l.startsWith("start")).map((l) => l.slice(6))).toEqual(["one two", "new reply"]);
 });

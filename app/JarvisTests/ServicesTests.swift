@@ -17,7 +17,15 @@ import Testing
             == .log(.init(id: 3, ts: "2026-10-11T10:00:00Z", session_id: nil, kind: "run", summary: "x", detail: nil, saved: true)))
         #expect(try NotchProtocol.decode(#"{"type":"run_event","session_id":"s","event":"denied","text":"no","rule":"no-money"}"#)
             == .runEvent(sessionId: "s", event: "denied", text: "no", keep: nil, summary: nil, rule: "no-money"))
+        #expect(try NotchProtocol.decode(#"{"type":"play","id":"p","file":"/tmp/jarvis-say-1.wav"}"#) == .play(id: "p", file: "/tmp/jarvis-say-1.wav"))
         #expect(try NotchProtocol.decode(#"{"type":"something_new","x":1}"#) == .unknown(type: "something_new"))
+    }
+
+    @Test func speechPlayerOnlyPlaysJarvisRenders() {
+        #expect(SpeechPlayer.allowed("/var/folders/x/T/jarvis-say-1-2-abc.wav"))
+        #expect(!SpeechPlayer.allowed("/Users/leo/Music/song.wav"))
+        #expect(!SpeechPlayer.allowed("/tmp/jarvis-say-1.mp3"))
+        #expect(!SpeechPlayer.allowed("/tmp/../etc/jarvis-say-1.wav"))
     }
 
     @Test func rejectsBadFrames() {
@@ -27,9 +35,10 @@ import Testing
     }
 
     @Test func encodesAppMessages() {
-        #expect(NotchProtocol.encode(.welcome) == #"{"protocol":1,"type":"welcome"}"#)
+        #expect(NotchProtocol.encode(.welcome) == #"{"play":true,"protocol":1,"type":"welcome"}"#)
         #expect(NotchProtocol.encode(.answer(id: "q", text: "yes", via: .voice)) == #"{"id":"q","text":"yes","type":"answer","via":"voice"}"#)
         #expect(NotchProtocol.encode(.error(id: nil, message: "bad token")) == #"{"message":"bad token","type":"error"}"#)
+        #expect(NotchProtocol.encode(.played(id: "p")) == #"{"id":"p","type":"played"}"#)
     }
 
     @Test func parsesLauncherEvents() {
@@ -138,7 +147,7 @@ import Testing
         // Right token: welcome, then messages reach the delegate; answers come back.
         let good = connect(port)
         try await good.send(.string(#"{"type":"hello","protocol":1,"token":"\#(nf.token)","client":"bridge","pid":1,"session_id":"s"}"#))
-        #expect(try await receiveText(good) == #"{"protocol":1,"type":"welcome"}"#)
+        #expect(try await receiveText(good) == #"{"play":true,"protocol":1,"type":"welcome"}"#)
         try await good.send(.string(#"{"type":"ask","id":"q1","question":"Which?","options":["A"],"timeout_ms":5000,"session_id":"s"}"#))
         for _ in 0..<50 where rec.messages.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
         let (msg, client) = try #require(rec.messages.first)

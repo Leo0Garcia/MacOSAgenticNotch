@@ -241,7 +241,11 @@ final class Launcher: LauncherRunning {
 
     /// Leo interrupted: every run already going stops talking (it keeps working, silently).
     /// The warm run hasn't said anything yet, so it's left alone.
+    /// Stops the app's own speech player too.
+    var onHush: (() -> Void)?
+
     func hushAll() {
+        onHush?()
         for p in running where p.isRunning && p !== warm?.process {
             kill(p.processIdentifier, SIGUSR1)
         }

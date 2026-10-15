@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		01F5CDF0C18D3C22DE4621D9 /* ServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C21FA14451953CCB7700F3 /* ServicesTests.swift */; };
 		07E7F32B3857ED215DE59FBE /* DynamicNotchKit in Frameworks */ = {isa = PBXBuildFile; productRef = CBA1238A2ADC24C14C52CEC8 /* DynamicNotchKit */; };
+		1246402D11D47AEAC6A3899F /* SpeechPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B8627B1CE2CD8D8200F4BCC /* SpeechPlayer.swift */; };
 		1460C3FA36476C886A1E044E /* VoicePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0B74F072FAB468DCADE6C2 /* VoicePipeline.swift */; };
 		1F3A51E135A1D16A3298B49D /* Paths.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1DAAC0795F8207A606A3679 /* Paths.swift */; };
 		25FE325CBE88F6666137AEFC /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F62732A168498A1CD3DB2F46 /* AppModel.swift */; };
@@ -60,6 +61,7 @@
 		2FF33F34C3080DF1EB6C1F9A /* SystemNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNotifier.swift; sourceTree = "<group>"; };
 		386DF619897905B59E1F4A01 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		395A970936DC23AF4486A2C0 /* PixelCharacter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelCharacter.swift; sourceTree = "<group>"; };
+		4B8627B1CE2CD8D8200F4BCC /* SpeechPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayer.swift; sourceTree = "<group>"; };
 		53425C9A136675D37536EFA7 /* Transcriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcriber.swift; sourceTree = "<group>"; };
 		53C21FA14451953CCB7700F3 /* ServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesTests.swift; sourceTree = "<group>"; };
 		5AA085A4901CE3801C9A88F1 /* NotchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchController.swift; sourceTree = "<group>"; };
@@ -166,6 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				0DF730C9F89F0B4290CAA7FA /* AudioCapture.swift */,
+				4B8627B1CE2CD8D8200F4BCC /* SpeechPlayer.swift */,
 				53425C9A136675D37536EFA7 /* Transcriber.swift */,
 				EC0B74F072FAB468DCADE6C2 /* VoicePipeline.swift */,
 				96CD752F98C50BE99787ECD7 /* WakeWord.swift */,
@@ -339,6 +342,7 @@
 				D69E45C4400DEE5DBF937B33 /* Scheduler.swift in Sources */,
 				8D068F5CD261B90D6FE49225 /* SettingsView.swift in Sources */,
 				F458E80ADF7A0F0724BAC9EF /* Snapshots.swift in Sources */,
+				1246402D11D47AEAC6A3899F /* SpeechPlayer.swift in Sources */,
 				7FD318C30BD7A3CB92FC9B74 /* SystemNotifier.swift in Sources */,
 				8D7AF99A5FAA74DC8222DF5C /* Theme.swift in Sources */,
 				A6CEEF5AB6921E7C3A45E1B8 /* Transcriber.swift in Sources */,

@@ -47,7 +47,7 @@ test("weather: runs claude with the design flags from ~/Jarvis, speaks, and fina
   expect(call.env).toMatchObject({ JARVIS_REPO: w.repo, JARVIS_HOME: jarvis, JARVIS_RUN_SESSION_ID: out.sessionId });
   expect(call.env.PATH.split(":")[0]).toBe(join(process.execPath, ".."));
 
-  expect(said).toEqual(["It's 14 degrees and cloudy in Southampton.", "Light rain is likely after 6pm."]);
+  expect(said).toEqual(["It's 14 degrees and cloudy in Southampton. Light rain is likely after 6pm."]); // one chunk, so the intonation carries
   const kinds = events.map((e) => (e.event === "state" ? `state:${e.state}` : e.event));
   expect(kinds).toEqual(["state:working", "speak", "speak", "done", "state:done"]);
   expect(finals).toEqual([
