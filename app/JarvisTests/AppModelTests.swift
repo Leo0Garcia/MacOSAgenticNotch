@@ -421,6 +421,15 @@ import Testing
         #expect(l.hushes == 0)
     }
 
+    @Test func speechWaitsWhileLeoIsTalking() {
+        let (m, _, _, _) = makeModel()
+        var changes: [Bool] = []
+        m.listeningChanged = { changes.append($0) }
+        m.hotkeyDown()
+        m.listeningFinished("what's the time")
+        #expect(changes == [true, false])
+    }
+
     @Test func nothingToHushWhenIdle() {
         let (m, _, l, _) = makeModel()
         m.hotkeyDown()

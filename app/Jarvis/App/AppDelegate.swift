@@ -59,6 +59,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let context = ComputerContext(paths: paths)
         model.captureContext = { context.capture() }
         model.willSubmit = { context.write(for: $0) }
+        let listening = paths.home.appendingPathComponent("run/listening")
+        model.listeningChanged = { on in
+            if on {
+                try? FileManager.default.createDirectory(at: listening.deletingLastPathComponent(), withIntermediateDirectories: true)
+                FileManager.default.createFile(atPath: listening.path, contents: nil)
+            } else {
+                try? FileManager.default.removeItem(at: listening)
+            }
+        }
+        try? FileManager.default.removeItem(at: listening) // left over from a crash
         let actions = paths.home.appendingPathComponent("actions.sqlite")
         model.loadRecent = { ActionsStore.newest(8, file: actions) }
 
