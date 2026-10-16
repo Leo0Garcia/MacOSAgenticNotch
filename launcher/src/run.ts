@@ -43,6 +43,8 @@ export interface RunOptions {
    * null to give up. Follow-ups and saved intents fall back to a normal run.
    */
   awaitRequest?: () => Promise<string | null>;
+  /** A scheduled run nobody is listening to: no speech, nothing in the notch, no fast path. */
+  background?: boolean;
 }
 
 export interface RunOutcome {
@@ -131,7 +133,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     // Warm runs are for quick asks, so they start on the fast model.
     plan = { prompt: "", sessionId: id, runLog: p.runLog(id), resumed: false, streamInput: true, model: c.model ?? c.fastModel };
   } else {
-    const fast = await fastWithCaptions(request);
+    const fast = opts.background ? null : await fastWithCaptions(request);
     if (fast) return fast;
     plan = planRun(c, request, now());
     // A follow-up stays on the model its session started with.
@@ -191,8 +193,9 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   };
   markActive();
   link?.close();
-  link = new NotchLink({ home: c.home, client: "launcher", sessionId, connectTimeoutMs: 300 });
+  link = opts.background ? null : new NotchLink({ home: c.home, client: "launcher", sessionId, connectTimeoutMs: 300 });
   speaker = new Speaker({ home: c.home, link, sessionId, run: opts.speechRunner });
+  if (opts.background) hushed = true;
   if (hushed) speaker.mute();
   emit({ event: "state", state: "working", sessionId });
   notch({ event: "started", text: request }, sessionId);
