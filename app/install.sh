@@ -23,4 +23,6 @@ cp -R "$app" "$home/Jarvis.app.new"
 rm -rf "$home/Jarvis.app"
 mv "$home/Jarvis.app.new" "$home/Jarvis.app"
 open "$home/Jarvis.app"
+# The daily read-only Moodle deadline check (launchd, 08:30).
+sh "$here/../launcher/run.sh" moodle-watch install || echo "note: couldn't install the Moodle deadline check"
 echo "installed $home/Jarvis.app"
