@@ -453,4 +453,15 @@ import Testing
         m.speechStarted(id: "2", text: "Done, it's on the board.")
         #expect(m.panel == .done)
     }
+
+    @Test func aLongAnswerShowsInFullAfterTheSpokenPart() {
+        let (m, _, l, _) = makeModel()
+        m.submit("what's on my Kanban")
+        m.speechStarted(id: "a", text: "You have nineteen cards. Three are due this week.")
+        let full = "You have nineteen cards. Three are due this week. COMP2311 lab 4, the AI coursework and the Amra brief."
+        l.emit(.done(sessionId: "s", keep: false, summary: "Kanban", reply: full, name: nil))
+        l.exit(0)
+        m.speechEnded(id: "a")
+        #expect(m.run?.captions.map(\.text) == [full])
+    }
 }

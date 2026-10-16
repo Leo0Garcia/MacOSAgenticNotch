@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, rmSync, utimesSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { Speaker } from "../src/speech";
+import { Speaker, speakableTimes } from "../src/speech";
 import { NotchLink } from "../src/notch";
 import { FakeApp, stubRunner, tempHome } from "./helpers";
 
@@ -233,4 +233,23 @@ test("muting drops what's queued and keeps the run quiet, bridge included", asyn
   await fresh.say("new reply");
   await Promise.all([a.idle(), bridge.idle(), fresh.idle()]);
   expect(log.filter((l) => l.startsWith("start")).map((l) => l.slice(6))).toEqual(["one two", "new reply"]);
+});
+
+test("times are spoken the way Leo says them; captions keep the digits", async () => {
+  expect(speakableTimes("Until 17:00.")).toBe("Until five p.m.");
+  expect(speakableTimes("at 14:30, 9:05pm or 16:45")).toBe("at half past two, nine oh five p.m. or quarter to five");
+  expect(speakableTimes("12:00–13:00 and 00:00")).toBe("midday to one p.m. and midnight");
+  expect(speakableTimes("at 6pm and 11 a.m.")).toBe("at six p.m. and eleven a.m.");
+  expect(speakableTimes("ratio 3:1, COMP2311")).toBe("ratio 3:1, COMP2311");
+  const app = new FakeApp(home);
+  const link = new NotchLink({ home, client: "launcher", sessionId: "s" });
+  const run = stubRunner();
+  try {
+    await new Speaker({ home, link, sessionId: "s", run, synth: null, voice: null }).say("Next is at 14:30.");
+    expect(run.calls[0]!.stdin).toBe("Next is at half past two.");
+    expect((await app.next("speak_start")).text).toBe("Next is at 14:30.");
+  } finally {
+    link.close();
+    app.stop();
+  }
 });

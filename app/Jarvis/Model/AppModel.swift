@@ -539,6 +539,12 @@ final class AppModel {
                 return
             }
         }
+        let spoken = run.captions.map(\.text).joined(separator: " ")
+        if run.reply.count > spoken.count + 20 {
+            // Only the first sentences were spoken (Leo, 2026-10-16): the notch shows the rest.
+            let full = run.reply.count > 320 ? String(run.reply.prefix(318)) + "…" : run.reply
+            self.run?.captions = [Caption(id: "reply", text: full, startedAt: scheduler.now)]
+        }
         if panel != .done {
             doneEnteredAt = scheduler.now
             show(.done, size: .expanded)

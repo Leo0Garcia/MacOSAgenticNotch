@@ -47,7 +47,7 @@ test("weather: runs claude with the design flags from ~/Jarvis, speaks, and fina
   expect(call.env).toMatchObject({ JARVIS_REPO: w.repo, JARVIS_HOME: jarvis, JARVIS_RUN_SESSION_ID: out.sessionId });
   expect(call.env.PATH.split(":")[0]).toBe(join(process.execPath, ".."));
 
-  expect(said).toEqual(["It's 14 degrees and cloudy in Southampton. Light rain is likely after 6pm."]); // one chunk, so the intonation carries
+  expect(said).toEqual(["It's 14 degrees and cloudy in Southampton. Light rain is likely after six p.m."]); // one chunk, times said naturally, so the intonation carries
   const kinds = events.map((e) => (e.event === "state" ? `state:${e.state}` : e.event));
   expect(kinds).toEqual(["state:working", "speak", "speak", "done", "state:done"]);
   expect(finals).toEqual([
@@ -259,7 +259,7 @@ test("a run that ends without a spoken answer speaks its summary instead of goin
     result({ structured: { keep: false, summary: "Checked the weather: 15 degrees and overcast" } }),
   ]);
   const { out, said, events } = await go("what's the weather", silent);
-  expect(said).toEqual(["Checked the weather: 15 degrees and overcast"]);
+  expect(said).toEqual(["On it.", "Checked the weather: 15 degrees and overcast"]); // a tool with no opening line gets a default one
   expect(out.reply).toBe("Checked the weather: 15 degrees and overcast");
   expect(events.filter((e) => e.event === "status")).toEqual([{ event: "status", text: "Running a command", detail: "Fetch weather" }]);
 });
