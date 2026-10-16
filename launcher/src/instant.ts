@@ -3,7 +3,7 @@
 // instead of ~10 s, like the lights). The whole request has to match; anything
 // else, or any failure here, goes to Claude as usual.
 
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { scheduleReminder } from "../../bridge/src/remind";
@@ -18,6 +18,7 @@ export type Instant =
   | { kind: "remind"; when: string; text: string }
   | { kind: "timer"; amount: number; unit: "second" | "minute" | "hour" }
   | { kind: "next" }
+  | { kind: "day" }
   | { kind: "kanban"; text: string }
   | { kind: "volume"; to?: number; by?: number; mute?: boolean }
   | { kind: "open"; app: string };
@@ -64,6 +65,9 @@ export function parseInstant(request: string): Instant | null {
     return { kind: "timer", amount, unit: m[2] === "min" ? "minute" : (m[2] as "second" | "minute" | "hour") };
   }
 
+  // "what's my day", "brief me", "what have I got today"
+  if (/^(?:what'?s|what is|whats|how'?s) (?:my day(?: look(?:ing)? like)?|on (?:for )?today|today look(?:ing)? like)$|^(?:what have i got|what do i have|what've i got) (?:on )?today$|^(?:brief me|morning briefing|give me my day|my day)$/.test(low)) return { kind: "day" };
+
   // "what's next", "what's next today", "what's my next lecture"
   if (/^(?:what'?s|what is|whats) (?:next|up next|my next (?:lecture|class|event|thing))(?: today| on today)?$/.test(low)) return { kind: "next" };
 
@@ -101,6 +105,71 @@ export function findApp(name: string, dirs = ["/Applications", "/System/Applicat
 
 const unitWord = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
 
+export interface CalEvent {
+  title: string;
+  location?: string | null;
+  start: string;
+  end: string;
+  allDay?: boolean;
+  source?: string;
+}
+
+export interface Deadline {
+  title: string;
+  course: string | null;
+  due: string;
+}
+
+/** Today's timetable plus Apple Calendar; null when the timetable can't be read. */
+async function today(c: Config, run: Runner): Promise<CalEvent[] | null> {
+  const r = await run([c.bunBin, join(c.repo, "skills", "calendar", "ics.ts"), "--day", "today", "--json"]);
+  if (r.code !== 0) return null;
+  let events: CalEvent[];
+  try {
+    events = JSON.parse(r.stdout).events ?? [];
+  } catch {
+    return null;
+  }
+  const a = await run([c.bunBin, join(c.repo, "skills", "calendar", "apple.ts"), "--day", "today", "--json"]);
+  if (a.code === 0) {
+    try {
+      events.push(...(JSON.parse(a.stdout).events ?? []));
+    } catch {}
+  }
+  return events;
+}
+
+const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
+const dayName = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { weekday: "long", timeZone: "Europe/London" });
+const londonDate = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
+/** "COMP2311 L3 - Theory of Computing" → "Theory of Computing" */
+const shortTitle = (t: string) => /^[A-Z]{2,5}\d{4}\S*(?: \S+)? ?- ?(.+)$/.exec(t)?.[1] ?? t;
+/** Kanban card text as Leo would say it: link labels, no dates or tags. */
+const cardText = (t: string) => t.replace(/\[\[[^\]|]*\|([^\]]+)\]\]/g, "$1").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/@\{[^}]*\}/g, "").replace(/#[\w/-]+/g, "").replace(/\s+/g, " ").trim();
+/** First words of a long card, so the rundown stays short. */
+const clip = (t: string, n = 60) => (t.length <= n ? t : t.slice(0, t.lastIndexOf(" ", n)).replace(/[,;:]$/, ""));
+const list = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
+
+/** About twenty seconds of "your day": what's left on the calendar, what's due on the Kanban and Moodle. */
+export function dayBriefing(now: Date, events: CalEvent[], cards: string[], deadlines: Deadline[]): string {
+  const h = Number(now.toLocaleTimeString("en-GB", { hour: "2-digit", hour12: false, timeZone: "Europe/London" }));
+  const out = [h < 12 ? "Good morning." : h < 18 ? "Good afternoon." : "Good evening."];
+  const left = events.filter((e) => !e.allDay && Date.parse(e.end) > now.getTime()).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+  const lectures = left.filter((e) => e.source === "timetable");
+  const other = left.filter((e) => e.source !== "timetable");
+  const items = (es: CalEvent[]) => es.slice(0, 4).map((e) => `${shortTitle(e.title)} at ${hhmm(e.start)}`);
+  if (lectures.length) out.push(`You've got ${lectures.length === 1 ? "one lecture" : `${lectures.length} lectures`} left today: ${list(items(lectures))}.`);
+  else out.push("No more lectures today.");
+  if (other.length) out.push(`On your calendar: ${list(items(other))}.`);
+  const todayStr = londonDate(now);
+  const due = cards.filter((t) => (/@\{(\d{4}-\d{2}-\d{2})\}/.exec(t)?.[1] ?? "9999") <= todayStr).map((t) => clip(cardText(t)));
+  if (due.length) out.push(`Due on your Kanban: ${list(due.slice(0, 3))}${due.length > 3 ? `, and ${due.length - 3} more` : ""}.`);
+  else if (cards.length) out.push(`Nothing's due on your Kanban, with ${cards.length} cards to do.`);
+  const soon = deadlines.filter((d) => Date.parse(d.due) > now.getTime() && Date.parse(d.due) - now.getTime() < 7 * 86400_000).sort((a, b) => Date.parse(a.due) - Date.parse(b.due));
+  if (soon.length) out.push(`Coming up on Moodle: ${list(soon.slice(0, 3).map((d) => `${d.title}${d.course ? ` for ${d.course}` : ""}, ${dayName(d.due)} at ${hhmm(d.due)}`))}.`);
+  return out.join(" ");
+}
+
 export interface InstantResult {
   reply: string;
   summary: string;
@@ -124,21 +193,23 @@ export async function runInstant(c: Config, i: Instant, now = new Date()): Promi
       if (i.kind === "timer") return { reply: `Timer set for ${unitWord(i.amount, i.unit)}.`, summary: `Timer: ${unitWord(i.amount, i.unit)}` };
       return { reply: `I'll remind you to ${i.text.charAt(0).toLowerCase()}${i.text.slice(1)} ${r.label}.`, summary: `Reminder set for ${r.label}: ${i.text}` };
     }
-    case "next": {
-      const r = await run([c.bunBin, join(c.repo, "skills", "calendar", "ics.ts"), "--day", "today", "--json"]);
-      if (r.code !== 0) return null;
-      let events: { title: string; location?: string | null; start: string; end: string; allDay?: boolean }[];
+    case "day": {
+      const events = await today(c, run);
+      if (!events) return null;
+      const r = await run([c.bunBin, join(c.repo, "skills", "kanban", "kanban.ts"), "list", "--json"]);
+      let cards: string[] = [];
       try {
-        events = JSON.parse(r.stdout).events ?? [];
-      } catch {
-        return null;
-      }
-      const a = await run([c.bunBin, join(c.repo, "skills", "calendar", "apple.ts"), "--day", "today", "--json"]);
-      if (a.code === 0) {
-        try {
-          events.push(...(JSON.parse(a.stdout).events ?? []));
-        } catch {}
-      }
+        if (r.code === 0) cards = (JSON.parse(r.stdout) as { complete?: boolean; cards: string[] }[]).filter((l) => !l.complete).flatMap((l) => l.cards);
+      } catch {}
+      let deadlines: Deadline[] = [];
+      try {
+        deadlines = JSON.parse(readFileSync(join(c.home, "state", "deadlines.json"), "utf8")).deadlines ?? [];
+      } catch {}
+      return { reply: dayBriefing(now, events, cards, deadlines), summary: "Gave Leo the rundown of his day" };
+    }
+    case "next": {
+      const events = await today(c, run);
+      if (!events) return null;
       const next = events.filter((e) => !e.allDay && Date.parse(e.end) > now.getTime()).sort((x, y) => Date.parse(x.start) - Date.parse(y.start))[0];
       if (!next) return { reply: "Nothing else on today.", summary: "Checked what's next today: nothing" };
       const at = new Date(next.start).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });

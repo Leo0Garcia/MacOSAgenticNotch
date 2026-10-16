@@ -189,6 +189,9 @@ final class AppModel {
     @ObservationIgnored var willSubmit: ((String) -> Void)?
     /// True while Listening shows, so Jarvis holds its speech until Leo has finished.
     @ObservationIgnored var listeningChanged: ((Bool) -> Void)?
+    /// The day (yyyy-MM-dd) the morning rundown last played; the app keeps it in UserDefaults.
+    @ObservationIgnored var lastMorningBrief: String?
+    @ObservationIgnored var morningBriefGiven: ((String) -> Void)?
 
     @ObservationIgnored private var timers: [String: Scheduled] = [:]
     @ObservationIgnored private var speakingIDs: Set<String> = []
@@ -326,6 +329,24 @@ final class AppModel {
         }
     }
 
+    // MARK: - Morning rundown
+
+    /// The first unlock of the morning (5am to midday) plays "what's my day"
+    /// once (Leo, 2026-10-16), unless Jarvis is busy.
+    func screenUnlocked(at date: Date = Date(), calendar: Calendar = .current) {
+        let hour = calendar.component(.hour, from: date)
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        let day = String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        guard (5..<12).contains(hour), lastMorningBrief != day, panel == .idle, !runActive else { return }
+        lastMorningBrief = day
+        morningBriefGiven?(day)
+        // A moment for the display and audio to come back after the lid opens.
+        _ = scheduler.after(3) { [weak self] in
+            guard let self, self.panel == .idle, !self.runActive else { return }
+            self.submit("what's my day")
+        }
+    }
+
     // MARK: - Runs
 
     /// Sends a request to the launcher (spoken, typed with --request, or a button).
@@ -386,7 +407,7 @@ final class AppModel {
             let n = stdoutSpeechCount
             // Kokoro takes about a second to render, so wait before assuming the
             // socket is down.
-            scheduler.after(3) { [weak self] in
+            _ = scheduler.after(3) { [weak self] in
                 guard let self, let run = self.run, !run.socketSpeech else { return }
                 let id = "stdout-\(n)"
                 self.speechStarted(id: id, text: text)

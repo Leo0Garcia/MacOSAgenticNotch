@@ -29,3 +29,22 @@ test("apps are found by name, case-insensitively", () => {
   expect(findApp("spotify", [d])).toBe(join(d, "Spotify.app"));
   expect(findApp("Spot", [d])).toBeNull();
 });
+
+test("the day rundown covers lectures, calendar, Kanban and Moodle in a few sentences", () => {
+  const { dayBriefing } = require("../src/instant");
+  const now = new Date("2026-10-16T08:00:00Z"); // 9am London
+  const ev = (title: string, start: string, end: string, source = "timetable") => ({ title, start, end, source });
+  const text = dayBriefing(
+    now,
+    [ev("COMP2311 L3 - Theory of Computing", "2026-10-16T11:00:00Z", "2026-10-16T12:00:00Z"), ev("COMP2312 L1 - Programming III", "2026-10-16T13:00:00Z", "2026-10-16T14:00:00Z"), ev("Group meeting", "2026-10-16T12:00:00Z", "2026-10-16T13:00:00Z", "apple"), ev("Old", "2026-10-16T06:00:00Z", "2026-10-16T07:00:00Z")],
+    ["[[COMP2311 - Tutorial 2|Do the tutorial for theory of computing]] @{2026-10-16} #comp2311", "Buy chalk @{2026-10-20}", "Need to do washing"],
+    [{ title: "Group report", course: "COMP2211", due: "2026-10-20T15:00:00Z" }, { title: "Way later", course: null, due: "2026-12-01T12:00:00Z" }],
+  );
+  expect(text).toBe(
+    "Good morning. You've got 2 lectures left today: Theory of Computing at 12:00 and Programming III at 14:00. On your calendar: Group meeting at 13:00. Due on your Kanban: Do the tutorial for theory of computing. Coming up on Moodle: Group report for COMP2211, Tuesday at 16:00.",
+  );
+});
+
+test("'what's my day' and friends are the rundown", () => {
+  for (const r of ["What's my day?", "what's my day look like", "brief me", "what have I got today", "what's on today"]) expect(parseInstant(r)).toEqual({ kind: "day" });
+});

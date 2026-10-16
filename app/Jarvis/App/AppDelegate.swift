@@ -71,6 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         try? FileManager.default.removeItem(at: listening) // left over from a crash
+        model.lastMorningBrief = UserDefaults.standard.string(forKey: "morningBriefDay")
+        model.morningBriefGiven = { UserDefaults.standard.set($0, forKey: "morningBriefDay") }
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.screenUnlocked() }
+        }
         let actions = paths.home.appendingPathComponent("actions.sqlite")
         model.loadRecent = { ActionsStore.newest(8, file: actions) }
 
