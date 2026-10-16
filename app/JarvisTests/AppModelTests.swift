@@ -465,3 +465,38 @@ import Testing
         #expect(m.run?.captions.map(\.text) == [full])
     }
 }
+
+
+@MainActor
+@Suite struct MorningRundownTests {
+    private func at(_ hour: Int, day: Int = 16) -> Date {
+        var c = DateComponents(); c.year = 2026; c.month = 10; c.day = day; c.hour = hour
+        return Calendar.current.date(from: c)!
+    }
+
+    @Test func theFirstMorningUnlockGivesTheDayOnce() {
+        let (m, s, l, _) = makeModel()
+        var saved: [String] = []
+        m.morningBriefGiven = { saved.append($0) }
+        m.screenUnlocked(at: at(8))
+        s.advance(3)
+        #expect(l.requests == ["what's my day"])
+        #expect(saved == ["2026-10-16"])
+        l.emit(.done(sessionId: "", keep: false, summary: "", reply: "", name: nil)); l.exit(0)
+        s.advance(30)
+        m.screenUnlocked(at: at(9))
+        s.advance(3)
+        #expect(l.requests.count == 1)
+    }
+
+    @Test func notInTheAfternoonOrWhenBusy() {
+        let (m, s, l, _) = makeModel()
+        m.screenUnlocked(at: at(14))
+        s.advance(3)
+        #expect(l.requests.isEmpty)
+        m.submit("weather")
+        m.screenUnlocked(at: at(8, day: 17))
+        s.advance(3)
+        #expect(l.requests == ["weather"])
+    }
+}
