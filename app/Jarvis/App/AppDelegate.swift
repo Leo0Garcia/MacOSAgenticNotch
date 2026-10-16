@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var server: NotchServer?
     private var launcher: Launcher?
     private var hotkeys: HotKeyCenter?
+    private lazy var typeBox = TypeBox { [weak self] text in self?.model.submit(text) }
     private var escapeID: UInt32?
     private var voice: VoicePipeline?
     private var wake: WakeListener?
@@ -221,6 +222,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys = hk
         let ok = hk.register(.optionSpace, onPress: { [weak self] in self?.pushToTalkDown() }, onRelease: { [weak self] in self?.model.hotkeyUp() })
         env.hotkeyLabel = HotKeyCenter.Combo.optionSpace.label
+        if hk.register(.optionShiftSpace, onPress: { [weak self] in self?.typeBox.toggle() }) == nil {
+            AppLog.write("⌥⇧ Space is taken by another app, so the type box is off")
+        }
         if ok == nil {
             AppLog.write("⌥ Space is taken by another app")
             model.postNotification?("Jarvis", "⌥ Space is already used by another app, so push-to-talk is off.")
