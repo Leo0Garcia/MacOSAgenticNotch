@@ -33,6 +33,7 @@
 		A40601FCE06DD85364927DD5 /* PixelCharacter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 395A970936DC23AF4486A2C0 /* PixelCharacter.swift */; };
 		A6CEEF5AB6921E7C3A45E1B8 /* Transcriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53425C9A136675D37536EFA7 /* Transcriber.swift */; };
 		B0D0DF4C3F2F7FC12AF64F74 /* DemoDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10091DCC5C1AD71F38B67CAE /* DemoDriver.swift */; };
+		B22AF3E66A770DBAD127DFC5 /* TypeBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79EFB225668B41BBF2569D7 /* TypeBox.swift */; };
 		C360B5629CF11A1FA05A9F1B /* NotchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91164898664277B5D50905E6 /* NotchViews.swift */; };
 		D69E45C4400DEE5DBF937B33 /* Scheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6BE6B677B24B6A3ECD9766 /* Scheduler.swift */; };
 		DF6EC4DD8D8A029748F382AE /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8F0993EA9183644A00101A8E /* WhisperKit */; };
@@ -74,6 +75,7 @@
 		A40FCE4078864C56A9189ADB /* Aurora.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Aurora.swift; sourceTree = "<group>"; };
 		AB30A56BEBAB614A9399B2D7 /* Launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Launcher.swift; sourceTree = "<group>"; };
 		B39173ECFE82B9FEE63664D7 /* ComputerContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerContext.swift; sourceTree = "<group>"; };
+		B79EFB225668B41BBF2569D7 /* TypeBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypeBox.swift; sourceTree = "<group>"; };
 		D758DDA5F42A49B6CB275DED /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D87F560B5D01E95B8EE62180 /* NotchServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchServer.swift; sourceTree = "<group>"; };
 		DAA2D9A96890795C2F02A32B /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
@@ -106,6 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				5AA085A4901CE3801C9A88F1 /* NotchController.swift */,
+				B79EFB225668B41BBF2569D7 /* TypeBox.swift */,
 			);
 			path = Notch;
 			sourceTree = "<group>";
@@ -346,6 +349,7 @@
 				7FD318C30BD7A3CB92FC9B74 /* SystemNotifier.swift in Sources */,
 				8D7AF99A5FAA74DC8222DF5C /* Theme.swift in Sources */,
 				A6CEEF5AB6921E7C3A45E1B8 /* Transcriber.swift in Sources */,
+				B22AF3E66A770DBAD127DFC5 /* TypeBox.swift in Sources */,
 				1460C3FA36476C886A1E044E /* VoicePipeline.swift in Sources */,
 				75F6C7FC09162F02910BA943 /* VoiceSettings.swift in Sources */,
 				5CD26BA5E07CA040E3A9D535 /* WakeWord.swift in Sources */,

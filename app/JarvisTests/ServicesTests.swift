@@ -21,6 +21,11 @@ import Testing
         #expect(try NotchProtocol.decode(#"{"type":"something_new","x":1}"#) == .unknown(type: "something_new"))
     }
 
+    @Test func copiedPasswordsAreNeverSent() {
+        #expect(ComputerContext.isConcealed([.string, .init("org.nspasteboard.ConcealedType")]))
+        #expect(!ComputerContext.isConcealed([.string]))
+    }
+
     @Test func speechPlayerOnlyPlaysJarvisRenders() {
         #expect(SpeechPlayer.allowed("/var/folders/x/T/jarvis-say-1-2-abc.wav"))
         #expect(!SpeechPlayer.allowed("/Users/leo/Music/song.wav"))
