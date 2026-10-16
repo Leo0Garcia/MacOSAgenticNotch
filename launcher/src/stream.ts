@@ -15,7 +15,15 @@ export interface Denial {
   reason?: string;
 }
 
+/** Spoken answers stop after this many sentences; the notch shows the whole reply (Leo, 2026-10-16). */
+export const MAX_SPOKEN_SENTENCES = 2;
+
+/** Said when Claude goes straight to a tool without saying what it's doing. */
+export const DEFAULT_OPENER = "On it.";
+
 export interface RunResult {
+  /** Claude's usage limit was hit; `reply` says so plainly. */
+  limited?: boolean;
   /** The structured output's `say`: the spoken line when the run wrote no text reply. */
   say?: string;
   sessionId?: string;
@@ -73,6 +81,7 @@ export class RunMonitor {
   /** Sentences of the current message, held until we know if a tool call follows. */
   private held: string[] = [];
   private openerSaid = false;
+  private replySpoken = 0;
   /** Whether Claude said anything after its last real tool call. */
   private spokeSinceTool = false;
   private denials = new Map<string, Denial>();
@@ -104,6 +113,8 @@ export class RunMonitor {
         return this.onStreamEvent(ev.event);
       case "assistant": {
         if (ev.parent_tool_use_id) return;
+        // Claude Code's own notices (usage limit, API errors) aren't Jarvis talking.
+        if (ev.message?.model === "<synthetic>") return;
         const content: any[] = ev.message?.content ?? [];
         const usesTools = content.some((b) => b?.type === "tool_use" && b.name !== "StructuredOutput");
         for (const b of content) {
@@ -165,10 +176,10 @@ export class RunMonitor {
     const held = this.held;
     this.held = [];
     if (kind === "final") {
-      for (const s of held) this.hooks.onSentence?.(s, "reply");
-    } else if (!this.openerSaid && held.length) {
+      for (const s of held) if (this.replySpoken++ < MAX_SPOKEN_SENTENCES) this.hooks.onSentence?.(s, "reply");
+    } else if (!this.openerSaid) {
       this.openerSaid = true;
-      this.hooks.onSentence?.(held[0]!, "opener");
+      this.hooks.onSentence?.(held[0] ?? DEFAULT_OPENER, "opener");
     }
   }
 
@@ -203,6 +214,12 @@ export class RunMonitor {
     const base = { sessionId: r?.session_id ?? this.init?.sessionId, reply, denials, costUsd: r?.total_cost_usd, endedSilently: !this.spokeSinceTool };
     if (!r) {
       return { ...base, keep: true, summary: "", isError: true, problem: `the run ended without a result (exit ${exitCode})` };
+    }
+    if (r.api_error === "usage_limit_reached" || r.api_error_status === 429) {
+      // "You've hit your session limit · resets 5:10pm (Europe/London)"
+      const resets = /resets\s+([^(·]+?)\s*(?:\(|$)/.exec(String(r.result ?? ""))?.[1];
+      const line = `I've hit my Claude usage limit${resets ? `. It resets at ${resets}` : ", so I can't do that right now"}.`;
+      return { ...base, reply: line, keep: false, summary: "Hit the Claude usage limit", isError: true, limited: true, problem: String(r.result ?? "usage limit") };
     }
     const so = r.structured_output;
     const isError = Boolean(r.is_error) || (r.subtype !== undefined && r.subtype !== "success");

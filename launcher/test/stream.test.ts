@@ -105,3 +105,22 @@ test("only the opening line and the final answer are spoken", () => {
   m.finish(0);
   expect(said).toEqual([["opener", "Adding that to your Kanban."], ["reply", "Done, buy chalk is on your board."]]);
 });
+
+test("a long answer is spoken for two sentences; the whole reply stays in the result", () => {
+  const { said, res } = play(jsonl([init(), text(["One. Two. Three. Four."]), structured(false, "x"), result({ structured: { keep: false, summary: "x" } })]));
+  expect(said).toEqual(["One.", "Two."]);
+  expect(res.reply).toBe("One. Two. Three. Four.");
+});
+
+test("a tool call with no opening line gets one", () => {
+  const { said } = play(jsonl([init(), toolUse("t", "Bash", { command: "ls" }), toolResult("t", "ok"), text(["Done."]), structured(false, "x"), result({ structured: { keep: false, summary: "x" } })]));
+  expect(said).toEqual(["On it.", "Done."]);
+});
+
+test("hitting the usage limit is said plainly, not logged as a saved task", () => {
+  const limit = { ...result(), is_error: true, api_error_status: 429, api_error: "usage_limit_reached", result: "You've hit your session limit · resets 5:10pm (Europe/London)" };
+  const synthetic = { type: "assistant", message: { model: "<synthetic>", role: "assistant", content: [{ type: "text", text: limit.result }] }, parent_tool_use_id: null, session_id: "{{SID}}" };
+  const { said, res } = play(jsonl([init(), synthetic, limit]));
+  expect(said).toEqual([]);
+  expect(res).toMatchObject({ limited: true, keep: false, summary: "Hit the Claude usage limit", reply: "I've hit my Claude usage limit. It resets at 5:10pm." });
+});

@@ -15,6 +15,7 @@ import { buildSystemPrompt, checkClaudeVersion, linkSkills } from "./setup";
 import { type ActiveRun, clearActiveRun, ensureDirs, type LastRun, log, recentRun, saveActiveRun, saveLastRun, writeFileAtomic } from "./store";
 import { withContext } from "./context";
 import { lightsConfig, parseLights, smallTalk, statusSentence } from "./fast";
+import { parseInstant, runInstant } from "./instant";
 import { toolStatus } from "./status";
 import { type Denial, initProblem, RunMonitor } from "./stream";
 
@@ -104,7 +105,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
 
   // The fast path speaks through a notch link too, so the caption shows as the audio starts.
   const fastWithCaptions = async (req: string) => {
-    if ((!lightsConfig(c.repo) && !smallTalk(req)) || c.env.JARVIS_FAST === "0") return null;
+    if ((!lightsConfig(c.repo) && !smallTalk(req) && !parseInstant(req)) || c.env.JARVIS_FAST === "0") return null;
     link = new NotchLink({ home: c.home, client: "launcher", sessionId: null, connectTimeoutMs: 300 });
     speaker = new Speaker({ home: c.home, link, run: opts.speechRunner });
     return tryFast(c, req, speak, emit, finish, now());
@@ -259,7 +260,8 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   if (res.problem) log(c, "run result problem", { sessionId, problem: res.problem, exitCode, stderr: stderr.slice(-2000) });
 
   const guard = res.denials.find((d) => d.reason);
-  if (!res.reply && guard?.reason) speak(guard.reason.replace(/^guard:[a-z-]+:\s*/, "I can't do that: "));
+  if (res.limited) speak(res.reply);
+  else if (!res.reply && guard?.reason) speak(guard.reason.replace(/^guard:[a-z-]+:\s*/, "I can't do that: "));
   else if (res.endedSilently && (res.say || res.summary) && !res.isError) {
     // Claude finished with only the structured output (or just a progress
     // line earlier): say its `say` line, so Leo never gets silence. The
@@ -330,6 +332,23 @@ async function tryFast(
     await finish();
     return { exitCode: 0, keep: false, summary: hello, reply: hello };
   }
+  const done = async (reply: string, summary: string): Promise<RunOutcome> => {
+    emit({ event: "state", state: "working" });
+    speak(reply);
+    saveLastRun(c, { sessionId: "fast", keep: false, endedAt: at, request, reply });
+    action(c, { kind: "action", summary });
+    emit({ event: "done", sessionId: "", keep: false, summary, reply });
+    emit({ event: "state", state: "done" });
+    await finish();
+    return { exitCode: 0, keep: false, summary, reply };
+  };
+  const instant = parseInstant(request);
+  if (instant) {
+    const r = await runInstant(c, instant, new Date(at)).catch((e) => (log(c, "instant command failed", { error: String(e) }), null));
+    if (r) return done(r.reply, r.summary);
+    log(c, "instant command fell back to Claude", { request, kind: instant.kind });
+    return null;
+  }
   const config = lightsConfig(c.repo);
   const cmd = config && parseLights(request, config);
   if (!cmd) return null;
@@ -341,13 +360,5 @@ async function tryFast(
     return null;
   }
   const reply = cmd.args[0] === "status" ? statusSentence(out) : cmd.say ?? "Done.";
-  emit({ event: "state", state: "working" });
-  speak(reply);
-  const summary = cmd.args[0] === "status" ? `Checked the lights: ${out.trim().replace(/\n/g, "; ")}` : `Lights: ${cmd.args.join(" ")}`;
-  saveLastRun(c, { sessionId: "fast", keep: false, endedAt: at, request, reply });
-  action(c, { kind: "action", summary });
-  emit({ event: "done", sessionId: "", keep: false, summary, reply });
-  emit({ event: "state", state: "done" });
-  await finish();
-  return { exitCode: 0, keep: false, summary, reply };
+  return done(reply, cmd.args[0] === "status" ? `Checked the lights: ${out.trim().replace(/\n/g, "; ")}` : `Lights: ${cmd.args.join(" ")}`);
 }
