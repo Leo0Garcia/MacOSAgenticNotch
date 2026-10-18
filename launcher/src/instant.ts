@@ -18,7 +18,8 @@ export type Instant =
   | { kind: "remind"; when: string; text: string }
   | { kind: "timer"; amount: number; unit: "second" | "minute" | "hour" }
   | { kind: "next" }
-  | { kind: "day" }
+  /** `date` (YYYY-MM-DD, London) for another day than today: "overview of tomorrow", "what's Monday look like". */
+  | { kind: "day"; date?: string }
   | { kind: "kanban"; text: string }
   | { kind: "volume"; to?: number; by?: number; mute?: boolean }
   | { kind: "open"; app: string };
@@ -39,7 +40,29 @@ function clean(request: string): string {
 
 const sentenceCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function parseInstant(request: string): Instant | null {
+const DAY_WORD = /\b(today|tonight|tomorrow|tomorow|tommorow|tmrw|tmr|tomoz|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b/;
+// What's left once the day word is taken out: "give me an overview of", "what's on", "what does look like"…
+const OVERVIEW =
+  /^(?:(?:what'?s|what is|whats|how'?s|how is) (?:my day(?: look(?:ing)? like)?|on|happening|planned|(?:it )?look(?:ing)?(?: like)?)|what does (?:my day )?look like|what (?:have i got|do i have|ve i got|'ve i got)(?: on)?|(?:give me |can i have |can i get )?(?:an |my |a )?(?:overview|rundown|run down|briefing|summary)(?: of my day)?|brief me(?: on)?|morning briefing|give me my day|my day|run me through(?: my day)?)$/;
+
+const londonDate = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
+const weekday = (d: Date) => d.toLocaleDateString("en-GB", { weekday: "long", timeZone: "Europe/London" }).toLowerCase();
+
+/** A day overview request, with the date when it isn't today. */
+export function parseDay(low: string, now = new Date()): Instant | null {
+  const word = DAY_WORD.exec(low)?.[1];
+  const rest = low.replace(DAY_WORD, " ").replace(/\s+/g, " ").trim().replace(/ (?:of|for|the day)$/, "");
+  if (!OVERVIEW.test(rest)) return null;
+  if (!word || word === "today" || word === "tonight" || word === weekday(now)) return { kind: "day" };
+  if (/^(?:tom|tmr)/.test(word)) return { kind: "day", date: londonDate(new Date(now.getTime() + 86400_000)) };
+  for (let i = 1; i < 7; i++) {
+    const d = new Date(now.getTime() + i * 86400_000);
+    if (weekday(d) === word) return { kind: "day", date: londonDate(d) };
+  }
+  return null;
+}
+
+export function parseInstant(request: string, now = new Date()): Instant | null {
   const r = clean(request);
   const low = r.toLowerCase();
   let m: RegExpExecArray | null;
@@ -65,8 +88,9 @@ export function parseInstant(request: string): Instant | null {
     return { kind: "timer", amount, unit: m[2] === "min" ? "minute" : (m[2] as "second" | "minute" | "hour") };
   }
 
-  // "what's my day", "brief me", "what have I got today"
-  if (/^(?:what'?s|what is|whats|how'?s) (?:my day(?: look(?:ing)? like)?|on (?:for )?today|today look(?:ing)? like)$|^(?:what have i got|what do i have|what've i got) (?:on )?today$|^(?:brief me|morning briefing|give me my day|my day)$/.test(low)) return { kind: "day" };
+  // "what's my day", "brief me", "give me an overview of tomorrow", "what's Monday look like"
+  const day = parseDay(low, now);
+  if (day) return day;
 
   // "what's next", "what's next today", "what's my next lecture"
   if (/^(?:what'?s|what is|whats) (?:next|up next|my next (?:lecture|class|event|thing))(?: today| on today)?$/.test(low)) return { kind: "next" };
@@ -120,9 +144,13 @@ export interface Deadline {
   due: string;
 }
 
-/** Today's timetable plus Apple Calendar; null when the timetable can't be read. */
-async function today(c: Config, run: Runner): Promise<CalEvent[] | null> {
-  const r = await run([c.bunBin, join(c.repo, "skills", "calendar", "ics.ts"), "--day", "today", "--json"]);
+/** A day's timetable plus Apple Calendar; null when the timetable can't be read. */
+async function today(c: Config, run: Runner, day = "today"): Promise<CalEvent[] | null> {
+  // Both at once: the timetable can take a second when its cache refreshes.
+  const [r, a] = await Promise.all([
+    run([c.bunBin, join(c.repo, "skills", "calendar", "ics.ts"), "--day", day, "--json"]),
+    run([c.bunBin, join(c.repo, "skills", "calendar", "apple.ts"), "--day", day, "--json"]),
+  ]);
   if (r.code !== 0) return null;
   let events: CalEvent[];
   try {
@@ -130,7 +158,6 @@ async function today(c: Config, run: Runner): Promise<CalEvent[] | null> {
   } catch {
     return null;
   }
-  const a = await run([c.bunBin, join(c.repo, "skills", "calendar", "apple.ts"), "--day", "today", "--json"]);
   if (a.code === 0) {
     try {
       events.push(...(JSON.parse(a.stdout).events ?? []));
@@ -141,31 +168,37 @@ async function today(c: Config, run: Runner): Promise<CalEvent[] | null> {
 
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
 const dayName = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { weekday: "long", timeZone: "Europe/London" });
-const londonDate = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
 /** "COMP2311 L3 - Theory of Computing" → "Theory of Computing" */
 const shortTitle = (t: string) => /^[A-Z]{2,5}\d{4}\S*(?: \S+)? ?- ?(.+)$/.exec(t)?.[1] ?? t;
 /** Kanban card text as Leo would say it: link labels, no dates or tags. */
 const cardText = (t: string) => t.replace(/\[\[[^\]|]*\|([^\]]+)\]\]/g, "$1").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/@\{[^}]*\}/g, "").replace(/#[\w/-]+/g, "").replace(/\s+/g, " ").trim();
 /** First words of a long card, so the rundown stays short. */
-const clip = (t: string, n = 60) => (t.length <= n ? t : t.slice(0, t.lastIndexOf(" ", n)).replace(/[,;:]$/, ""));
+const clip = (t: string, n = 60) => (t.length <= n ? t : t.slice(0, t.lastIndexOf(" ", n)).replace(/[,;:]$/, "").replace(/(?: (?:the|a|an|to|and|of|for|in|on|with|into|related))+$/i, ""));
 const list = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
 
-/** About twenty seconds of "your day": what's left on the calendar, what's due on the Kanban and Moodle. */
-export function dayBriefing(now: Date, events: CalEvent[], cards: string[], deadlines: Deadline[]): string {
+/**
+ * About twenty seconds of "your day": what's left on the calendar, what's due
+ * on the Kanban and Moodle. With `date`, the same for that day ("Tomorrow…").
+ */
+export function dayBriefing(now: Date, events: CalEvent[], cards: string[], deadlines: Deadline[], date?: string): string {
   const h = Number(now.toLocaleTimeString("en-GB", { hour: "2-digit", hour12: false, timeZone: "Europe/London" }));
-  const out = [h < 12 ? "Good morning." : h < 18 ? "Good afternoon." : "Good evening."];
+  const tomorrow = date === londonDate(new Date(now.getTime() + 86400_000));
+  const when = !date ? "today" : tomorrow ? "tomorrow" : `on ${new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", timeZone: "Europe/London" })}`;
+  const out = date ? [] : [h < 12 ? "Good morning." : h < 18 ? "Good afternoon." : "Good evening."];
   const left = events.filter((e) => !e.allDay && Date.parse(e.end) > now.getTime()).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   const lectures = left.filter((e) => e.source === "timetable");
   const other = left.filter((e) => e.source !== "timetable");
   const items = (es: CalEvent[]) => es.slice(0, 4).map((e) => `${shortTitle(e.title)} at ${hhmm(e.start)}`);
-  if (lectures.length) out.push(`You've got ${lectures.length === 1 ? "one lecture" : `${lectures.length} lectures`} left today: ${list(items(lectures))}.`);
-  else out.push("No more lectures today.");
+  const count = lectures.length === 1 ? "one lecture" : `${lectures.length} lectures`;
+  if (lectures.length) out.push(date ? `${when.replace(/^on /, "").replace(/^./, (x) => x.toUpperCase())} you've got ${count}: ${list(items(lectures))}.` : `You've got ${count} left today: ${list(items(lectures))}.`);
+  else out.push(date ? `No lectures ${when}.` : "No more lectures today.");
   if (other.length) out.push(`On your calendar: ${list(items(other))}.`);
-  const todayStr = londonDate(now);
-  const due = cards.filter((t) => (/@\{(\d{4}-\d{2}-\d{2})\}/.exec(t)?.[1] ?? "9999") <= todayStr).map((t) => clip(cardText(t)));
-  if (due.length) out.push(`Due on your Kanban: ${list(due.slice(0, 3))}${due.length > 3 ? `, and ${due.length - 3} more` : ""}.`);
+  const byDay = date ?? londonDate(now);
+  const due = cards.filter((t) => (/@\{(\d{4}-\d{2}-\d{2})\}/.exec(t)?.[1] ?? "9999") <= byDay).map((t) => clip(cardText(t)));
+  if (due.length) out.push(`Due on your Kanban${date ? " by then" : ""}: ${list(due.slice(0, 3))}${due.length > 3 ? `, and ${due.length - 3} more` : ""}.`);
   else if (cards.length) out.push(`Nothing's due on your Kanban, with ${cards.length} cards to do.`);
-  const soon = deadlines.filter((d) => Date.parse(d.due) > now.getTime() && Date.parse(d.due) - now.getTime() < 7 * 86400_000).sort((a, b) => Date.parse(a.due) - Date.parse(b.due));
+  const from = date ? Date.parse(`${date}T00:00:00Z`) : now.getTime();
+  const soon = deadlines.filter((d) => Date.parse(d.due) > now.getTime() && Date.parse(d.due) - from < 7 * 86400_000).sort((a, b) => Date.parse(a.due) - Date.parse(b.due));
   if (soon.length) out.push(`Coming up on Moodle: ${list(soon.slice(0, 3).map((d) => `${d.title}${d.course ? ` for ${d.course}` : ""}, ${dayName(d.due)} at ${hhmm(d.due)}`))}.`);
   return out.join(" ");
 }
@@ -194,7 +227,7 @@ export async function runInstant(c: Config, i: Instant, now = new Date()): Promi
       return { reply: `I'll remind you to ${i.text.charAt(0).toLowerCase()}${i.text.slice(1)} ${r.label}.`, summary: `Reminder set for ${r.label}: ${i.text}` };
     }
     case "day": {
-      const events = await today(c, run);
+      const events = await today(c, run, i.date);
       if (!events) return null;
       const r = await run([c.bunBin, join(c.repo, "skills", "kanban", "kanban.ts"), "list", "--json"]);
       let cards: string[] = [];
@@ -205,7 +238,7 @@ export async function runInstant(c: Config, i: Instant, now = new Date()): Promi
       try {
         deadlines = JSON.parse(readFileSync(join(c.home, "state", "deadlines.json"), "utf8")).deadlines ?? [];
       } catch {}
-      return { reply: dayBriefing(now, events, cards, deadlines), summary: "Gave Leo the rundown of his day" };
+      return { reply: dayBriefing(now, events, cards, deadlines, i.date), summary: `Gave Leo the rundown of ${i.date ?? "his day"}` };
     }
     case "next": {
       const events = await today(c, run);
