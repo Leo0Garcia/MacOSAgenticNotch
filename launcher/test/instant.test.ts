@@ -48,3 +48,19 @@ test("the day rundown covers lectures, calendar, Kanban and Moodle in a few sent
 test("'what's my day' and friends are the rundown", () => {
   for (const r of ["What's my day?", "what's my day look like", "brief me", "what have I got today", "what's on today"]) expect(parseInstant(r)).toEqual({ kind: "day" });
 });
+
+test("overviews of tomorrow or another day are instant too", () => {
+  const sunday = new Date("2026-10-18T21:20:00Z");
+  for (const r of ["give me an overview of tomorrow", "can i get an overview of tmrw", "what's tomorrow look like", "what have I got on tomorrow", "what's on for tomorrow?", "how's tomorrow looking"])
+    expect(parseInstant(r, sunday)).toEqual({ kind: "day", date: "2026-10-19" });
+  expect(parseInstant("brief me on Tuesday", sunday)).toEqual({ kind: "day", date: "2026-10-20" });
+  expect(parseInstant("what's on sunday", sunday)).toEqual({ kind: "day" });
+  expect(parseInstant("what's the weather tomorrow", sunday)).toBeNull();
+
+  const { dayBriefing } = require("../src/instant");
+  const ev = { title: "COMP2312 L1 - Programming III", start: "2026-10-19T15:00:00Z", end: "2026-10-19T16:00:00Z", source: "timetable" };
+  expect(dayBriefing(sunday, [ev], ["Buy chalk @{2026-10-19}", "Later @{2026-10-25}"], [], "2026-10-19")).toBe(
+    "Tomorrow you've got one lecture: Programming III at 16:00. Due on your Kanban by then: Buy chalk.",
+  );
+  expect(dayBriefing(sunday, [], [], [], "2026-10-20")).toBe("No lectures on Tuesday.");
+});
