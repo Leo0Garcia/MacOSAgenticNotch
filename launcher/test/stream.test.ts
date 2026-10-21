@@ -124,3 +124,12 @@ test("hitting the usage limit is said plainly, not logged as a saved task", () =
   expect(said).toEqual([]);
   expect(res).toMatchObject({ limited: true, keep: false, summary: "Hit the Claude usage limit", reply: "I've hit my Claude usage limit. It resets at 5:10pm." });
 });
+
+test("an expired Claude sign-in is said plainly, with the fix", () => {
+  const err = { ...result(), is_error: true, terminal_reason: "api_error", api_error_status: null, result: "Failed to authenticate: OAuth session expired and could not be refreshed" };
+  const synthetic = { type: "assistant", message: { model: "<synthetic>", role: "assistant", content: [{ type: "text", text: err.result }] }, parent_tool_use_id: null, session_id: "{{SID}}" };
+  const { said, res } = play(jsonl([init(), synthetic, err]));
+  expect(said).toEqual([]);
+  expect(res).toMatchObject({ limited: true, keep: false, summary: "Claude sign-in expired" });
+  expect(res.reply).toContain("type /login");
+});
