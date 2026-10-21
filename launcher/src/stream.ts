@@ -22,7 +22,7 @@ export const MAX_SPOKEN_SENTENCES = 2;
 export const DEFAULT_OPENER = "On it.";
 
 export interface RunResult {
-  /** Claude's usage limit was hit; `reply` says so plainly. */
+  /** Claude couldn't run (usage limit, signed out, API error); `reply` says so plainly. */
   limited?: boolean;
   /** The structured output's `say`: the spoken line when the run wrote no text reply. */
   say?: string;
@@ -220,6 +220,14 @@ export class RunMonitor {
       const resets = /resets\s+([^(·]+?)\s*(?:\(|$)/.exec(String(r.result ?? ""))?.[1];
       const line = `I've hit my Claude usage limit${resets ? `. It resets at ${resets}` : ", so I can't do that right now"}.`;
       return { ...base, reply: line, keep: false, summary: "Hit the Claude usage limit", isError: true, limited: true, problem: String(r.result ?? "usage limit") };
+    }
+    if (r.terminal_reason === "api_error" && r.is_error) {
+      // Claude Code couldn't reach the model: say why, not "something went wrong", and keep nothing.
+      const why = String(r.result ?? "").trim();
+      const line = /authenticat|oauth|log ?in|401|credential/i.test(why)
+        ? "I'm signed out of Claude, so I can't do anything right now. Open Terminal, run claude, and type /login."
+        : `Claude returned an error, so I couldn't do that: ${why.slice(0, 160) || "no details"}.`;
+      return { ...base, reply: line, keep: false, summary: /authenticat|oauth/i.test(why) ? "Claude sign-in expired" : "Claude API error", isError: true, limited: true, problem: why || "api error" };
     }
     const so = r.structured_output;
     const isError = Boolean(r.is_error) || (r.subtype !== undefined && r.subtype !== "success");
