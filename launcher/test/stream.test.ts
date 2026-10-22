@@ -133,3 +133,42 @@ test("an expired Claude sign-in is said plainly, with the fix", () => {
   expect(res).toMatchObject({ limited: true, keep: false, summary: "Claude sign-in expired" });
   expect(res.reply).toContain("type /login");
 });
+
+test("a long answer starts being spoken while it is still streaming", () => {
+  const said: string[] = [];
+  const m = new RunMonitor({ onSentence: (s) => said.push(s) });
+  const [start, block, ...rest] = text(["Your next lecture is Theory of Computing at noon. ", "It's in building 32. ", "After that you've got ", "a free afternoon."]);
+  m.line(JSON.stringify(init()));
+  for (const e of [start, block, ...rest.slice(0, 3)]) m.line(JSON.stringify(e).replaceAll("{{SID}}", "sid-1"));
+  // The message hasn't finished, and the first two sentences are already out.
+  expect(said).toEqual(["Your next lecture is Theory of Computing at noon.", "It's in building 32."]);
+  for (const e of rest.slice(3)) m.line(JSON.stringify(e).replaceAll("{{SID}}", "sid-1"));
+  m.finish(0);
+  expect(said).toHaveLength(2);
+});
+
+test("narration that looked like an answer becomes the opening line, and the real answer is still spoken", () => {
+  const said: [string, string][] = [];
+  const m = new RunMonitor({ onSentence: (s, kind) => said.push([kind, s]) });
+  const se = (event: object) => ({ type: "stream_event", event, parent_tool_use_id: null, session_id: "sid-1" });
+  const stream = [
+    init(),
+    ...text(["Let me look. ", "I'll check your calendar. ", "Then the board"]).slice(0, -1).filter((e: any) => e.event?.type !== "message_stop" && e.event?.type !== "message_delta"),
+    se({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "t1", name: "Bash", input: {} } }),
+    se({ type: "message_stop" }),
+    toolResult("t1", "ok"),
+    ...text(["You're free at 3pm. Nothing else today."]),
+    ...structured(false, "x"),
+    result({ structured: { keep: false, summary: "x" } }),
+  ];
+  for (const e of stream) m.line(JSON.stringify(e).replaceAll("{{SID}}", "sid-1"));
+  m.finish(0);
+  expect(said).toEqual([["reply", "Let me look."], ["reply", "I'll check your calendar."], ["reply", "You're free at 3pm."], ["reply", "Nothing else today."]]);
+});
+
+test("tool calls and their results are reported for the timing breakdown", () => {
+  const seen: string[] = [];
+  const m = new RunMonitor({ onTool: (name, _i, id) => seen.push(`start ${name} ${id}`), onToolDone: (id, err) => seen.push(`done ${id} ${err}`), onFirstText: () => seen.push("text") });
+  for (const e of [init(), ...toolUse("t9", "Bash", { command: "ls" }), toolResult("t9", "ok"), ...text(["Done."])]) m.line(JSON.stringify(e));
+  expect(seen).toEqual(["start Bash t9", "done t9 false", "text"]);
+});

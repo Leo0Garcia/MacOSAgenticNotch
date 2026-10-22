@@ -23,7 +23,7 @@ Everything Jarvis needs lives in four places:
 
 Jarvis never adds files, hooks, routines, skills, settings or branches to any other project, repo or vault of Leo's. The master vault (`/Users/leogarcia/Documents/Obsidian Master Vault`): Jarvis may read, create and edit notes there, but not delete them, move them out, or touch `.obsidian/` (**Decision, Leo, 2026-10-11**; previously read-only except `Kanban.md`). Adding a project to Jarvis is one note in `~/Jarvis-Memory/Projects/`.
 
-Two unavoidable side effects outside these places, both owned by Claude Code or macOS rather than added by Jarvis: Claude Code writes saved-run transcripts under `~/.claude/projects/`, and reminders install launchd agents in `~/Library/LaunchAgents/` named `com.jarvis.reminder.<id>.plist` (removed after they fire). The Moodle deadline watcher installs one more, `com.jarvis.moodle-watch.plist`.
+Two unavoidable side effects outside these places, both owned by Claude Code or macOS rather than added by Jarvis: Claude Code writes saved-run transcripts under `~/.claude/projects/`, and reminders install launchd agents in `~/Library/LaunchAgents/` named `com.jarvis.reminder.<id>.plist` (removed after they fire). Three daily agents are installed by `run.sh schedules install`: `com.jarvis.moodle-watch.plist` (08:30), `com.jarvis.morning-check.plist` (08:00) and `com.jarvis.wrapup-prompt.plist` (00:00).
 
 ## 3. Hard limits (guard/)
 
@@ -114,6 +114,8 @@ The launcher parses `stream_event` text deltas from the main conversation (`pare
 **Only two things are spoken (Leo, 2026-10-13):** the run's opening line when it goes on to use tools ("Adding that to your Kanban."), and its final answer. `RunMonitor` holds each message's sentences until it sees whether a tool call follows: narration before a tool is dropped (except the run's first line, marked `opener`), the text before `StructuredOutput` or the end of the turn is the answer. The notch shows the opener as the Working line and no longer lists steps. If a run ends with no text, its structured `say` line is spoken (the `summary` only as a last resort, since it reads like a log line). "Thanks" and greetings get an instant natural reply from the fast path.
 
 **Loose ends (Leo, 2026-10-16):** the spoken answer stops after two sentences and the notch shows the whole reply. A run that goes straight to a tool says "On it." as its opener. Times are spoken naturally by the bridge ("14:30" → "half past two", "17:00" → "five p.m."); captions keep the digits, and nothing else is rewritten. An expired Claude sign-in or another API error is said plainly too ("I'm signed out of Claude… run claude, and type /login"), kept as ephemeral (Leo, 2026-10-21). Hitting Claude's usage limit is said plainly ("I've hit my Claude usage limit. It resets at 5:10pm.") and logged as ephemeral, not a saved task.
+
+**Answers start while they stream (Leo, 2026-10-22).** A message counts as the answer, and is spoken before it finishes, once it has two complete sentences with a third begun (or 140 characters). Narration before a tool call is usually one or two short lines, so this rarely fires early; when it does and a tool call follows, what was said stands as the opener and the real answer still gets its two sentences.
 
 ### 4.4 Follow-ups
 
@@ -310,6 +312,8 @@ CREATE TABLE actions (
 
 Claude writes `action`/`note` through the `log` tool; the launcher writes `run` and `guard` rows with `bun <repo>/bridge/src/cli.ts log --kind run --summary "…" [--saved] --session-id <id>` or `appendAction` from `bridge/src/actions.ts`. The app reads the newest 8 rows by `id` for the hover log.
 
+**Request details (Leo, 2026-10-22).** The launcher's `run` rows and fast-path `action` rows carry a JSON `detail` (`launcher/src/details.ts`, `RunDetails` with `v: 1`): request, full reply, route (`claude`, `warm`, `instant`, `lights`), model, outcome, turns, cost, every tool step with its start and duration, and `breakdown`, where the time went (Starting Claude, Thinking, Tools, Speaking; or Working for the fast path), which adds up to `totalMs`. The row is written when the run ends and its detail rewritten once the voice has finished. Other rows' `detail` stays free text. Clicking a row in Recent opens these details.
+
 ## 9. Obsidian Kanban file format (verified)
 
 From the plugin source (mgmeyers/obsidian-kanban, `src/parsers/formats/list.ts`, `src/parsers/common.ts`):
@@ -393,5 +397,7 @@ Each thread: branch from main, one draft PR named by area, `bun test` in bridge/
  hover action log, routing briefs into other projects by driving the project conversation in Claude Desktop or claude.ai/code, never by adding anything to those projects.
 
 ## 13. Decisions from Leo
+
+- 2026-10-22 (round 2 of ideas): answers spoken as they stream; request details with a timing breakdown in Recent; a sign-in check at 08:00 (`morning-check`: `claude auth status`, then a one-line no-tools Haiku request, since an expired session still reads as signed in; a signed-out result notifies and is added to the morning rundown); "note that…" appends to the master vault's `Inbox.md` instantly; "wrap up my day" is an instant wrap-up (requests of the day, Kanban moves since the day's first snapshot, first thing tomorrow, Moodle due soon; a day runs 5am to 5am), and at midnight the notch asks whether he wants it; reply without the hotkey for a few seconds after an answer; colours chosen in Settings.
 
 - 2026-10-11: saved runs do not auto-open in Desktop's Code tab. They open on demand from the notch row or when Leo says "open it".

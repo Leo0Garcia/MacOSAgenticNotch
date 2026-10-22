@@ -3,7 +3,7 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { appendAction } from "../../bridge/src/actions";
+import { appendAction, setActionDetail } from "../../bridge/src/actions";
 import { NotchLink } from "../../bridge/src/notch";
 import type { RunEvent } from "../../bridge/src/protocol";
 import { Speaker } from "../../bridge/src/speech";
@@ -16,6 +16,7 @@ import { type ActiveRun, clearActiveRun, ensureDirs, type LastRun, log, recentRu
 import { withContext } from "./context";
 import { lightsConfig, parseLights, smallTalk, statusSentence } from "./fast";
 import { parseInstant, runInstant } from "./instant";
+import { type RunDetails, Timeline } from "./details";
 import { toolStatus } from "./status";
 import { type Denial, initProblem, RunMonitor } from "./stream";
 
@@ -75,6 +76,8 @@ export function planRun(c: Config, request: string, now = Date.now()): RunPlan &
 export async function run(c: Config, request: string, opts: RunOptions = {}): Promise<RunOutcome> {
   const emit = opts.emit ?? ((e) => process.stdout.write(JSON.stringify(e) + "\n"));
   const now = opts.now ?? Date.now;
+  let timeline = new Timeline(now(), now);
+  let spokeAnything = false;
   // The notch link is optional: with the app closed, sends just return false.
   let link: NotchLink | null = null;
   let speaker = new Speaker({ home: c.home, run: opts.speechRunner });
@@ -88,11 +91,14 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   });
   const speak = (text: string, kind: "opener" | "reply" = "reply") => {
     if (hushed) return;
+    spokeAnything = true;
+    timeline.mark(kind === "opener" ? "opener" : "firstSpoken");
     emit({ event: "speak", text, ...(kind === "opener" ? { opener: true } : {}) });
     speaker.say(text, { opener: kind === "opener" }).catch((err) => log(c, "speech failed", { error: String(err) }));
   };
   const finish = async () => {
     await speaker.idle();
+    if (spokeAnything) timeline.set("spoken");
     link?.close();
   };
   const fail = async (message: string, sessionId?: string, spoken = message): Promise<RunOutcome> => {
@@ -110,7 +116,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     if ((!lightsConfig(c.repo) && !smallTalk(req) && !parseInstant(req)) || c.env.JARVIS_FAST === "0") return null;
     link = new NotchLink({ home: c.home, client: "launcher", sessionId: null, connectTimeoutMs: 300 });
     speaker = new Speaker({ home: c.home, link, run: opts.speechRunner });
-    return tryFast(c, req, speak, emit, finish, now());
+    return tryFast(c, req, speak, emit, finish, now(), timeline);
   };
 
   const warm = opts.awaitRequest;
@@ -179,6 +185,9 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
       return fast;
     }
     request = req;
+    // The clock starts when Leo asks, not when the warm run was started.
+    timeline = new Timeline(now(), now);
+    timeline.mark("init");
     const sink = proc.stdin as import("bun").FileSink;
     sink.write(JSON.stringify({ type: "user", message: { role: "user", content: withContext(c, request, now(), sessionId) } }) + "\n");
     await sink.end();
@@ -205,14 +214,18 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
       if (kind === "opener") markActive(s);
       speak(s, kind);
     },
-    onTool: (name, input) => {
+    onFirstText: () => timeline.mark("firstText"),
+    onToolDone: (id, isError) => timeline.stepDone(id, isError),
+    onTool: (name, input, id) => {
       const st = toolStatus(name, input);
+      if (name !== "StructuredOutput") timeline.step(st?.text ?? name, st?.detail, id);
       if (!st) return;
       markActive(st.text);
       emit({ event: "status", text: st.text, ...(st.detail ? { detail: st.detail } : {}) });
       notch({ event: "tool", text: st.text }, sessionId);
     },
     onInit: (init) => {
+      timeline.mark("init");
       initFailure = initProblem(init);
       if (initFailure) proc.kill("SIGTERM");
       else if (init.chromeStatus !== "connected")
@@ -240,6 +253,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   if (!initFailure && buf) monitor.line(buf);
   await logFile.end();
   const exitCode = await proc.exited;
+  timeline.mark("result");
   const stderr = await stderrText;
   rmSync(mcpFile, { force: true });
   clearActiveRun(c, sessionId);
@@ -277,7 +291,19 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   const status = res.isError && !res.reply ? "error" : res.denials.length ? "needs-you" : "done";
   const endedAt = now();
   saveLastRun(c, { sessionId, keep, endedAt, request, reply: res.reply });
-  action(c, { kind: "run", summary: res.summary || plan.name || "Jarvis run", sessionId, saved: keep });
+  const details = (): RunDetails =>
+    timeline.finish({
+      request,
+      reply: res.reply,
+      route: warm ? "warm" : "claude",
+      model: res.model ?? plan.model,
+      outcome: status,
+      saved: keep,
+      turns: res.turns,
+      costUsd: res.costUsd,
+      ...(res.problem ? { problem: res.problem } : {}),
+    });
+  const rowId = action(c, { kind: "run", summary: res.summary || plan.name || "Jarvis run", sessionId, saved: keep, detail: JSON.stringify(details()) });
   emit({ event: "done", sessionId, keep, summary: res.summary, reply: res.reply, name: plan.name });
   emit({ event: "state", state: status, sessionId });
   notch(status === "error" ? { event: "failed", text: res.problem } : { event: "done", keep, summary: res.summary }, sessionId);
@@ -288,15 +314,27 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     log(c, "finalize failed", { sessionId, error: String(e) });
   }
   await finish();
+  updateDetail(c, rowId, details());
   return { exitCode: status === "error" ? 1 : 0, sessionId, keep, summary: res.summary, reply: res.reply, denials: res.denials };
 }
 
-/** Appends to the bridge's action log; a failure is logged, never fatal. */
-function action(c: Config, a: Parameters<typeof appendAction>[1]): void {
+/** Appends to the bridge's action log; a failure is logged, never fatal. Returns the row id. */
+function action(c: Config, a: Parameters<typeof appendAction>[1]): number | undefined {
   try {
-    appendAction(c.home, a);
+    return appendAction(c.home, a).id;
   } catch (e) {
     log(c, "couldn't append action", { error: String(e) });
+    return undefined;
+  }
+}
+
+/** Rewrites a row's details once the voice has finished, so "Speaking" is in the breakdown. */
+function updateDetail(c: Config, id: number | undefined, d: RunDetails): void {
+  if (id === undefined) return;
+  try {
+    setActionDetail(c.home, id, JSON.stringify(d));
+  } catch (e) {
+    log(c, "couldn't update action detail", { error: String(e) });
   }
 }
 
@@ -324,6 +362,7 @@ async function tryFast(
   emit: (e: LauncherEvent) => void,
   finish: () => Promise<void>,
   at: number,
+  timeline: Timeline,
 ): Promise<RunOutcome | null> {
   if (c.env.JARVIS_FAST === "0") return null;
   const hello = smallTalk(request);
@@ -335,20 +374,24 @@ async function tryFast(
     await finish();
     return { exitCode: 0, keep: false, summary: hello, reply: hello };
   }
-  const done = async (reply: string, summary: string): Promise<RunOutcome> => {
+  const done = async (reply: string, summary: string, route: RunDetails["route"], what: string): Promise<RunOutcome> => {
+    timeline.mark("result");
+    timeline.steps.push({ label: what, atMs: 0, ms: timeline.get("result") });
     emit({ event: "state", state: "working" });
     speak(reply);
     saveLastRun(c, { sessionId: "fast", keep: false, endedAt: at, request, reply });
-    action(c, { kind: "action", summary });
+    const details = () => timeline.finish({ request, reply, route, outcome: "done", saved: false });
+    const id = action(c, { kind: "action", summary, detail: JSON.stringify(details()) });
     emit({ event: "done", sessionId: "", keep: false, summary, reply });
     emit({ event: "state", state: "done" });
     await finish();
+    updateDetail(c, id, details());
     return { exitCode: 0, keep: false, summary, reply };
   };
   const instant = parseInstant(request);
   if (instant) {
     const r = await runInstant(c, instant, new Date(at)).catch((e) => (log(c, "instant command failed", { error: String(e) }), null));
-    if (r) return done(r.reply, r.summary);
+    if (r) return done(r.reply, r.summary, "instant", `Instant command: ${instant.kind}`);
     log(c, "instant command fell back to Claude", { request, kind: instant.kind });
     return null;
   }
@@ -363,5 +406,5 @@ async function tryFast(
     return null;
   }
   const reply = cmd.args[0] === "status" ? statusSentence(out) : cmd.say ?? "Done.";
-  return done(reply, cmd.args[0] === "status" ? `Checked the lights: ${out.trim().replace(/\n/g, "; ")}` : `Lights: ${cmd.args.join(" ")}`);
+  return done(reply, cmd.args[0] === "status" ? `Checked the lights: ${out.trim().replace(/\n/g, "; ")}` : `Lights: ${cmd.args.join(" ")}`, "lights", `Homebridge: ${cmd.args.join(" ")}`);
 }

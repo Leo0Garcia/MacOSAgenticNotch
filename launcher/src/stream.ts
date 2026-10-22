@@ -18,6 +18,16 @@ export interface Denial {
 /** Spoken answers stop after this many sentences; the notch shows the whole reply (Leo, 2026-10-16). */
 export const MAX_SPOKEN_SENTENCES = 2;
 
+/**
+ * A message counts as the answer, and starts being spoken before it has
+ * finished streaming, once it has this many complete sentences (or
+ * EARLY_CHARS of them). Narration before a tool call is one short line, so
+ * this rarely misfires; when it does, the next tool call resets the count
+ * (Leo, 2026-10-22: "speak answers as they arrive").
+ */
+export const EARLY_SENTENCES = 2;
+export const EARLY_CHARS = 140;
+
 /** Said when Claude goes straight to a tool without saying what it's doing. */
 export const DEFAULT_OPENER = "On it.";
 
@@ -37,6 +47,9 @@ export interface RunResult {
   problem?: string;
   isError: boolean;
   costUsd?: number;
+  /** The model the run used, from its init event. */
+  model?: string;
+  turns?: number;
 }
 
 export interface MonitorHooks {
@@ -50,7 +63,11 @@ export interface MonitorHooks {
   onInit?: (init: InitInfo) => void;
   onDenial?: (d: Denial) => void;
   /** A tool call in the main conversation (not a subagent's). */
-  onTool?: (name: string, input: Record<string, unknown>) => void;
+  onTool?: (name: string, input: Record<string, unknown>, id?: string) => void;
+  /** That tool call's result came back. */
+  onToolDone?: (id: string, isError: boolean) => void;
+  /** The first streamed text of the run. */
+  onFirstText?: () => void;
 }
 
 export interface InitInfo {
@@ -60,6 +77,7 @@ export interface InitInfo {
   chromeStatus?: string;
   mcpServerErrors: unknown[];
   version?: string;
+  model?: string;
 }
 
 /** What is wrong with a run's init, or undefined when it can go ahead. */
@@ -81,6 +99,8 @@ export class RunMonitor {
   /** Sentences of the current message, held until we know if a tool call follows. */
   private held: string[] = [];
   private openerSaid = false;
+  /** The current message is being spoken as the answer while it streams. */
+  private speakingEarly = false;
   private replySpoken = 0;
   /** Whether Claude said anything after its last real tool call. */
   private spokeSinceTool = false;
@@ -121,7 +141,7 @@ export class RunMonitor {
           if (b?.type === "tool_use") {
             this.toolNames.set(b.id, b.name);
             if (b.name !== "StructuredOutput") this.spokeSinceTool = false;
-            this.hooks.onTool?.(b.name, b.input ?? {});
+            this.hooks.onTool?.(b.name, b.input ?? {}, b.id);
           }
           // Without partial messages the text only arrives here.
           if (b?.type === "text" && !this.sawTextDelta) this.addText(b.text + "\n", true);
@@ -131,6 +151,7 @@ export class RunMonitor {
       }
       case "user":
         for (const b of ev.message?.content ?? []) {
+          if (b?.type === "tool_result" && !ev.parent_tool_use_id && b.tool_use_id) this.hooks.onToolDone?.(b.tool_use_id, Boolean(b.is_error));
           if (b?.type !== "tool_result" || !b.is_error) continue;
           const text = typeof b.content === "string" ? b.content : JSON.stringify(b.content);
           if (GUARD_RE.test(text)) this.addDenial(this.toolNames.get(b.tool_use_id) ?? "unknown", b.tool_use_id, text);
@@ -152,19 +173,33 @@ export class RunMonitor {
       chromeStatus: servers.find((s) => s?.name === "claude-in-chrome")?.status,
       mcpServerErrors: Array.isArray(ev.mcp_server_errors) ? ev.mcp_server_errors : [],
       version: ev.claude_code_version,
+      model: typeof ev.model === "string" ? ev.model : undefined,
     };
     this.hooks.onInit?.(this.init);
   }
 
   private onStreamEvent(e: any): void {
     if (e?.type === "content_block_delta" && e.delta?.type === "text_delta") {
+      if (!this.sawTextDelta) this.hooks.onFirstText?.();
       this.sawTextDelta = true;
       this.addText(e.delta.text, false);
+      if (!this.speakingEarly && (this.held.length >= EARLY_SENTENCES || this.held.reduce((n, s) => n + s.length, 0) >= EARLY_CHARS)) this.speakingEarly = true;
+      if (this.speakingEarly) this.settle("final");
     } else if (e?.type === "content_block_start" && e.content_block?.type === "tool_use") {
       // Now we know what the text so far was: narration before a tool, or the answer.
       this.held.push(...this.splitter.flush());
-      this.settle(e.content_block.name === "StructuredOutput" ? "final" : "working");
+      const final = e.content_block.name === "StructuredOutput";
+      if (this.speakingEarly && !final) {
+        // What was spoken wasn't the answer after all: it stands as the
+        // opening line, and the real answer still gets its sentences.
+        this.speakingEarly = false;
+        this.openerSaid = true;
+        this.replySpoken = 0;
+        this.held = [];
+      }
+      this.settle(final ? "final" : "working");
     } else if (e?.type === "message_stop") {
+      this.speakingEarly = false;
       // A message that ends mid-sentence ("Let me check") before a tool call.
       this.held.push(...this.splitter.flush());
       this.settle("final");
@@ -211,7 +246,7 @@ export class RunMonitor {
     const reply = this.replyParts.join("").replace(/\n{3,}/g, "\n\n").trim();
     const denials = [...this.denials.values()];
     const r = this.result;
-    const base = { sessionId: r?.session_id ?? this.init?.sessionId, reply, denials, costUsd: r?.total_cost_usd, endedSilently: !this.spokeSinceTool };
+    const base = { sessionId: r?.session_id ?? this.init?.sessionId, reply, denials, costUsd: r?.total_cost_usd, endedSilently: !this.spokeSinceTool, model: this.init?.model, turns: r?.num_turns };
     if (!r) {
       return { ...base, keep: true, summary: "", isError: true, problem: `the run ended without a result (exit ${exitCode})` };
     }

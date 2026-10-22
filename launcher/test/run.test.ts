@@ -98,12 +98,25 @@ test("a saved run is named, kept, and logged as a saved run row in the bridge's 
   const argv = w.lastCall().argv;
   expect(argv[argv.indexOf("--name") + 1]).toBe("Jarvis: Research: solid-state batteries");
   expect(finals[0].keep).toBe(true);
-  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Researched solid-state batteries", detail: null, saved: 1 }]);
+  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Researched solid-state batteries", detail: expect.any(String), saved: 1 }]);
 });
 
 test("an ephemeral run's row isn't saved", async () => {
   const { out } = await go("what's the weather", runs.weather());
-  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Told Leo the Southampton weather", detail: null, saved: 0 }]);
+  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Told Leo the Southampton weather", detail: expect.any(String), saved: 0 }]);
+});
+
+test("each run's row carries its details: request, reply, steps and where the time went", async () => {
+  let t = 1_000_000;
+  const tick = () => (t += 100);
+  const fixture = jsonl([init(), toolUse("t1", "Bash", { command: "ls ~/Documents" }), toolResult("t1", "ok"), ...structured(false, "Listed Documents"), result({ structured: { keep: false, summary: "Listed Documents" } })]);
+  const { out } = await go("what's in my documents", fixture, {}, tick);
+  const d = JSON.parse((actions(out.sessionId!)[0] as { detail: string }).detail);
+  expect(d).toMatchObject({ v: 1, request: "what's in my documents", route: "claude", outcome: "done", saved: false, turns: 3, costUsd: 0.01 });
+  expect(d.steps).toHaveLength(1);
+  expect(d.steps[0].ms).toBeGreaterThan(0);
+  expect(d.breakdown.map((b: { label: string }) => b.label)).toEqual(["Starting Claude", "Thinking", "Tools", "Speaking"]);
+  expect(d.breakdown.reduce((n: number, b: { ms: number }) => n + b.ms, 0)).toBe(d.totalMs);
 });
 
 test("'and also' within 2 minutes of a saved run resumes it and can't discard it", async () => {
