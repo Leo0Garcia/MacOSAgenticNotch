@@ -47,16 +47,19 @@ enum Theme {
     static let primaryButtonText = Color(hex: 0xFFC266)
     static let savedText = Color(hex: 0x7FD1FF)
 
-    /// Section 6: rim colours and the time for one turn, per state.
-    static func rim(_ kind: StateKind) -> (colors: [Color], period: Double, opacity: Double, glow: Double) {
+    /// Section 6: rim colours and the time for one turn, per state. Listening,
+    /// working and done follow the palette chosen in Settings › Appearance.
+    @MainActor static func rim(_ kind: StateKind) -> (colors: [Color], period: Double, opacity: Double, glow: Double) {
+        let p = Appearance.shared.palette
+        let c = { (hexes: [UInt32]) in hexes.map { Color(hex: $0) } }
         switch kind {
-        case .idle: ([.white, .gray, .white], 4, 0, 0)
-        case .listening: ([Color(hex: 0x5AC8FA), Color(hex: 0x7D7AFF), Color(hex: 0x64D2FF)], 3, 0.95, 0.35)
-        case .working: ([Color(hex: 0x7D7AFF), Color(hex: 0xBF5AF2), Color(hex: 0x5AC8FA)], 1.5, 0.95, 0.4)
-        case .done: ([Color(hex: 0x30D158), Color(hex: 0x63E6BE), Color(hex: 0x5AC8FA)], 5, 0.8, 0.3)
-        case .needs: ([Color(hex: 0xFF9F0A), Color(hex: 0xFF6B3D), Color(hex: 0xFFD60A)], 2.4, 0.95, 0.45)
-        case .reminder: ([Color(hex: 0xFFD60A), Color(hex: 0xFF9F0A), Color(hex: 0xFFF3B0)], 3, 0.9, 0.3)
-        case .notice, .log: ([Color(hex: 0x9AA4B2), Color(hex: 0x4B5563), Color(hex: 0xE5E7EB)], 8, 0.4, 0)
+        case .idle: return ([.white, .gray, .white], 4, 0, 0)
+        case .listening: return (c(p.listening), 3, 0.95, 0.35)
+        case .working: return (c(p.working), 1.5, 0.95, 0.4)
+        case .done: return (c(p.done), 5, 0.8, 0.3)
+        case .needs: return ([Color(hex: 0xFF9F0A), Color(hex: 0xFF6B3D), Color(hex: 0xFFD60A)], 2.4, 0.95, 0.45)
+        case .reminder: return ([Color(hex: 0xFFD60A), Color(hex: 0xFF9F0A), Color(hex: 0xFFF3B0)], 3, 0.9, 0.3)
+        case .notice, .log: return ([Color(hex: 0x9AA4B2), Color(hex: 0x4B5563), Color(hex: 0xE5E7EB)], 8, 0.4, 0)
         }
     }
 

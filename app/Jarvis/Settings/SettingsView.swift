@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Bindable var voice: VoiceSettings
     @AppStorage(AppDelegate.wakeEnabledKey) private var wakeEnabled = false
     @AppStorage(AppDelegate.wakeWordKey) private var wakeWord = "Jarvis"
+    @AppStorage(AppDelegate.replyWindowKey) private var replyWindow = true
     @AppStorage(ComputerContext.shareBrowserKey) private var shareBrowser = false
     @AppStorage(ComputerContext.shareScreenKey) private var shareScreen = false
     let model: AppModel
@@ -16,6 +17,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             voiceTab.tabItem { Label("Voice", systemImage: "waveform") }
+            AppearanceTab().tabItem { Label("Appearance", systemImage: "paintpalette") }
             generalTab.tabItem { Label("General", systemImage: "gearshape") }
         }
         .frame(width: 460)
@@ -66,6 +68,11 @@ struct SettingsView: View {
                 Text("Say \u{201C}\(wakeWord.isEmpty ? "Jarvis" : wakeWord), what's the weather\u{201D} in one breath. Jarvis stops listening when you pause. The mic stays on while this is enabled, but speech is only checked on this Mac and then dropped: nothing is recorded or sent.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Replying") {
+                Toggle("Reply without the hotkey", isOn: $replyWindow)
+                Text("After Jarvis answers, the mic stays on for five seconds and the notch shows a small mic. Anything you say then is a follow-up. Nothing is recorded if you stay quiet.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("\u{201C}Hey Siri, Jarvis\u{201D} (mic off until you ask)") {
                 Text("Turn the wake word off above, then make a Shortcut named \u{201C}Jarvis\u{201D} with one action, Open URLs: jarvis://listen. Saying \u{201C}Hey Siri, Jarvis\u{201D} then opens Jarvis listening for one request; the mic is on only while you talk.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -78,6 +85,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             LabeledContent("Push-to-talk", value: "Hold ⌥ Space")
+            LabeledContent("Type to Jarvis", value: "⌥⇧ Space")
             LabeledContent("Hover", value: "Rest the pointer on the notch for recent actions")
             LabeledContent("Speech recognition", value: speechStatus)
             LabeledContent("Voice engine", value: "Kokoro, on this Mac")

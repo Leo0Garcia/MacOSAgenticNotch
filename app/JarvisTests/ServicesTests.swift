@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import SwiftUI
 @testable import Jarvis
 
 @Suite struct ProtocolTests {
@@ -19,6 +20,17 @@ import Testing
             == .runEvent(sessionId: "s", event: "denied", text: "no", keep: nil, summary: nil, rule: "no-money"))
         #expect(try NotchProtocol.decode(#"{"type":"play","id":"p","file":"/tmp/jarvis-say-1.wav"}"#) == .play(id: "p", file: "/tmp/jarvis-say-1.wav"))
         #expect(try NotchProtocol.decode(#"{"type":"something_new","x":1}"#) == .unknown(type: "something_new"))
+    }
+
+    @MainActor @Test func paletteDefaultsToAuroraAndRemembersCustomColours() {
+        let d = UserDefaults(suiteName: "jarvis-appearance-test")!
+        d.removePersistentDomain(forName: "jarvis-appearance-test")
+        let a = Appearance(defaults: d)
+        #expect(a.palette.id == "aurora")
+        #expect(a.palette.done == [0x30D158, 0x63E6BE, 0x5AC8FA]) // Leo's green and blue stay the default
+        let custom = Appearance.Palette.from([0x111111, 0x222222, 0x333333])
+        #expect(custom.listening == [0x111111, 0x222222, 0x111111])
+        #expect(Appearance.hex(Color(hex: 0x5AC8FA)) == 0x5AC8FA)
     }
 
     @Test func copiedPasswordsAreNeverSent() {

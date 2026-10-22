@@ -41,6 +41,7 @@
 		EE159A7E6418AAD0BDD57172 /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF730C9F89F0B4290CAA7FA /* AudioCapture.swift */; };
 		F458E80ADF7A0F0724BAC9EF /* Snapshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 701F7E02FB205441533705D3 /* Snapshots.swift */; };
 		FD1BD447C82FB4C545F41946 /* Launcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB30A56BEBAB614A9399B2D7 /* Launcher.swift */; };
+		FFB56E9C35EF4921949558AC /* Appearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848AFC8CDE50CE91E877D410 /* Appearance.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +70,7 @@
 		5E85DCABB29F13DBE2800822 /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		701F7E02FB205441533705D3 /* Snapshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshots.swift; sourceTree = "<group>"; };
 		7E8CE23C76139818D8F09644 /* FlowText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowText.swift; sourceTree = "<group>"; };
+		848AFC8CDE50CE91E877D410 /* Appearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Appearance.swift; sourceTree = "<group>"; };
 		8658147A374608398F17A8A8 /* NotchProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchProtocol.swift; sourceTree = "<group>"; };
 		91164898664277B5D50905E6 /* NotchViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchViews.swift; sourceTree = "<group>"; };
 		96CD752F98C50BE99787ECD7 /* WakeWord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeWord.swift; sourceTree = "<group>"; };
@@ -116,6 +118,7 @@
 		562D5088798827372CD6647B /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				848AFC8CDE50CE91E877D410 /* Appearance.swift */,
 				386DF619897905B59E1F4A01 /* SettingsView.swift */,
 				F10AA7980DDF3540B7DB4F4F /* VoiceSettings.swift */,
 			);
@@ -327,6 +330,7 @@
 				87681E7347A2C171AAC5FD95 /* ActionsStore.swift in Sources */,
 				622074694C067EBF468C556F /* AppDelegate.swift in Sources */,
 				25FE325CBE88F6666137AEFC /* AppModel.swift in Sources */,
+				FFB56E9C35EF4921949558AC /* Appearance.swift in Sources */,
 				EE159A7E6418AAD0BDD57172 /* AudioCapture.swift in Sources */,
 				2CB1CD9B2C41D50CCE7439C3 /* Aurora.swift in Sources */,
 				E31E8FF84FDC1487E74BB67C /* CalendarService.swift in Sources */,
