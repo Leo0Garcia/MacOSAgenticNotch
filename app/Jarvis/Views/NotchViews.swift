@@ -235,7 +235,7 @@ struct ExpandedView: View {
                     let words = c.text.split(separator: " ").map(String.init)
                     let per = words.isEmpty ? 0 : c.estimatedDuration / Double(words.count)
                     ForEach(Array(words.enumerated()), id: \.offset) { i, w in
-                        SpokenWord(word: w, delay: Double(i) * per, font: Theme.body)
+                        SpokenWord(word: w, revealAt: c.startedAt + Double(i) * per, now: { model.scheduler.now }, font: Theme.body)
                             .id("\(c.id)-\(i)")
                     }
                 }
