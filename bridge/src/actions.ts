@@ -76,3 +76,26 @@ export function recentActions(home: string, limit = 8): ActionRow[] {
     db.close();
   }
 }
+
+/** Replaces a row's detail, e.g. a run's timing breakdown once its speech has finished. */
+export function setActionDetail(home: string, id: number, detail: string | null): void {
+  const db = open(home);
+  try {
+    db.query("UPDATE actions SET detail = ? WHERE id = ?").run(detail, id);
+  } finally {
+    db.close();
+  }
+}
+
+/** Rows since a time (ISO 8601), oldest first: the evening wrap-up reads the day's. */
+export function actionsSince(home: string, sinceIso: string, untilIso = "9999"): ActionRow[] {
+  const db = open(home);
+  try {
+    const rows = db
+      .query("SELECT id, ts, session_id, kind, summary, detail, saved FROM actions WHERE ts >= ? AND ts < ? ORDER BY id")
+      .all(sinceIso, untilIso) as (Omit<ActionRow, "saved"> & { saved: number })[];
+    return rows.map((r) => ({ ...r, saved: r.saved === 1 }));
+  } finally {
+    db.close();
+  }
+}

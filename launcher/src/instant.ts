@@ -12,7 +12,11 @@ import { parseWhen, WhenError } from "../../bridge/src/when";
 import { checkBash, MONEY_APPS } from "../../guard/src/bash";
 import { contextFromEnv } from "../../guard/src/context";
 import { loadBlocklist } from "../../guard/src/domains";
+import { actionsSince } from "../../bridge/src/actions";
+import { masterVault } from "../../skills/lib/env";
+import { lastAuth, SIGNED_OUT_LINE } from "./auth";
 import { childEnv, type Config } from "./config";
+import { addNote, baseline, boardFromLanes, jarvisDay, type KanbanSnapshot, nextDay, snapshotKanban, wrapUp } from "./wrapup";
 
 export type Instant =
   | { kind: "remind"; when: string; text: string }
@@ -22,7 +26,11 @@ export type Instant =
   | { kind: "day"; date?: string }
   | { kind: "kanban"; text: string }
   | { kind: "volume"; to?: number; by?: number; mute?: boolean }
-  | { kind: "open"; app: string };
+  | { kind: "open"; app: string }
+  /** A quick note into the master vault's Inbox.md. */
+  | { kind: "note"; text: string }
+  /** The evening wrap-up. */
+  | { kind: "wrapup" };
 
 const NUM: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, fifteen: 15, twenty: 20, thirty: 30, forty: 40, "forty-five": 45, sixty: 60, ninety: 90 };
 const WHEN = String.raw`(?:in (?:a|an|one|\d+|[a-z-]+) (?:seconds?|minutes?|mins?|hours?|hrs?)(?: and a half)?|at [\w: .]+|tomorrow(?: (?:morning|afternoon|evening|at [\w: .]+))?|tonight(?: at [\w: .]+)?|(?:on )?(?:mon|tues|wednes|thurs|fri|satur|sun)day(?: at [\w: .]+)?|noon|midnight|this (?:afternoon|evening))`;
@@ -91,6 +99,13 @@ export function parseInstant(request: string, now = new Date()): Instant | null 
   // "what's my day", "brief me", "give me an overview of tomorrow", "what's Monday look like"
   const day = parseDay(low, now);
   if (day) return day;
+
+  // "wrap up my day", "how did today go"
+  if (/^(?:(?:give me |do |start )?(?:my |the |an? )?(?:evening |end of (?:the )?day |daily |day )?wrap[- ]?up(?: (?:my|the) day| for (?:today|the day))?|wrap (?:up )?(?:my|the) day(?: up)?|how did (?:my day|today|the day) go|what did i (?:get done|do) today|end of day summary)$/.test(low)) return { kind: "wrapup" };
+
+  // "note that the essay needs a conclusion", "make a note: buy chalk", "jot down …"
+  if ((m = /^(?:note(?: that|:| down)?|make a note(?: that|:|,)?|take a note(?: that|:|,)?|jot(?: down)?|write down) (.+)$/i.exec(r)) && !/^(?:down|(?:of )?(?:this|that|it)(?: down)?)$|^of (?:this|that|it)\b/i.test(m[1]!.trim()))
+    return { kind: "note", text: sentenceCase(m[1]!.trim()) };
 
   // "what's next", "what's next today", "what's my next lecture"
   if (/^(?:what'?s|what is|whats) (?:next|up next|my next (?:lecture|class|event|thing))(?: today| on today)?$/.test(low)) return { kind: "next" };
@@ -208,14 +223,39 @@ export interface InstantResult {
   summary: string;
 }
 
-/** Does it. Null means "let Claude handle it" (not available, failed, or not allowed). */
-export async function runInstant(c: Config, i: Instant, now = new Date()): Promise<InstantResult | null> {
+/** Runs a command from ~/Jarvis with the launcher's environment (skills need JARVIS_REPO and bun). */
+export function homeRunner(c: Config): Runner {
   const env = childEnv(c);
-  const run: Runner = async (cmd, opts = {}) => {
+  return async (cmd, opts = {}) => {
     const p = Bun.spawn(cmd, { cwd: c.home, env, stdin: opts.stdin !== undefined ? new TextEncoder().encode(opts.stdin) : "ignore", stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
     return { code, stdout, stderr };
   };
+}
+
+/** The whole board (every lane, finished ones too), or null when it can't be read. */
+export async function readBoard(c: Config, run: Runner): Promise<KanbanSnapshot | null> {
+  const r = await run([c.bunBin, join(c.repo, "skills", "kanban", "kanban.ts"), "list", "--all", "--json"]);
+  if (r.code !== 0) return null;
+  try {
+    return boardFromLanes(JSON.parse(r.stdout));
+  } catch {
+    return null;
+  }
+}
+
+function loadDeadlines(c: Config): Deadline[] {
+  try {
+    return JSON.parse(readFileSync(join(c.home, "state", "deadlines.json"), "utf8")).deadlines ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Does it. Null means "let Claude handle it" (not available, failed, or not allowed). */
+export async function runInstant(c: Config, i: Instant, now = new Date()): Promise<InstantResult | null> {
+  const env = childEnv(c);
+  const run = homeRunner(c);
   switch (i.kind) {
     case "remind":
     case "timer": {
@@ -234,11 +274,40 @@ export async function runInstant(c: Config, i: Instant, now = new Date()): Promi
       try {
         if (r.code === 0) cards = (JSON.parse(r.stdout) as { complete?: boolean; cards: string[] }[]).filter((l) => !l.complete).flatMap((l) => l.cards);
       } catch {}
-      let deadlines: Deadline[] = [];
+      if (!i.date) {
+        // The day's starting point for the evening wrap-up.
+        const board = await readBoard(c, run);
+        if (board) snapshotKanban(c, board, now);
+      }
+      let reply = dayBriefing(now, events, cards, loadDeadlines(c), i.date);
+      if (!i.date && lastAuth(c, now)?.problem === "signed-out") reply += ` Heads up: ${SIGNED_OUT_LINE}`;
+      return { reply, summary: `Gave Leo the rundown of ${i.date ?? "his day"}` };
+    }
+    case "wrapup": {
+      const day = jarvisDay(now);
+      const tomorrow = nextDay(day);
+      const [events, board] = await Promise.all([today(c, run, tomorrow), readBoard(c, run)]);
+      // Rows from the start of the day (5am London, give or take an hour of BST) to now.
+      const actions = actionsSince(c.home, new Date(Date.parse(`${day}T03:00:00Z`)).toISOString()).filter((a) => jarvisDay(new Date(a.ts)) === day);
+      const reply = wrapUp({
+        now,
+        day,
+        actions,
+        board,
+        start: baseline(c, day),
+        tomorrow: (events ?? []).sort((a, b) => Date.parse(a.start) - Date.parse(b.start)),
+        deadlines: loadDeadlines(c),
+      });
+      return { reply, summary: "Wrapped up the day" };
+    }
+    case "note": {
+      const vault = c.env.JARVIS_MASTER_VAULT ?? masterVault();
       try {
-        deadlines = JSON.parse(readFileSync(join(c.home, "state", "deadlines.json"), "utf8")).deadlines ?? [];
-      } catch {}
-      return { reply: dayBriefing(now, events, cards, deadlines, i.date), summary: `Gave Leo the rundown of ${i.date ?? "his day"}` };
+        addNote(vault, i.text, now);
+      } catch {
+        return null;
+      }
+      return { reply: "Noted.", summary: `Noted: ${i.text}` };
     }
     case "next": {
       const events = await today(c, run);

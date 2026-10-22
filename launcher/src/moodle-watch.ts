@@ -5,7 +5,8 @@
 
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Config, paths } from "./config";
+import { type Config } from "./config";
+import { dailyPlist, installDaily } from "./daily";
 import { addReminder, type Exec, realExec } from "./reminders/scheduler";
 import { log, writeFileAtomic } from "./store";
 
@@ -76,47 +77,12 @@ export function saveDeadlines(c: Config, input: unknown, now = Date.now(), add: 
   return `${future.length} upcoming deadline${future.length === 1 ? "" : "s"}; reminders set for ${set.length ? set.join(", ") : "none new"}.`;
 }
 
-const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
 /** The daily launchd agent: 08:30, or at the next wake if the Mac was asleep. */
 export function watchPlist(c: Config): string {
-  const log = xml(join(paths(c).logs, "moodle-watch.log"));
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-\t<key>Label</key>
-\t<string>${LABEL}</string>
-\t<key>ProgramArguments</key>
-\t<array>
-\t\t<string>/bin/sh</string>
-\t\t<string>${xml(join(c.repo, "launcher", "run.sh"))}</string>
-\t\t<string>moodle-watch</string>
-\t</array>
-\t<key>StartCalendarInterval</key>
-\t<dict>
-\t\t<key>Hour</key>
-\t\t<integer>8</integer>
-\t\t<key>Minute</key>
-\t\t<integer>30</integer>
-\t</dict>
-\t<key>StandardOutPath</key>
-\t<string>${log}</string>
-\t<key>StandardErrorPath</key>
-\t<string>${log}</string>
-</dict>
-</plist>
-`;
+  return dailyPlist(c, LABEL, ["moodle-watch"], 8, 30, "moodle-watch.log");
 }
 
 /** Installs (or refreshes) the daily agent. */
 export function installWatch(c: Config, exec: Exec = realExec): void {
-  const dest = join(c.launchAgentsDir, `${LABEL}.plist`);
-  mkdirSync(c.launchAgentsDir, { recursive: true });
-  mkdirSync(paths(c).logs, { recursive: true });
-  writeFileAtomic(dest, watchPlist(c));
-  const domain = `gui/${process.getuid?.() ?? 501}`;
-  exec([c.launchctl, "bootout", `${domain}/${LABEL}`]);
-  const r = exec([c.launchctl, "bootstrap", domain, dest]);
-  if (r.code !== 0) throw new Error(`launchctl bootstrap failed (${r.code}): ${r.stderr.trim()}`);
+  installDaily(c, LABEL, watchPlist(c), exec);
 }
