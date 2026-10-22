@@ -35,12 +35,19 @@ struct RunDetails: Decodable, Equatable, Sendable {
     var model: String?
     var outcome: String
     var saved: Bool
+    var startedAt: String
     var totalMs: Double
     var breakdown: [Slice]
     var steps: [Step]
     var turns: Int?
     var costUsd: Double?
     var problem: String?
+
+    var started: Date? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: startedAt) ?? ISO8601DateFormatter().date(from: startedAt)
+    }
 
     /// Nil unless it's v1 JSON (older rows hold a plain-text detail).
     static func parse(_ text: String?) -> RunDetails? {

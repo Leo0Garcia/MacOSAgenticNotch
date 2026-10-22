@@ -19,6 +19,9 @@ enum Theme {
     static let topRadius: CGFloat = 12
     static let bottomRadius: CGFloat = 28
     static let wing: CGFloat = 52
+    /// The pill reaches this far below the hardware notch, so the rim's bottom
+    /// edge isn't hidden behind the physical cut-out (Leo, 2026-10-22).
+    static let pillDrop: CGFloat = 3
     /// DynamicNotchKit insets the expanded content 15 pt on the sides and bottom.
     static let dnkInset: CGFloat = 15
     static let bodyPadding = EdgeInsets(top: 12, leading: 22 - dnkInset, bottom: 22 - dnkInset, trailing: 22 - dnkInset)

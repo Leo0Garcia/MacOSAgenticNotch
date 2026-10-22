@@ -57,7 +57,7 @@ enum Panel: Equatable, Sendable {
     /// Hover log: the pointer rests on the notch while nothing else is shown.
     case recent([ActionItem])
     /// One request opened from Recent: what was asked and said, and where the time went.
-    case details(ActionItem, RunDetails)
+    case details([ActionItem])
 
     var kind: StateKind {
         switch self {
@@ -854,13 +854,35 @@ final class AppModel {
     }
 
     func openRecent(_ item: ActionItem) {
-        if let d = item.details {
-            show(.details(item, d), size: .expanded)
+        if item.details != nil {
+            show(.details([item]), size: .expanded)
             return
         }
         guard item.saved, let id = item.sessionId else { return }
         launcher?.open(sessionId: id)
         finishAndHide()
+    }
+
+    func openConversation(_ group: [ActionItem]) {
+        let withDetails = group.filter { $0.details != nil }
+        guard !withDetails.isEmpty else { return }
+        show(.details(withDetails), size: .expanded)
+    }
+
+    /// Requests that followed on from each other (each started within two minutes
+    /// of the last one ending) are one conversation (Leo, 2026-10-22). `items` is
+    /// newest first, as Recent lists it; each group comes back oldest first.
+    nonisolated static func conversations(_ items: [ActionItem], gap: TimeInterval = 120) -> [[ActionItem]] {
+        var groups: [[ActionItem]] = []
+        for item in items.reversed() {
+            if let prev = groups.last?.last, let start = item.details?.started, prev.details != nil,
+               start.timeIntervalSince(prev.date) <= gap {
+                groups[groups.count - 1].append(item)
+            } else {
+                groups.append([item])
+            }
+        }
+        return groups.reversed()
     }
 
     /// From a request's details: back to the list, or into the saved conversation.

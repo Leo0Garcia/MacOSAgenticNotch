@@ -308,3 +308,21 @@ import SwiftUI
         #expect(!ComputerContext.isAboutScreen("add buy chalk to my Kanban"))
     }
 }
+
+@Suite struct ConversationTests {
+    private func item(_ id: Int, start: String, end: String) -> ActionItem {
+        let d = RunDetails(v: 1, request: "r\(id)", reply: "", route: "claude", model: nil, outcome: "done", saved: false, startedAt: start,
+                           totalMs: 1000, breakdown: [], steps: [], turns: nil, costUsd: nil, problem: nil)
+        return ActionItem(id: id, date: ISO8601DateFormatter().date(from: end)!, sessionId: nil, kind: "run", summary: "s\(id)", saved: false, details: d)
+    }
+
+    @Test func followUpsWithinTwoMinutesAreOneConversation() {
+        let a = item(1, start: "2026-10-22T18:00:00Z", end: "2026-10-22T18:00:20Z")
+        let b = item(2, start: "2026-10-22T18:01:30Z", end: "2026-10-22T18:01:50Z") // 70 s after a ended
+        let c = item(3, start: "2026-10-22T18:30:00Z", end: "2026-10-22T18:30:10Z") // much later
+        var reminder = ActionItem(id: 4, date: ISO8601DateFormatter().date(from: "2026-10-22T18:30:30Z")!, sessionId: nil, kind: "reminder", summary: "x", saved: false)
+        reminder.details = nil
+        let groups = AppModel.conversations([reminder, c, b, a]) // newest first, as Recent lists them
+        #expect(groups.map { $0.map(\.id) } == [[4], [3], [1, 2]])
+    }
+}

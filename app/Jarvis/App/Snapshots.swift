@@ -116,7 +116,7 @@ enum Snapshots {
                 m.notchHover(true)
             }),
             ("details", model { m in
-                let d = RunDetails(v: 1, request: "What's on my Kanban board?", reply: "You've got 14 cards to start. Two are due today: the literature review papers and the three interviews.", route: "claude", model: "sonnet", outcome: "done", saved: false, totalMs: 9400,
+                let d = RunDetails(v: 1, request: "What's on my Kanban board?", reply: "You've got 14 cards to start. Two are due today: the literature review papers and the three interviews.", route: "claude", model: "sonnet", outcome: "done", saved: false, startedAt: "2026-10-22T18:07:00.000Z", totalMs: 9400,
                                    breakdown: [.init(label: "Starting Claude", ms: 1800), .init(label: "Thinking", ms: 3100), .init(label: "Tools", ms: 1300), .init(label: "Speaking", ms: 3200)],
                                    steps: [.init(label: "Using the kanban skill", detail: nil, atMs: 2100, ms: 200, error: nil), .init(label: "Running a command", detail: "kanban list", atMs: 2400, ms: 1100, error: nil)],
                                    turns: 3, costUsd: 0.012, problem: nil)
@@ -124,6 +124,33 @@ enum Snapshots {
                 m.loadRecent = { [item] }
                 m.notchHover(true)
                 m.openRecent(item)
+            }),
+            ("conversation", model { m in
+                func d(_ q: String, _ a: String, _ start: String, _ ms: Double) -> RunDetails {
+                    RunDetails(v: 1, request: q, reply: a, route: "warm", model: "sonnet", outcome: "done", saved: false, startedAt: start, totalMs: ms,
+                               breakdown: [.init(label: "Thinking", ms: ms * 0.5), .init(label: "Tools", ms: ms * 0.2), .init(label: "Speaking", ms: ms * 0.3)], steps: [], turns: 2, costUsd: 0.01, problem: nil)
+                }
+                let iso = ISO8601DateFormatter()
+                let a = ActionItem(id: 1, date: iso.date(from: "2026-10-22T18:07:30Z")!, sessionId: nil, kind: "run", summary: "Described the screen: Netflix in Dia showing The Mentalist", saved: false,
+                                   details: d("What am I watching?", "You're watching The Mentalist on Netflix, season one.", "2026-10-22T18:07:20Z", 8200))
+                let b = ActionItem(id: 2, date: iso.date(from: "2026-10-22T18:08:40Z")!, sessionId: nil, kind: "run", summary: "Shared thoughts on The Mentalist", saved: false,
+                                   details: d("What do you think of it?", "I really like it. Patrick Jane is a great lead: smug and charming, but his grief keeps him grounded.", "2026-10-22T18:08:20Z", 11300))
+                m.loadRecent = { [b, a] }
+                m.notchHover(true)
+            }),
+            ("conversation-open", model { m in
+                let iso = ISO8601DateFormatter()
+                func d(_ q: String, _ a: String, _ start: String, _ ms: Double) -> RunDetails {
+                    RunDetails(v: 1, request: q, reply: a, route: "warm", model: "sonnet", outcome: "done", saved: false, startedAt: start, totalMs: ms,
+                               breakdown: [.init(label: "Thinking", ms: ms * 0.5), .init(label: "Tools", ms: ms * 0.2), .init(label: "Speaking", ms: ms * 0.3)], steps: [], turns: 2, costUsd: 0.01, problem: nil)
+                }
+                let a = ActionItem(id: 1, date: iso.date(from: "2026-10-22T18:07:30Z")!, sessionId: nil, kind: "run", summary: "Described the screen", saved: false,
+                                   details: d("What am I watching?", "You're watching The Mentalist on Netflix, season one.", "2026-10-22T18:07:20Z", 8200))
+                let b = ActionItem(id: 2, date: iso.date(from: "2026-10-22T18:08:40Z")!, sessionId: nil, kind: "run", summary: "Shared thoughts", saved: false,
+                                   details: d("What do you think of it?", "I really like it. Patrick Jane is a great lead: smug and charming, but his grief keeps him grounded.", "2026-10-22T18:08:20Z", 11300))
+                m.loadRecent = { [b, a] }
+                m.notchHover(true)
+                m.openConversation([a, b])
             }),
             ("reminder", model { m in
                 m.received(.reminder(id: "r", text: "Call Sue about the Amra brief"), from: 1)
