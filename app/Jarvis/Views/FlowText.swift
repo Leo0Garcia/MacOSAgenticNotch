@@ -47,10 +47,13 @@ struct FlowLayout: Layout {
     }
 }
 
-/// One spoken word: starts at 30% and comes up to 100% at `delay` seconds.
+/// One spoken word: starts at 30% and comes up to 100% at `revealAt` (scheduler
+/// time). A word already said shows at 100% straight away, so redrawing the
+/// panel (hover, resize) doesn't replay the reading (Leo, 2026-10-22).
 struct SpokenWord: View {
     var word: String
-    var delay: Double
+    var revealAt: Double
+    var now: () -> Double
     var font: Font
     @State private var on = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -61,7 +64,9 @@ struct SpokenWord: View {
             .foregroundStyle(.white)
             .opacity(on ? 1 : 0.3)
             .onAppear {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16).delay(delay)) { on = true }
+                let wait = revealAt - now()
+                if wait <= 0 || reduceMotion { on = true; return }
+                withAnimation(.easeOut(duration: 0.16).delay(wait)) { on = true }
             }
     }
 }

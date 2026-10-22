@@ -593,7 +593,8 @@ final class AppModel {
         if run.reply.count > spoken.count + 20 {
             // Only the first sentences were spoken (Leo, 2026-10-16): the notch shows the rest.
             let full = run.reply.count > 320 ? String(run.reply.prefix(318)) + "…" : run.reply
-            self.run?.captions = [Caption(id: "reply", text: full, startedAt: scheduler.now)]
+            // Already spoken (or not meant to be): shown in full at once, no reading animation.
+            self.run?.captions = [Caption(id: "reply", text: full, startedAt: 0)]
         }
         if panel != .done {
             doneEnteredAt = scheduler.now
