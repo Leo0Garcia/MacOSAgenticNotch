@@ -500,3 +500,41 @@ import Testing
         #expect(l.requests == ["weather"])
     }
 }
+
+@MainActor
+@Suite struct ReplyWindowTests {
+    @Test func theMicStaysOpenBrieflyAfterAnAnswer() {
+        let (m, s, l, _) = makeModel()
+        var changes: [Bool] = []
+        m.replyWindowEnabled = { true }
+        m.replyWindowChanged = { changes.append($0) }
+        m.submit("what's the time")
+        m.speechStarted(id: "a", text: "It's ten past four.")
+        l.emit(.done(sessionId: "s", keep: false, summary: "", reply: "It's ten past four.", name: nil)); l.exit(0)
+        m.speechEnded(id: "a")
+        #expect(m.awaitingReply)
+        s.advance(AppModel.replyWindow + 0.1)
+        #expect(!m.awaitingReply)
+        #expect(changes == [true, false])
+    }
+
+    @Test func speakingCloseTheWindowAndOffMeansOff() {
+        let (m, _, l, _) = makeModel()
+        m.replyWindowEnabled = { true }
+        m.submit("what's the time")
+        m.speechStarted(id: "a", text: "It's ten past four.")
+        l.emit(.done(sessionId: "s", keep: false, summary: "", reply: "It's ten past four.", name: nil)); l.exit(0)
+        m.speechEnded(id: "a")
+        m.wakeTriggered(preroll: [])
+        #expect(!m.awaitingReply)
+        #expect(m.panel == .listening)
+
+        let (m2, _, l2, _) = makeModel()
+        m2.replyWindowEnabled = { false }
+        m2.submit("hi")
+        m2.speechStarted(id: "b", text: "Hello.")
+        l2.emit(.done(sessionId: "s", keep: false, summary: "", reply: "Hello.", name: nil)); l2.exit(0)
+        m2.speechEnded(id: "b")
+        #expect(!m2.awaitingReply)
+    }
+}

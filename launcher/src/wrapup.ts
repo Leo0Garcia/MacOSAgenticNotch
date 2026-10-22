@@ -113,7 +113,9 @@ export function wrapUp(i: WrapInput): string {
 /** "note that the essay needs a conclusion" → the master vault's Inbox.md. Returns the line added. */
 export function addNote(vault: string, text: string, now = new Date()): string {
   const file = join(vault, "Inbox.md");
-  const stamp = now.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }).replace(",", "");
+  // Date and time formatted separately: ICU versions differ on what joins them ("," or " at").
+  const tz = { timeZone: "Europe/London" } as const;
+  const stamp = `${now.toLocaleDateString("en-GB", { day: "numeric", month: "short", ...tz })} ${now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", ...tz })}`;
   const line = `- ${text} (${stamp})`;
   if (!existsSync(file)) writeFileSync(file, "# Inbox\n\nQuick notes from Jarvis.\n\n");
   else if (!readFileSync(file, "utf8").endsWith("\n")) appendFileSync(file, "\n");

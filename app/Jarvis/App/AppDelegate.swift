@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Settings > General. Defaults: off (Leo prefers ⌥ Space), "Jarvis".
     static let wakeEnabledKey = "WakeWordEnabled"
+    static let replyWindowKey = "ReplyWithoutHotkey"
     static let wakeWordKey = "WakeWord"
     private let notifier = SystemNotifier()
     private let calendar = CalendarService()
@@ -72,6 +73,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         try? FileManager.default.removeItem(at: listening) // left over from a crash
+        UserDefaults.standard.register(defaults: [Self.replyWindowKey: true])
+        model.replyWindowEnabled = {
+            UserDefaults.standard.bool(forKey: Self.replyWindowKey) && ProcessInfo.processInfo.environment["JARVIS_MUTE"] != "1"
+                && AudioCapture.permission == .authorized
+        }
+        model.replyWindowChanged = { [weak self] open in self?.wake?.setReplyWindow(open) }
         model.lastMorningBrief = UserDefaults.standard.string(forKey: "morningBriefDay")
         model.morningBriefGiven = { UserDefaults.standard.set($0, forKey: "morningBriefDay") }
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in

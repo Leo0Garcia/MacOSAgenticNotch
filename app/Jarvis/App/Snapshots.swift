@@ -115,6 +115,16 @@ enum Snapshots {
                 }
                 m.notchHover(true)
             }),
+            ("details", model { m in
+                let d = RunDetails(v: 1, request: "What's on my Kanban board?", reply: "You've got 14 cards to start. Two are due today: the literature review papers and the three interviews.", route: "claude", model: "sonnet", outcome: "done", saved: false, totalMs: 9400,
+                                   breakdown: [.init(label: "Starting Claude", ms: 1800), .init(label: "Thinking", ms: 3100), .init(label: "Tools", ms: 1300), .init(label: "Speaking", ms: 3200)],
+                                   steps: [.init(label: "Using the kanban skill", detail: nil, atMs: 2100, ms: 200, error: nil), .init(label: "Running a command", detail: "kanban list", atMs: 2400, ms: 1100, error: nil)],
+                                   turns: 3, costUsd: 0.012, problem: nil)
+                let item = ActionItem(id: 9, date: Date(), sessionId: nil, kind: "run", summary: "Read out the Kanban board", saved: false, details: d)
+                m.loadRecent = { [item] }
+                m.notchHover(true)
+                m.openRecent(item)
+            }),
             ("reminder", model { m in
                 m.received(.reminder(id: "r", text: "Call Sue about the Amra brief"), from: 1)
             }),

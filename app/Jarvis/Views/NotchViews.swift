@@ -88,6 +88,11 @@ struct ExpandedView: View {
             }
         case .working:
             ElapsedText(model: model, style: .tenths, visible: visible)
+        case .done where model.awaitingReply:
+            HStack(spacing: 5) {
+                ReplyCue()
+                Text("Reply").font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.6))
+            }
         case .done:
             LevelBars(style: .speaking, count: 3, barWidth: 2.5, gap: 2.2, height: 14, colors: Theme.rim(.done).colors,
                       level: nil, active: model.speaking, visible: visible)
@@ -104,6 +109,8 @@ struct ExpandedView: View {
         case let .recent(items):
             let today = items.filter { Calendar.current.isDateInToday($0.date) }.count
             Text("\(today) today").font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.6))
+        case let .details(_, d):
+            Text(secondsText(d.totalMs)).font(.system(size: 12, weight: .medium).monospacedDigit()).foregroundStyle(.white.opacity(0.6))
         default: EmptyView()
         }
     }
@@ -133,6 +140,7 @@ struct ExpandedView: View {
         case let .reminder(r): "r-\(r.firedAt.timeIntervalSince1970)"
         case let .notice(t, _): "n-\(t)"
         case .recent: "recent"
+        case let .details(item, _): "details-\(item.id)"
         default: "\(panel.kind)"
         }
     }
@@ -148,6 +156,7 @@ struct ExpandedView: View {
         case let .reminder(r): reminder(r)
         case let .notice(title, body): notice(title, body)
         case let .recent(items): recent(items)
+        case let .details(item, d): RunDetailsView(item: item, details: d, back: { model.backToRecent() }, openRun: { model.openDetailsRun(item) })
         }
     }
 
@@ -347,7 +356,7 @@ struct ExpandedView: View {
             HStack {
                 Text("WHAT JARVIS DID").font(.system(size: 11.5, weight: .medium)).tracking(0.46)
                 Spacer()
-                Text("Hold \(env.hotkeyLabel) to talk").font(.system(size: 11.5))
+                Text("Hold \(env.hotkeyLabel) to talk · ⌥⇧ Space to type").font(.system(size: 11.5))
             }
             .foregroundStyle(.white.opacity(0.4))
             .padding(.bottom, 6)
@@ -403,14 +412,114 @@ struct RecentRow: View {
                     .padding(.horizontal, 7).frame(height: 18)
                     .background(Capsule().fill(b.2))
             }
+            if item.details != nil {
+                Text("›").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(hover ? 0.7 : 0.3))
+            }
         }
         .padding(.horizontal, 8)
         .frame(height: 26)
-        .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(item.saved && hover ? 0.08 : 0)))
+        .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(openable && hover ? 0.08 : 0)))
         .padding(.horizontal, -8)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        .onTapGesture { if item.saved { open() } }
+        .onTapGesture { if openable { open() } }
+        .accessibilityAddTraits(openable ? .isButton : [])
+    }
+
+    private var openable: Bool { item.saved || item.details != nil }
+}
+
+/// "0.4 s", "12 s", "2 min 5 s"
+func secondsText(_ ms: Double) -> String {
+    let s = ms / 1000
+    if s < 10 { return String(format: "%.1f s", s) }
+    if s < 60 { return "\(Int(s.rounded())) s" }
+    return "\(Int(s) / 60) min \(Int(s) % 60) s"
+}
+
+/// One request from Recent: what was asked and said, a bar of where the time
+/// went, and the steps (Leo, 2026-10-22: "click into a request and see all the details").
+struct RunDetailsView: View {
+    var item: ActionItem
+    var details: RunDetails
+    var back: () -> Void
+    var openRun: () -> Void
+
+    static let sliceColors: [String: Color] = [
+        "Starting Claude": Color(hex: 0x9AA4B2), "Thinking": Color(hex: 0x7D7AFF), "Tools": Color(hex: 0x5AC8FA),
+        "Speaking": Color(hex: 0x30D158), "Working": Color(hex: 0x63E6BE),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Button(action: back) { Text("‹ Recent") }.buttonStyle(.plain)
+                    .font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.55))
+                    .accessibilityLabel("Back to recent requests")
+                Spacer()
+                Text(meta).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
+            }
+            .padding(.bottom, 6)
+            Text(details.request).font(.system(size: 15, weight: .medium)).foregroundStyle(.white).lineLimit(2)
+            if !details.reply.isEmpty {
+                Text(details.reply).font(.system(size: 13)).foregroundStyle(.white.opacity(0.65)).lineLimit(3).fixedSize(horizontal: false, vertical: true).padding(.top, 3)
+            }
+            if let p = details.problem, details.outcome == "error" {
+                Text(p).font(.system(size: 12)).foregroundStyle(Theme.attentionText).lineLimit(2).padding(.top, 3)
+            }
+            bar.padding(.top, 10)
+            ForEach(Array(details.steps.prefix(4).enumerated()), id: \.offset) { _, s in
+                HStack(spacing: 6) {
+                    Text(s.error == true ? "✕" : "✓").font(.system(size: 10)).foregroundStyle(s.error == true ? Theme.recording : Theme.success)
+                    Text(s.detail.map { "\(s.label) · \($0)" } ?? s.label).font(.system(size: 12)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                    Spacer()
+                    if let ms = s.ms { Text(secondsText(ms)).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(.white.opacity(0.45)) }
+                }
+                .frame(height: 19)
+            }
+            .padding(.top, 2)
+            if details.steps.count > 4 {
+                Text("and \(details.steps.count - 4) more steps").font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.4))
+            }
+            if item.saved, item.sessionId != nil {
+                Button("Open the conversation ↗", action: openRun).buttonStyle(SavedChipStyle()).padding(.top, 8)
+            }
+        }
+    }
+
+    private var meta: String {
+        var parts = [details.route == "claude" || details.route == "warm" ? (details.model ?? "Claude") : "No Claude run"]
+        if let t = details.turns { parts.append("\(t) turn\(t == 1 ? "" : "s")") }
+        if let c = details.costUsd, c > 0 { parts.append(String(format: "$%.3f", c)) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Where the time went: one bar, a slice per phase, with a legend.
+    private var bar: some View {
+        let slices = details.breakdown.filter { $0.ms > 0 }
+        let total = max(slices.reduce(0) { $0 + $1.ms }, 1)
+        return VStack(alignment: .leading, spacing: 5) {
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    ForEach(Array(slices.enumerated()), id: \.offset) { _, s in
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Self.sliceColors[s.label] ?? .gray)
+                            .frame(width: max(3, (geo.size.width - CGFloat(slices.count - 1) * 2) * s.ms / total))
+                    }
+                }
+            }
+            .frame(height: 8)
+            HStack(spacing: 10) {
+                ForEach(Array(slices.enumerated()), id: \.offset) { _, s in
+                    HStack(spacing: 4) {
+                        Circle().fill(Self.sliceColors[s.label] ?? .gray).frame(width: 6, height: 6)
+                        Text("\(s.label) \(secondsText(s.ms))").font(.system(size: 11).monospacedDigit()).foregroundStyle(.white.opacity(0.55))
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Took \(secondsText(details.totalMs)): " + slices.map { "\($0.label) \(secondsText($0.ms))" }.joined(separator: ", "))
     }
 }
 
@@ -585,6 +694,22 @@ struct PillLeading: View {
     }
 }
 
+/// The mic is open for a reply: a small mic that breathes, in the listening colour.
+struct ReplyCue: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var on = false
+
+    var body: some View {
+        Image(systemName: "mic.fill")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Theme.rim(.listening).colors[0])
+            .opacity(on || reduceMotion ? 1 : 0.45)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(), value: on)
+            .onAppear { on = true }
+            .accessibilityLabel("Listening for a reply")
+    }
+}
+
 struct PillTrailing: View {
     let model: AppModel
     let env: NotchEnvironment
@@ -597,6 +722,8 @@ struct PillTrailing: View {
             switch panel {
             case .working:
                 ElapsedText(model: model, style: .seconds, visible: model.size == .compact)
+            case .done where model.awaitingReply:
+                ReplyCue()
             case .done:
                 LevelBars(style: .speaking, count: 3, barWidth: 2.5, gap: 2.2, height: 14, colors: Theme.rim(.done).colors,
                           level: nil, active: model.speaking, visible: model.size == .compact)

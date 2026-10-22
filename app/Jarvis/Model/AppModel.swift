@@ -56,6 +56,8 @@ enum Panel: Equatable, Sendable {
     case notice(title: String, body: String)
     /// Hover log: the pointer rests on the notch while nothing else is shown.
     case recent([ActionItem])
+    /// One request opened from Recent: what was asked and said, and where the time went.
+    case details(ActionItem, RunDetails)
 
     var kind: StateKind {
         switch self {
@@ -66,7 +68,7 @@ enum Panel: Equatable, Sendable {
         case .question, .access, .blocked: .needs
         case .reminder: .reminder
         case .notice: .notice
-        case .recent: .log
+        case .recent, .details: .log
         }
     }
 
@@ -192,6 +194,15 @@ final class AppModel {
     /// The day (yyyy-MM-dd) the morning rundown last played; the app keeps it in UserDefaults.
     @ObservationIgnored var lastMorningBrief: String?
     @ObservationIgnored var morningBriefGiven: ((String) -> Void)?
+    /// Reply without the hotkey (Leo, 2026-10-22): after an answer is spoken the
+    /// mic stays open this long, and speech then is a follow-up. Off in Settings,
+    /// and while JARVIS_MUTE is set.
+    @ObservationIgnored var replyWindowEnabled: () -> Bool = { false }
+    @ObservationIgnored var replyWindowChanged: ((Bool) -> Void)?
+    /// True while the mic waits for a reply; the pill shows a small mic.
+    private(set) var awaitingReply = false
+    @ObservationIgnored private var replyWindowRun = -1
+    static let replyWindow = 5.0
 
     @ObservationIgnored private var timers: [String: Scheduled] = [:]
     @ObservationIgnored private var speakingIDs: Set<String> = []
@@ -264,6 +275,7 @@ final class AppModel {
 
     private func beginListening(preroll: [Float]?) {
         if panel == .listening { return }
+        closeReplyWindow()
         // Leo starts talking: Jarvis stops (Leo, 2026-10-13). A run working
         // quietly isn't hushed, so its answer still comes when it's done.
         if speaking { launcher?.hushAll() }
@@ -327,6 +339,23 @@ final class AppModel {
             }
             submit(clean)
         }
+    }
+
+    // MARK: - Reply window
+
+    private func openReplyWindow() {
+        guard replyWindowEnabled(), !awaitingReply else { return }
+        awaitingReply = true
+        replyWindowChanged?(true)
+        schedule("replyWindow", Self.replyWindow) { [weak self] in self?.closeReplyWindow() }
+    }
+
+    /// Called when listening starts (the reply came) or the window runs out.
+    func closeReplyWindow() {
+        guard awaitingReply else { return }
+        awaitingReply = false
+        cancelTimer("replyWindow")
+        replyWindowChanged?(false)
     }
 
     // MARK: - Morning rundown
@@ -569,6 +598,11 @@ final class AppModel {
         if panel != .done {
             doneEnteredAt = scheduler.now
             show(.done, size: .expanded)
+        }
+        // Once per answer, after the voice has finished.
+        if !run.captions.isEmpty, replyWindowRun != run.token {
+            replyWindowRun = run.token
+            openReplyWindow()
         }
         let hold = run.savedLabel != nil ? Timing.doneHoldSaved : Timing.doneHold
         schedule("collapse", hold) { [weak self] in
@@ -819,6 +853,21 @@ final class AppModel {
     }
 
     func openRecent(_ item: ActionItem) {
+        if let d = item.details {
+            show(.details(item, d), size: .expanded)
+            return
+        }
+        guard item.saved, let id = item.sessionId else { return }
+        launcher?.open(sessionId: id)
+        finishAndHide()
+    }
+
+    /// From a request's details: back to the list, or into the saved conversation.
+    func backToRecent() {
+        show(.recent(loadRecent?() ?? []), size: .expanded)
+    }
+
+    func openDetailsRun(_ item: ActionItem) {
         guard item.saved, let id = item.sessionId else { return }
         launcher?.open(sessionId: id)
         finishAndHide()
@@ -844,7 +893,7 @@ final class AppModel {
                     self.evaluateEnd()
                 case .reminder:
                     self.setSize(.compact)
-                case .recent:
+                case .recent, .details:
                     self.finishAndHide()
                 default: break
                 }
@@ -866,7 +915,7 @@ final class AppModel {
         if s != size { size = s }
         if s == .expanded { expandedContentAt = scheduler.now }
         layoutRevision &+= 1
-        if p == .idle { cancelAllTimers(except: []) }
+        if p == .idle { closeReplyWindow(); cancelAllTimers(except: []) }
         if s == .expanded, !p.isNeedsYou, p != .listening { armWatchdog() }
     }
 
@@ -895,7 +944,7 @@ final class AppModel {
             case .done: self.evaluateEnd()
             case .working, .reminder: self.setSize(.compact)
             case .notice: self.resolveNeedsYou()
-            case .recent: self.finishAndHide()
+            case .recent, .details: self.finishAndHide()
             default: break
             }
         }
@@ -913,6 +962,7 @@ final class AppModel {
         case .listening, .reminder: 2
         case .working, .question, .access: 3
         case .done, .blocked, .recent: 4
+        case .details: 5
         }
     }
 
