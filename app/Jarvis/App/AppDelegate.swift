@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notificationsRequested = false
     private var demo: DemoDriver?
     private var signalSources: [DispatchSourceSignal] = []
+    private var dashboard: DashboardWindow?
 
     static var isUnitTesting: Bool { ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil }
 
@@ -105,6 +106,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             signalSources.append(src)
         }
         controller = NotchController(model: model, env: env)
+        let store = DashboardStore(model: model, paths: paths, micLevel: capture.level, voiceLevel: speechPlayer.level)
+        store.calendarToday = { [calendar] in
+            let day = Calendar.current.startOfDay(for: Date())
+            let iso = ISO8601DateFormatter()
+            let r = await calendar.events(fromISO: iso.string(from: day), toISO: iso.string(from: day.addingTimeInterval(86400)))
+            return (try? r.get()) ?? []
+        }
+        dashboard = DashboardWindow(store: store)
         Snapshots.warmUp(env: env)
         startServer()
         registerHotkeys()
@@ -142,21 +151,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// jarvis://listen — for a Shortcut Siri can run ("Hey Siri, Jarvis"):
     /// Jarvis listens for one request, mic on only for that request.
-    /// jarvis://ask?q=<text> sends text straight in.
+    /// jarvis://ask?q=<text> sends text straight in. jarvis://dashboard opens the dashboard.
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "jarvis" {
-            switch url.host {
-            case "listen":
+        for url in urls {
+            switch AppURL.parse(url) {
+            case .listen:
                 AppLog.write("listening (from \(url.absoluteString))")
                 wake?.listenNow()
-            case "ask":
-                let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "q" }?.value ?? ""
-                if !q.trimmingCharacters(in: .whitespaces).isEmpty { model.submit(q) }
-            default:
-                break
+            case let .ask(q): model.submit(q)
+            case .dashboard: showDashboard()
+            case nil: break
             }
         }
     }
+
+    func showDashboard() { dashboard?.show() }
 
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()
@@ -232,6 +241,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.hotkeyLabel = HotKeyCenter.Combo.optionSpace.label
         if hk.register(.optionShiftSpace, onPress: { [weak self] in self?.typeBox.toggle() }) == nil {
             AppLog.write("⌥⇧ Space is taken by another app, so the type box is off")
+        }
+        dashboard?.hotkeyLabel = env.hotkeyLabel
+        if hk.register(.optionShiftJ, onPress: { [weak self] in self?.dashboard?.toggle() }) == nil {
+            AppLog.write("⌥⇧J is taken by another app, so the dashboard opens from the menu bar only")
         }
         if ok == nil {
             AppLog.write("⌥ Space is taken by another app")

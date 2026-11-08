@@ -1,0 +1,182 @@
+<!doctype html>
+<!-- The dashboard's Nebula orb (Leo's pick from the orb lab, 2026-11-08):
+     2,400 particles in three shells pushed around by simplex noise, a core
+     glow, and one orbiting light per running agent (amber = waiting on Leo).
+     Local only: three.min.js r128 sits beside this file and the policy below
+     allows no network at all. Swift drives it with jarvis.set({...}) and
+     jarvis.pause(bool). -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src file: 'unsafe-inline'; style-src 'unsafe-inline'">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; background: #06080B; }
+canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<script src="three.min.js"></script>
+<script>
+(function () {
+  const want = { state: 'idle', level: 0, busy: 0, agents: [], colors: ['#63E6BE', '#5AC8FA'] };
+  let paused = false, raf = 0;
+  window.jarvis = {
+    ok: false,
+    set(s) { Object.assign(want, s); },
+    pause(p) {
+      paused = !!p;
+      if (paused) { cancelAnimationFrame(raf); raf = 0; }
+      else if (!raf && window.jarvis.ok) { last = performance.now(); raf = requestAnimationFrame(frame); }
+    },
+  };
+  if (!window.THREE) return;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const NOISE = `
+  vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+  vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+  vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+  vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+  float snoise(vec3 v){
+    const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0);
+    vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+    vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g; vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+    vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy;
+    i=mod289(i);
+    vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+    float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx;
+    vec4 j=p-49.0*floor(p*ns.z*ns.z); vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_);
+    vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y);
+    vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+    vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0));
+    vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+    vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+    vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+    p0*=norm.x; p1*=norm.y; p2*=norm.z; p3*=norm.w;
+    vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m;
+    return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+  }`;
+
+  // Energy and speed per state; colours come from Swift (Settings › Appearance).
+  const STATES = {
+    idle:      { energy: 0.2,  speed: 0.35 },
+    listening: { energy: 0.45, speed: 0.6 },
+    working:   { energy: 0.7,  speed: 1.15 },
+    speaking:  { energy: 0.55, speed: 0.8 },
+    needs:     { energy: 0.5,  speed: 0.6 },
+  };
+  const live = { energy: 0.2, speed: 0.35, level: 0, color: new THREE.Color(want.colors[0]), color2: new THREE.Color(want.colors[1]) };
+
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, alpha: false });
+  } catch (e) { return; }
+  renderer.setClearColor(0x06080B, 1);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 50); camera.position.set(0, 0, 5.2);
+  function size() {
+    const w = window.innerWidth, h = window.innerHeight; if (!w || !h) return;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  size(); window.addEventListener('resize', size);
+
+  function glowTexture() {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d'); const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+    grd.addColorStop(0.6, 'rgba(255,255,255,0.12)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }
+  const GLOW = glowTexture();
+
+  // Particles: three shells.
+  const N = 2400, pos = new Float32Array(N * 3), seed = new Float32Array(N);
+  const radii = [0.72, 0.95, 1.18];
+  for (let i = 0; i < N; i++) {
+    const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u), R = radii[i % 3] * (0.96 + Math.random() * 0.08);
+    pos[i*3] = Math.cos(th) * r * R; pos[i*3+1] = u * R; pos[i*3+2] = Math.sin(th) * r * R; seed[i] = Math.random();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uEnergy: { value: 0.5 }, uColor: { value: new THREE.Color() }, uColor2: { value: new THREE.Color() }, uPx: { value: renderer.getPixelRatio() } },
+    vertexShader: NOISE + `
+      attribute float aSeed; uniform float uTime, uEnergy, uPx; varying float vA; varying float vMix;
+      void main(){
+        vec3 p = position; float n = snoise(p*1.4 + vec3(0.0, uTime*0.45, uTime*0.25));
+        p *= 1.0 + n*0.16*(0.35+uEnergy);
+        vec4 mv = modelViewMatrix*vec4(p,1.0); gl_Position = projectionMatrix*mv;
+        gl_PointSize = uPx*(1.2 + aSeed*2.6)*(4.2/-mv.z)*(0.9+uEnergy*0.5);
+        vA = 0.25 + 0.75*smoothstep(-0.4, 0.7, n); vMix = aSeed;
+      }`,
+    fragmentShader: `
+      uniform vec3 uColor, uColor2; varying float vA; varying float vMix;
+      void main(){ float d = length(gl_PointCoord-0.5); float a = smoothstep(0.5, 0.0, d);
+        vec3 c = mix(uColor, uColor2, step(0.78, vMix)); gl_FragColor = vec4(c*(0.7+a), a*vA); }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const pts = new THREE.Points(g, mat); scene.add(pts);
+
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffffff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+  core.scale.set(1.6, 1.6, 1); scene.add(core);
+
+  // Agent lights: one per running agent, each on its own tilted orbit.
+  const MAX = 16, R = 1.6;
+  const ag = new THREE.BufferGeometry();
+  ag.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX * 3), 3));
+  ag.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX * 3), 3));
+  ag.setDrawRange(0, 0);
+  const agPts = new THREE.Points(ag, new THREE.PointsMaterial({ size: 0.13, map: GLOW, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(agPts);
+  const orbit = (i) => [i * 2.399, ((i * 0.618) % 1 - 0.5) * 2.4, 0.6 + (i % 3) * 0.2];
+  const AMBER = new THREE.Color('#F5B547'), WHITE = new THREE.Color('#ffffff'), tmp = new THREE.Color();
+  function updateAgents(t) {
+    const n = Math.min(want.agents.length, MAX);
+    ag.setDrawRange(0, n);
+    const p = ag.attributes.position.array, c = ag.attributes.color.array;
+    for (let i = 0; i < n; i++) {
+      const [phase, tilt, sp] = orbit(i);
+      const a = phase + t * sp * 0.6, x = Math.cos(a) * R, z = Math.sin(a) * R;
+      p[i*3] = x; p[i*3+1] = z * Math.sin(tilt) * 0.6; p[i*3+2] = z * Math.cos(tilt);
+      if (want.agents[i]) tmp.copy(AMBER); else tmp.copy(live.color).lerp(WHITE, 0.45);
+      c[i*3] = tmp.r; c[i*3+1] = tmp.g; c[i*3+2] = tmp.b;
+    }
+    ag.attributes.position.needsUpdate = true; ag.attributes.color.needsUpdate = true;
+  }
+
+  let t = 0, last = performance.now();
+  const tc = new THREE.Color(), tc2 = new THREE.Color();
+  function frame(now) {
+    raf = 0;
+    if (paused) return;
+    const dt = Math.min((now - last) / 1000, 0.05); last = now;
+    const target = STATES[want.state] || STATES.idle;
+    const busy = Math.max(0, Math.min(1, want.busy || 0));
+    live.speed += (target.speed + busy * 0.4 - live.speed) * 0.05;
+    live.level += ((want.level || 0) - live.level) * 0.3;
+    let e = target.energy + busy * 0.25;
+    if (want.state === 'listening') e = 0.35 + 0.65 * live.level;
+    if (want.state === 'speaking') e = live.level > 0.03 ? 0.35 + 0.65 * live.level
+      : 0.35 + 0.65 * Math.abs(Math.sin(now * 0.009) * Math.sin(now * 0.0031 + 1.3));
+    live.energy += (Math.min(1.1, e) - live.energy) * (want.state === 'listening' || want.state === 'speaking' ? 0.25 : 0.06);
+    live.color.lerp(tc.set(want.colors[0] || '#63E6BE'), 0.05); live.color2.lerp(tc2.set(want.colors[1] || '#5AC8FA'), 0.05);
+    t += dt * live.speed * (reduce ? 0.25 : 1);
+    mat.uniforms.uTime.value = t; mat.uniforms.uEnergy.value = live.energy;
+    mat.uniforms.uColor.value.copy(live.color); mat.uniforms.uColor2.value.copy(live.color2);
+    pts.rotation.y = t * 0.15; pts.rotation.x = 0.3;
+    core.material.color.copy(live.color).lerp(WHITE, 0.5);
+    core.material.opacity = 0.7 + busy * 0.3;
+    core.scale.setScalar(1.3 + live.energy * 0.6 + busy * 0.3);
+    updateAgents(t);
+    renderer.render(scene, camera);
+    raf = requestAnimationFrame(frame);
+  }
+  window.jarvis.ok = true;
+  raf = requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
