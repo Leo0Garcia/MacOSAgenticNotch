@@ -1,7 +1,8 @@
 ---
 name: lights
 description: Control the lights in Leo's room through Homebridge - the main light, the lamp, the bed lights and the desk lights. On, off, toggle, brightness, colour, warm/cool white, and named scenes (bright, relax, focus, movie, night, off). Use for "turn the lights off", "lamp to 30%", "make the bed lights red", "movie mode", "are my lights on".
-when_to_use: "lights", "light", "lamp", "bed lights", "desk lights", "main light", "dim", "brighter", "scene", "movie mode", "bedtime lights"
+when_to_use: >-
+  "lights", "light", "lamp", "bed lights", "desk lights", "main light", "dim", "brighter", "scene", "movie mode", "bedtime lights"
 allowed-tools: Bash(bun ${CLAUDE_SKILL_DIR}/lights.ts *)
 ---
 

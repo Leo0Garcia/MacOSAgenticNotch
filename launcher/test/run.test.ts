@@ -350,6 +350,9 @@ test("the checker: a run that did something is checked, and retried once (resume
   w.said.length = 0;
   const out = await run(w.config({ JARVIS_CHECK: "1" }), "add buy chalk to my kanban board please", { emit: (e) => events.push(e), finalize: async (f) => void finals.push(f), speechRunner: w.speechRunner, checkRunner });
   expect(checked).toHaveLength(1); // the retry isn't checked again
+  // The retry logs its own line; the outer run's "retried" comes last, so it wins.
+  const outcome = JSON.parse(readFileSync(join(jarvis, "state", "outcomes.jsonl"), "utf8").trim().split("\n").at(-1)!);
+  expect(outcome).toMatchObject({ sessionId: out.sessionId, type: "other", outcome: "retried", problem: "The card went into Done, not Not Started." });
   expect(checked[0]!.join(" ")).toContain("Bash {\"command\":\"bun kanban.ts add 'Buy chalk'\"} → added");
   expect(w.said).toContain("Hang on, that's not quite right. Fixing it.");
   const retry = w.lastCall().argv;
