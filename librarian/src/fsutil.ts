@@ -25,7 +25,7 @@ export async function readIfExists(path: string): Promise<string | undefined> {
 }
 
 /** Notes the librarian must never write: the script owns them, or they are templates. */
-const SCRIPT_OWNED = new Set(["Index.md", "Projects/_template.md", "People/_template.md"]);
+const SCRIPT_OWNED = new Set(["Index.md", "Lessons.md", "Projects/_template.md", "People/_template.md"]);
 
 export class VaultPathError extends Error {}
 

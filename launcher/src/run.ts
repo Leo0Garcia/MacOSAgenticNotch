@@ -19,6 +19,7 @@ import { homeRunner, parseInstant, runInstant } from "./instant";
 import { type RunDetails, Timeline } from "./details";
 import { toolStatus } from "./status";
 import { checkResult, retryPrompt, worthChecking } from "./checker";
+import { appendOutcome, noteCorrection, taskType, usedName } from "./outcomes";
 import { type Denial, initProblem, RunMonitor } from "./stream";
 
 /** Lines the launcher prints on stdout, one JSON object each, for the notch app. */
@@ -147,6 +148,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     // Warm runs are for quick asks, so they start on the fast model.
     plan = { prompt: "", sessionId: id, runLog: p.runLog(id), resumed: false, streamInput: true, model: c.model ?? c.fastModel };
   } else {
+    if (!opts.background && !opts.resume) noteCorrection(c, request, now());
     const fast = opts.background ? null : await fastWithCaptions(request);
     if (fast) return fast;
     plan = opts.resume
@@ -186,6 +188,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
       if (!req) return { exitCode: 0 };
       return run(c, req, { ...opts, awaitRequest: undefined });
     }
+    noteCorrection(c, req, now());
     const fast = await fastWithCaptions(req);
     if (fast) {
       proc.kill("SIGTERM");
@@ -221,6 +224,8 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   const logFile = Bun.file(plan.runLog).writer();
   /** Each tool call with its input and the start of its output, for the checker. */
   const toolLog = new Map<string, string>();
+  /** What the run used, for its task type. */
+  const used: string[] = [];
   const monitor = new RunMonitor({
     onSentence: (s, kind) => {
       if (kind === "opener") markActive(s);
@@ -234,6 +239,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     },
     onTool: (name, input, id) => {
       if (id && name !== "StructuredOutput") toolLog.set(id, `${name} ${JSON.stringify(input).slice(0, 200)}`);
+      used.push(usedName(name, input));
       const st = toolStatus(name, input);
       if (name !== "StructuredOutput") timeline.step(st?.text ?? name, st?.detail, id);
       if (!st) return;
@@ -307,6 +313,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
 
   // The checker: did the work actually get done? One retry if not (Leo, 2026-11-08).
   let retried: RunOutcome | null = null;
+  let checkProblem: string | undefined;
   if (!opts.noCheck && !opts.background && worthChecking(timeline.steps, res, c.env)) {
     emit({ event: "status", text: "Checking the result" });
     timeline.step("Checking the result", undefined, "check");
@@ -314,6 +321,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     timeline.stepDone("check", v?.ok === false);
     if (v && !v.ok) {
       log(c, "checker found a problem", { sessionId, problem: v.problem });
+      checkProblem = v.problem;
       speak("Hang on, that's not quite right. Fixing it.");
       await speaker.idle();
       retried = await run(c, retryPrompt(v.problem!), { ...opts, resume: sessionId, noCheck: true, finalize: async () => {} });
@@ -324,6 +332,15 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   const status = res.isError && !res.reply ? "error" : res.denials.length ? "needs-you" : "done";
   const endedAt = now();
   saveLastRun(c, { sessionId, keep, endedAt, request, reply: res.reply });
+  appendOutcome(c, {
+    at: new Date(endedAt).toISOString(),
+    sessionId,
+    type: taskType(used),
+    outcome: retried ? "retried" : res.isError ? "failed" : res.denials.length ? "blocked" : "done",
+    request,
+    summary: res.summary,
+    problem: checkProblem ?? res.problem,
+  });
   const details = (): RunDetails =>
     timeline.finish({
       request,
