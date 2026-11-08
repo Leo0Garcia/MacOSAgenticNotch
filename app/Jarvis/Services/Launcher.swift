@@ -1,5 +1,6 @@
 // Runs `launcher/run.sh run "<request>"` (DESIGN 4.6) and turns its NDJSON
 // stdout into events for the model. `run.sh open <id>` opens a saved run.
+// `run.sh interrupted` and `resume <id>` pick up runs cut off by a restart.
 
 import Foundation
 
@@ -38,12 +39,23 @@ enum LauncherEvent: Equatable, Sendable {
     }
 }
 
+/// A run cut off by a restart, claimed by `run.sh interrupted` (DESIGN 4.4).
+struct InterruptedRun: Decodable, Equatable, Sendable {
+    var sessionId: String
+    var request: String
+    var background: Bool?
+}
+
 @MainActor
 protocol LauncherRunning: AnyObject {
     /// Leo interrupted: runs already going stop talking.
     func hushAll()
     /// Starts a run. Events arrive on the main actor; `exited` fires once with the exit code.
     func run(_ request: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws
+    /// Runs cut off by a restart, each claimed so it's resumed once.
+    func interrupted() async -> [InterruptedRun]
+    /// Carries on an interrupted run; events like `run`.
+    func resume(_ sessionId: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws
     func open(sessionId: String)
     func cancelAll()
 }
@@ -114,11 +126,32 @@ final class Launcher: LauncherRunning {
                 w.process.terminate()
             }
         }
+        try start(["run", request], onEvent: onEvent, exited: exited)
+    }
+
+    func resume(_ sessionId: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws {
+        try start(["resume", sessionId], onEvent: onEvent, exited: exited)
+    }
+
+    private func start(_ args: [String], onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws {
         let route = Route()
         route.onEvent = onEvent
         route.exited = exited
-        let p = try spawn(["run", request], route: route, stdin: false)
-        AppLog.write("launcher run started (pid \(p.processIdentifier))")
+        let p = try spawn(args, route: route, stdin: false)
+        AppLog.write("launcher \(args[0]) started (pid \(p.processIdentifier))")
+    }
+
+    func interrupted() async -> [InterruptedRun] {
+        guard let p = try? process(["interrupted"]) else { return [] }
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        // The output is a few small records, well inside the pipe's buffer.
+        let data: Data = await withCheckedContinuation { cont in
+            p.terminationHandler = { _ in cont.resume(returning: out.fileHandleForReading.readDataToEndOfFile()) }
+            do { try p.run() } catch { p.terminationHandler = nil; cont.resume(returning: Data()) }
+        }
+        return (try? JSONDecoder().decode([InterruptedRun].self, from: data)) ?? []
     }
 
     /// Starts a warm run if none is ready. Called at launch and after each run.

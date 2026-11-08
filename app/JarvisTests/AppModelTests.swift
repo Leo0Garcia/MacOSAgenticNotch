@@ -252,6 +252,34 @@ import Testing
         #expect(m.runActive)
     }
 
+    @Test func onLaunchInterruptedRunsAreResumedAndTheLastIsShown() async {
+        let (m, _, l, _) = makeModel()
+        var contexts: [String] = []
+        m.willSubmit = { contexts.append($0) }
+        l.interruptedRuns = [
+            .init(sessionId: "s1", request: "add my lectures to the Kanban", background: nil),
+            .init(sessionId: "s2", request: "check Moodle deadlines", background: true),
+            .init(sessionId: "s3", request: "tidy my downloads", background: nil),
+        ]
+        await m.resumeInterrupted()
+        #expect(l.resumed == ["s1", "s2", "s3"])
+        #expect(l.requests.isEmpty) // resumed, not asked again
+        #expect(contexts.isEmpty)
+        #expect(m.panel == .working)
+        #expect(m.run?.request == "tidy my downloads")
+        l.emit(.speak("Picking up where I left off: tidy my downloads.", opener: true))
+        #expect(m.run?.status == "Picking up where I left off: tidy my downloads.")
+        l.emit(.status(text: "From the first run", detail: nil), run: 0)
+        #expect(m.run?.steps.isEmpty == true)
+    }
+
+    @Test func noInterruptedRunsShowsNothing() async {
+        let (m, _, l, _) = makeModel()
+        await m.resumeInterrupted()
+        #expect(l.resumed.isEmpty)
+        #expect(m.panel == .idle)
+    }
+
     @Test func failedRunShowsNotice() {
         let (m, s, l, _) = makeModel()
         m.submit("x")

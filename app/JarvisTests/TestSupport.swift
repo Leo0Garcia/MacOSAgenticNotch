@@ -38,6 +38,13 @@ final class FakeLauncher: LauncherRunning {
         requests.append(request)
         handlers.append((onEvent, exited))
     }
+    var interruptedRuns: [InterruptedRun] = []
+    var resumed: [String] = []
+    func interrupted() async -> [InterruptedRun] { interruptedRuns }
+    func resume(_ sessionId: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws {
+        resumed.append(sessionId)
+        handlers.append((onEvent, exited))
+    }
     func emit(_ e: LauncherEvent, run: Int? = nil) { handlers[run ?? handlers.count - 1].event(e) }
     func exit(_ code: Int32 = 0, run: Int? = nil) { handlers[run ?? handlers.count - 1].exited(code) }
     func open(sessionId: String) { opened.append(sessionId) }

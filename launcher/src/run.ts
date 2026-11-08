@@ -51,6 +51,8 @@ export interface RunOptions {
   background?: boolean;
   /** Carry on an existing session (the checker's retry, a run picked up after a restart). */
   resume?: string;
+  /** The interrupted run being picked up after a restart: its request, start time and quietness carry over. */
+  pickUp?: ActiveRun;
   /** Skip the checker (its own retry, tests). */
   noCheck?: boolean;
 }
@@ -147,7 +149,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     // Warm runs are for quick asks, so they start on the fast model.
     plan = { prompt: "", sessionId: id, runLog: p.runLog(id), resumed: false, streamInput: true, model: c.model ?? c.fastModel };
   } else {
-    const fast = opts.background ? null : await fastWithCaptions(request);
+    const fast = opts.background || opts.resume ? null : await fastWithCaptions(request);
     if (fast) return fast;
     plan = opts.resume
       ? { prompt: request, resume: opts.resume, runLog: `${p.runs}/${opts.resume}.resume-${now()}.jsonl`, resumed: false }
@@ -155,6 +157,8 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     // A follow-up stays on the model its session started with.
     if (!plan.resume) plan.model = modelFor(c, request);
   }
+  // From here on the run is about Leo's original request, not the resume prompt.
+  if (opts.pickUp) request = opts.pickUp.request;
   const sessionId = (plan.resume ?? plan.sessionId)!;
 
   mkdirSync(p.runs, { recursive: true });
@@ -203,7 +207,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     await sink.end();
   }
 
-  const active: ActiveRun = { sessionId, pid: process.pid, request, startedAt: now() };
+  const active: ActiveRun = { sessionId, pid: process.pid, request, startedAt: opts.pickUp?.startedAt ?? now(), ...(opts.background ? { background: true } : {}) };
   const markActive = (doing?: string) => {
     if (doing) active.doing = doing;
     try {
@@ -218,6 +222,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   if (hushed) speaker.mute();
   emit({ event: "state", state: "working", sessionId });
   notch({ event: "started", text: request }, sessionId);
+  if (opts.pickUp) speak(`Picking up where I left off: ${request.replace(/[\s.?!]+$/, "").slice(0, 80)}.`, "opener");
   const logFile = Bun.file(plan.runLog).writer();
   /** Each tool call with its input and the start of its output, for the checker. */
   const toolLog = new Map<string, string>();
@@ -316,7 +321,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
       log(c, "checker found a problem", { sessionId, problem: v.problem });
       speak("Hang on, that's not quite right. Fixing it.");
       await speaker.idle();
-      retried = await run(c, retryPrompt(v.problem!), { ...opts, resume: sessionId, noCheck: true, finalize: async () => {} });
+      retried = await run(c, retryPrompt(v.problem!), { ...opts, pickUp: undefined, resume: sessionId, noCheck: true, finalize: async () => {} });
       if (retried.reply) res.reply = `${res.reply}\n${retried.reply}`.trim();
     }
   }

@@ -121,7 +121,9 @@ The launcher parses `stream_event` text deltas from the main conversation (`pare
 
 ### 4.4 Follow-ups
 
-**Mid-task and just-after requests know the task (Leo, 2026-10-14).** Each run writes `state/active/<session>.json` (request, start time, opening line or latest step, launcher pid) while it works. Every new run gets a `<jarvis-activity>` block in front of the request listing those runs and the exchange that ended in the last two minutes, so "how's it going" or "make it three" isn't met with "what do you mean?". Files from a dead launcher are dropped. Asking something while a run works quietly no longer hushes it, so its answer still comes; only speech in progress is cut off.
+**Mid-task and just-after requests know the task (Leo, 2026-10-14).** Each run writes `state/active/<session>.json` (request, start time, opening line or latest step, launcher pid) while it works. Every new run gets a `<jarvis-activity>` block in front of the request listing those runs and the exchange that ended in the last two minutes, so "how's it going" or "make it three" isn't met with "what do you mean?". Asking something while a run works quietly no longer hushes it, so its answer still comes; only speech in progress is cut off.
+
+**Tasks survive a restart (Leo, 2026-11-08).** A record whose launcher pid is dead moves to `state/interrupted/` instead of being dropped. At launch the app runs `run.sh interrupted`, which claims (renames) the ones started under 6 hours ago whose transcript is still on disk, and drops and logs the rest; ephemeral transcripts are only deleted by finalize, so an interrupted run's is still there. The app starts `run.sh resume <id>` for each: `claude -p "Jarvis restarted while you were working on this…" --resume <id>`, which first says "Picking up where I left off: <request>." and shows in the notch like a new request (the last one stays on screen). It records itself as active again with the original request and start time, so a second restart works too. Background runs (the Moodle check) resume quietly and unseen.
 
 
 "Jarvis, and also…" within 2 minutes of the last run:
