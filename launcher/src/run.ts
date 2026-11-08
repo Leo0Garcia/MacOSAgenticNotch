@@ -15,9 +15,10 @@ import { buildSystemPrompt, checkClaudeVersion, linkSkills } from "./setup";
 import { type ActiveRun, clearActiveRun, ensureDirs, type LastRun, log, recentRun, saveActiveRun, saveLastRun, writeFileAtomic } from "./store";
 import { withContext } from "./context";
 import { lightsConfig, parseLights, quickCandidate, smallTalk, statusSentence } from "./fast";
-import { parseInstant, runInstant } from "./instant";
+import { homeRunner, parseInstant, runInstant } from "./instant";
 import { type RunDetails, Timeline } from "./details";
 import { toolStatus } from "./status";
+import { checkResult, retryPrompt, worthChecking } from "./checker";
 import { type Denial, initProblem, RunMonitor } from "./stream";
 
 /** Lines the launcher prints on stdout, one JSON object each, for the notch app. */
@@ -37,6 +38,8 @@ export interface RunOptions {
   finalize?: (f: FinalizeInput) => Promise<void>;
   /** Runs `say` for the shared Speaker. Tests replace it. */
   speechRunner?: Runner;
+  /** Runs the checker's claude call. Tests replace it. */
+  checkRunner?: Runner;
   now?: () => number;
   /**
    * Warm run: start claude now (hooks, MCP servers) and wait for the request,
@@ -46,6 +49,10 @@ export interface RunOptions {
   awaitRequest?: () => Promise<string | null>;
   /** A scheduled run nobody is listening to: no speech, nothing in the notch, no fast path. */
   background?: boolean;
+  /** Carry on an existing session (the checker's retry, a run picked up after a restart). */
+  resume?: string;
+  /** Skip the checker (its own retry, tests). */
+  noCheck?: boolean;
 }
 
 export interface RunOutcome {
@@ -142,7 +149,9 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   } else {
     const fast = opts.background ? null : await fastWithCaptions(request);
     if (fast) return fast;
-    plan = planRun(c, request, now());
+    plan = opts.resume
+      ? { prompt: request, resume: opts.resume, runLog: `${p.runs}/${opts.resume}.resume-${now()}.jsonl`, resumed: false }
+      : planRun(c, request, now());
     // A follow-up stays on the model its session started with.
     if (!plan.resume) plan.model = modelFor(c, request);
   }
@@ -210,14 +219,21 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   emit({ event: "state", state: "working", sessionId });
   notch({ event: "started", text: request }, sessionId);
   const logFile = Bun.file(plan.runLog).writer();
+  /** Each tool call with its input and the start of its output, for the checker. */
+  const toolLog = new Map<string, string>();
   const monitor = new RunMonitor({
     onSentence: (s, kind) => {
       if (kind === "opener") markActive(s);
       speak(s, kind);
     },
     onFirstText: () => timeline.mark("firstText"),
-    onToolDone: (id, isError) => timeline.stepDone(id, isError),
+    onToolDone: (id, isError, output) => {
+      timeline.stepDone(id, isError);
+      const t = id && toolLog.get(id);
+      if (t) toolLog.set(id, `${t} → ${isError ? "error: " : ""}${output.replace(/\s+/g, " ").slice(0, 300)}`);
+    },
     onTool: (name, input, id) => {
+      if (id && name !== "StructuredOutput") toolLog.set(id, `${name} ${JSON.stringify(input).slice(0, 200)}`);
       const st = toolStatus(name, input);
       if (name !== "StructuredOutput") timeline.step(st?.text ?? name, st?.detail, id);
       if (!st) return;
@@ -289,6 +305,22 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     res.reply = res.reply ? `${res.reply}\n${line}` : line;
   } else if (!res.reply && res.isError) speak("Something went wrong with that run. It's in the log.");
 
+  // The checker: did the work actually get done? One retry if not (Leo, 2026-11-08).
+  let retried: RunOutcome | null = null;
+  if (!opts.noCheck && !opts.background && worthChecking(timeline.steps, res, c.env)) {
+    emit({ event: "status", text: "Checking the result" });
+    timeline.step("Checking the result", undefined, "check");
+    const v = await checkResult(c, opts.checkRunner ?? homeRunner(c), request, res.reply, [...toolLog.values()]).catch(() => null);
+    timeline.stepDone("check", v?.ok === false);
+    if (v && !v.ok) {
+      log(c, "checker found a problem", { sessionId, problem: v.problem });
+      speak("Hang on, that's not quite right. Fixing it.");
+      await speaker.idle();
+      retried = await run(c, retryPrompt(v.problem!), { ...opts, resume: sessionId, noCheck: true, finalize: async () => {} });
+      if (retried.reply) res.reply = `${res.reply}\n${retried.reply}`.trim();
+    }
+  }
+
   const status = res.isError && !res.reply ? "error" : res.denials.length ? "needs-you" : "done";
   const endedAt = now();
   saveLastRun(c, { sessionId, keep, endedAt, request, reply: res.reply });
@@ -304,9 +336,12 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
       costUsd: res.costUsd,
       ...(res.problem ? { problem: res.problem } : {}),
     });
-  const rowId = action(c, { kind: "run", summary: res.summary || plan.name || "Jarvis run", sessionId, saved: keep, detail: JSON.stringify(details()) });
-  emit({ event: "done", sessionId, keep, summary: res.summary, reply: res.reply, name: plan.name });
-  emit({ event: "state", state: status, sessionId });
+  const rowId = action(c, { kind: "run", summary: (retried ? "Retried after a check: " : "") + (res.summary || plan.name || "Jarvis run"), sessionId, saved: keep, detail: JSON.stringify(details()) });
+  // After a retry, the retry run has already told the app it's done.
+  if (!retried) {
+    emit({ event: "done", sessionId, keep, summary: res.summary, reply: res.reply, name: plan.name });
+    emit({ event: "state", state: status, sessionId });
+  }
   notch(status === "error" ? { event: "failed", text: res.problem } : { event: "done", keep, summary: res.summary }, sessionId);
 
   try {
