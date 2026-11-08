@@ -38,6 +38,8 @@ export function makeWorld() {
     JARVIS_LAUNCHCTL: launchctl,
     STUB_FIXTURE: fixture,
     STUB_CALLS: calls,
+    // The checker calls claude for real; its own tests turn it on with a stub.
+    JARVIS_CHECK: "0",
   };
   // The stub reads STUB_* from the environment the launcher passes on.
   const config = (extra: Record<string, string> = {}): Config => configFromEnv({ ...env, ...extra });

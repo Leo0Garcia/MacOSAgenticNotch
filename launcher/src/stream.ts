@@ -65,7 +65,7 @@ export interface MonitorHooks {
   /** A tool call in the main conversation (not a subagent's). */
   onTool?: (name: string, input: Record<string, unknown>, id?: string) => void;
   /** That tool call's result came back. */
-  onToolDone?: (id: string, isError: boolean) => void;
+  onToolDone?: (id: string, isError: boolean, output: string) => void;
   /** The first streamed text of the run. */
   onFirstText?: () => void;
 }
@@ -151,7 +151,8 @@ export class RunMonitor {
       }
       case "user":
         for (const b of ev.message?.content ?? []) {
-          if (b?.type === "tool_result" && !ev.parent_tool_use_id && b.tool_use_id) this.hooks.onToolDone?.(b.tool_use_id, Boolean(b.is_error));
+          if (b?.type === "tool_result" && !ev.parent_tool_use_id && b.tool_use_id)
+            this.hooks.onToolDone?.(b.tool_use_id, Boolean(b.is_error), typeof b.content === "string" ? b.content : JSON.stringify(b.content ?? ""));
           if (b?.type !== "tool_result" || !b.is_error) continue;
           const text = typeof b.content === "string" ? b.content : JSON.stringify(b.content);
           if (GUARD_RE.test(text)) this.addDenial(this.toolNames.get(b.tool_use_id) ?? "unknown", b.tool_use_id, text);
