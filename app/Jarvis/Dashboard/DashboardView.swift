@@ -116,7 +116,10 @@ struct DashboardView: View {
                 .layoutPriority(1)
                 .anchorPreference(key: OrbSlot.self, value: .bounds) { $0 }
                 .overlay(alignment: .bottom) {
-                    Text(Agents.summary(store.cards)).font(.system(size: 14, weight: .medium)).foregroundStyle(Dash.muted)
+                    VStack(spacing: 6) {
+                        LiveLine(model: model, large: false)
+                        Text(Agents.summary(store.cards)).font(.system(size: 14, weight: .medium)).foregroundStyle(Dash.muted)
+                    }
                 }
                 .accessibilityElement()
                 .accessibilityLabel("Jarvis orb, \(Agents.summary(store.cards))")
@@ -202,6 +205,7 @@ struct DashboardView: View {
                 TodayPanel(store: store, large: true).frame(width: 380).opacity(0.45)
             }
             Spacer()
+            LiveLine(model: model, large: true).padding(.bottom, 18)
             Text(Agents.summary(store.cards)).font(.system(size: 30, weight: .semibold))
             HStack(spacing: 40) {
                 ForEach(store.cards.prefix(4)) { c in
@@ -229,6 +233,33 @@ struct DashboardView: View {
 }
 
 // MARK: - Pieces
+
+/// The conversation as it happens, under the orb: what Leo is saying, what
+/// Jarvis is doing, then what it says. While the dashboard is on screen, this
+/// replaces the notch.
+struct LiveLine: View {
+    let model: AppModel
+    var large: Bool
+
+    var body: some View {
+        Group {
+            if let line = model.liveLine {
+                VStack(spacing: 4) {
+                    Text(line.who).font(.system(size: large ? 15 : 11.5, weight: .semibold)).foregroundStyle(Dash.muted)
+                    Text(line.text)
+                        .font(.system(size: large ? 30 : 19, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(large ? 4 : 3)
+                        .frame(maxWidth: large ? 900 : 560)
+                }
+                .padding(.horizontal, 16)
+                .transition(.opacity)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: model.liveLine?.text)
+    }
+}
 
 struct DashPanel<Content: View>: View {
     var highlighted = false

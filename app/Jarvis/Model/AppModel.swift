@@ -171,6 +171,27 @@ final class AppModel {
     private(set) var run: RunState?
     private(set) var doneEnteredAt: Double = 0
     private(set) var speaking = false
+    /// The dashboard is open and on screen: it shows the conversation, and the
+    /// notch stays out of the way (Leo, 2026-11-08). The dashboard window sets it.
+    var dashboardShowing = false
+
+    /// What's being said right now, for whichever surface shows it: Leo's words
+    /// while listening, the current step while working, Jarvis's words after.
+    var liveLine: (who: String, text: String)? {
+        switch panel {
+        case .listening:
+            let t = transcript.full
+            return t.isEmpty ? ("You", "Listening…") : ("You", t)
+        case .working:
+            guard let run else { return nil }
+            return ("Jarvis", run.status.isEmpty ? "Working on it" : run.status)
+        case .done:
+            let said = run?.captions.map(\.text).joined(separator: " ") ?? ""
+            return said.isEmpty ? nil : ("Jarvis", said)
+        default:
+            return nil
+        }
+    }
 
     /// Shown in the Listening body when the mic or model can't start.
     private(set) var listenProblem: String?
