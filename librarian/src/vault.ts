@@ -51,6 +51,12 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** A note's frontmatter aliases ("COMP2311" for "COMP2311 Theory of Computing"), so runs that use them still find it. */
+async function aliases(vault: string, rel: string): Promise<string[]> {
+  const a = getFront(parseNote((await readIfExists(join(vault, rel))) ?? ""), "aliases");
+  return Array.isArray(a) ? a : typeof a === "string" && a ? [a] : [];
+}
+
 const MAX_NOTE = 6_000;
 const MAX_NOTES_TOTAL = 30_000;
 
@@ -62,7 +68,7 @@ export interface NoteContext {
 }
 
 /**
- * Me.md, today's log, and every Projects/ or People/ note whose name appears in the run
+ * Me.md, today's log, and every Projects/, People/ or Topics/ note whose name or alias appears in the run
  * (matched as a whole word, case-insensitive). Size-capped so Haiku stays fast.
  */
 export async function relevantNotes(cfg: Config, haystack: string): Promise<NoteContext> {
@@ -78,10 +84,9 @@ export async function relevantNotes(cfg: Config, haystack: string): Promise<Note
   const today = `Log/${isoDate(cfg.now(), cfg.tz)}.md`;
   const picked = ["Me.md", today];
   for (const rel of all) {
-    if (!(rel.startsWith("Projects/") || rel.startsWith("People/")) || isTemplate(rel)) continue;
-    const name = noteName(rel).toLowerCase();
-    if (name.length < 2) continue;
-    if (new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(name)}($|[^\\p{L}\\p{N}])`, "u").test(lower)) picked.push(rel);
+    if (!/^(Projects|People|Topics)\//.test(rel) || isTemplate(rel)) continue;
+    const names = [noteName(rel), ...(await aliases(cfg.memory, rel))].map((n) => n.toLowerCase()).filter((n) => n.length >= 2);
+    if (names.some((n) => new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(n)}($|[^\\p{L}\\p{N}])`, "u").test(lower))) picked.push(rel);
   }
 
   const notes: { rel: string; text: string }[] = [];

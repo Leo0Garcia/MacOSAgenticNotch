@@ -50,6 +50,8 @@ export interface RunOptions {
   awaitRequest?: () => Promise<string | null>;
   /** A scheduled run nobody is listening to: no speech, nothing in the notch, no fast path. */
   background?: boolean;
+  /** Pins the model for this run (scheduled jobs), over JARVIS_MODEL and the fast/smart choice. */
+  model?: string;
   /** Carry on an existing session (the checker's retry, a run picked up after a restart). */
   resume?: string;
   /** The interrupted run being picked up after a restart: its request, start time and quietness carry over. */
@@ -157,7 +159,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
       ? { prompt: request, resume: opts.resume, runLog: `${p.runs}/${opts.resume}.resume-${now()}.jsonl`, resumed: false }
       : planRun(c, request, now());
     // A follow-up stays on the model its session started with.
-    if (!plan.resume) plan.model = modelFor(c, request);
+    if (!plan.resume) plan.model = opts.model ?? modelFor(c, request);
   }
   // From here on the run is about Leo's original request, not the resume prompt.
   if (opts.pickUp) request = opts.pickUp.request;
