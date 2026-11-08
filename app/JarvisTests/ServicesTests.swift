@@ -98,12 +98,16 @@ import SwiftUI
         #expect(ElapsedText.format(12.7, .seconds) == "12s")
     }
 
-    @Test func spriteHasEyeHolesAndWalkFrames() {
-        let g = Sprite.grid(.init())
-        #expect(g[4][4] == 0 && g[4][9] == 0)
-        #expect(g[2][2] == 1 && g[7][2] == 2)
-        let walk1 = Sprite.grid(.init(legs: 1)), walk2 = Sprite.grid(.init(legs: 2))
-        #expect(walk1[8] != walk2[8])
+    @MainActor @Test func nebulaFollowsTheOrbStatesAndPalette() {
+        let ocean = Appearance.presets.first { $0.id == "ocean" }!
+        let listen = Nebula.look(.listening, speaking: false, palette: ocean)
+        #expect(listen.state == "listening" && listen.colors == Array(ocean.listening.prefix(2)))
+        #expect(Nebula.look(.working, speaking: false, palette: ocean).speed > listen.speed)
+        #expect(Nebula.look(.done, speaking: true, palette: ocean).state == "speaking")
+        #expect(Nebula.look(.needs, speaking: false, palette: ocean).colors == [0xF5B547, 0xFF7A45]) // amber whatever the palette
+        #expect(Nebula.shells.map(\.count) == [130, 110, 90])
+        let img = Nebula.still(listen, diameter: 22)
+        #expect(img?.width == 44 && img?.height == 44)
     }
 }
 

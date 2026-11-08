@@ -123,9 +123,8 @@ struct ExpandedView: View {
 
     @ViewBuilder private var content: some View {
         HStack(alignment: .top, spacing: Theme.columnGap) {
-            PixelCharacter(mood: Mood(panel.kind), scale: 4, since: model.moodSince, level: env.level,
-                           speaking: model.speaking, visible: visible)
-                .frame(width: Theme.characterColumn)
+            NebulaOrb(kind: panel.kind, speaking: model.speaking, level: env.level, visible: visible, diameter: 48)
+                .frame(width: Theme.orbColumn)
             column
                 .id(columnKey)
                 .transition(.content(reduceMotion: reduceMotion))
@@ -732,8 +731,7 @@ struct PillLeading: View {
             // Idle: no wings, so the hidden state is exactly the hardware outline.
             Color.clear.frame(width: 0, height: max(20, env.notchSize.height - 12))
         } else {
-            PixelCharacter(mood: Mood(panel.kind), scale: 2, since: model.moodSince, level: env.level,
-                           speaking: model.speaking, visible: model.size == .compact)
+            NebulaOrb(kind: panel.kind, speaking: model.speaking, level: env.level, visible: model.size == .compact, diameter: 22)
                 .frame(width: Self.wingWidth, height: max(20, env.notchSize.height - 12) + Theme.pillDrop, alignment: .leading)
                 .background(alignment: .topLeading) {
                     // The rim round the whole pill, drawn from the leading wing.

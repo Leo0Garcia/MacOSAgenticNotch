@@ -6,7 +6,7 @@
 import Foundation
 import Observation
 
-/// Rim colours, character mood and labels hang off this.
+/// Rim colours, the orb's state and labels hang off this.
 enum StateKind: Equatable, Sendable {
     case idle, listening, working, done, needs, reminder, notice, log
 }
@@ -153,8 +153,6 @@ final class AppModel {
     private(set) var panel: Panel = .idle
     /// The last non-idle panel, so content stays put while the shape collapses.
     private(set) var lastPanel: Panel = .working
-    /// When the character's mood last changed (hop, wave and flap timings start here).
-    private(set) var moodSince = Date()
     private(set) var motion: Motion = .expand
     /// Bumps whenever the expanded body's layout changes, so views animate once.
     private(set) var layoutRevision = 0
@@ -946,7 +944,6 @@ final class AppModel {
     private func show(_ p: Panel, size s: NotchSize) {
         let grows = Self.rank(s) > Self.rank(size) || (s == .expanded && p != panel && Self.weight(p) >= Self.weight(panel))
         motion = grows ? .expand : .collapse
-        if p.kind != panel.kind, p != .idle { moodSince = Date() }
         if p != .idle, p != lastPanel { lastPanel = p }
         if p != panel {
             if (p == .listening) != (panel == .listening) { listeningChanged?(p == .listening) }
