@@ -1,8 +1,13 @@
 #!/usr/bin/env bun
-// Leo's personal calendar from Apple Calendar via osascript (JXA). Read only: the
-// script only reads properties; it never makes, saves or deletes anything.
+// Leo's personal calendar from Apple Calendar. Reads, and adds events through the
+// notch app; it never edits or deletes one.
 //
 //   bun apple.ts [--day today|tomorrow|monday|YYYY-MM-DD] [--days N] [--json]
+//   bun apple.ts add --title T --start YYYY-MM-DDTHH:MM (--end YYYY-MM-DDTHH:MM | --minutes N)
+//                    [--all-day] [--location L] [--calendar NAME] [--repeat daily|weekly|monthly|yearly] [--until YYYY-MM-DD]
+//
+// Times without a zone are Europe/London wall time. Adding needs the notch app running
+// (exit 5 otherwise): it is the process holding the Calendars permission.
 //
 // Calendar's scripting `whose` filter only sees a repeating event's first date, so
 // the script also returns repeating events that started before the range and this
@@ -75,11 +80,11 @@ export const osascriptRunner: Runner = (from, to) => {
 };
 
 /**
- * Asks the notch app, which holds the Calendars permission, over its socket
- * (DESIGN 8.2 `calendar_events`). Null when the app isn't running or doesn't
- * answer, so the caller falls back to the helper or AppleScript.
+ * Sends one request to the notch app, which holds the Calendars permission, over its
+ * socket (DESIGN 8.2) and resolves with its `<type>_result` reply. Null when the app
+ * isn't running or doesn't answer.
  */
-export async function appCalendar(from: Date, to: Date, home = process.env.JARVIS_HOME ?? join(homedir(), "Jarvis"), timeoutMs = 60_000): Promise<RunResult | null> {
+export async function askApp(request: { type: string } & Record<string, unknown>, home = process.env.JARVIS_HOME ?? join(homedir(), "Jarvis"), timeoutMs = 60_000): Promise<any | null> {
   let f: { port: number; token: string; pid: number };
   try {
     f = JSON.parse(readFileSync(join(home, "notch.json"), "utf8"));
@@ -89,7 +94,7 @@ export async function appCalendar(from: Date, to: Date, home = process.env.JARVI
   }
   return new Promise((resolve) => {
     let done = false;
-    const finish = (r: RunResult | null) => {
+    const finish = (r: any | null) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
@@ -109,16 +114,85 @@ export async function appCalendar(from: Date, to: Date, home = process.env.JARVI
       } catch {
         return;
       }
-      if (m.type === "welcome") ws.send(JSON.stringify({ type: "calendar_events", id, from: from.toISOString(), to: to.toISOString() }));
-      else if (m.type === "calendar_events_result" && m.id === id) {
-        if (m.error?.code === "denied") finish({ ok: false, stdout: "", stderr: "DENIED: " + m.error.message });
-        else if (m.error) finish(null);
-        else finish({ ok: true, stdout: JSON.stringify(m.events ?? []), stderr: "" });
-      } else if (m.type === "error" && !m.id) finish(null);
+      if (m.type === "welcome") ws.send(JSON.stringify({ ...request, id }));
+      else if (m.type === `${request.type}_result` && m.id === id) finish(m);
+      else if (m.type === "error" && !m.id) finish(null);
     };
     ws.onerror = () => finish(null);
     ws.onclose = () => finish(null);
   });
+}
+
+/** Events in a range from the app (`calendar_events`). Null means fall back to the helper or AppleScript. */
+export async function appCalendar(from: Date, to: Date, home?: string, timeoutMs?: number): Promise<RunResult | null> {
+  const m = await askApp({ type: "calendar_events", from: from.toISOString(), to: to.toISOString() }, home, timeoutMs);
+  if (!m) return null;
+  if (m.error?.code === "denied") return { ok: false, stdout: "", stderr: "DENIED: " + m.error.message };
+  if (m.error) return null;
+  return { ok: true, stdout: JSON.stringify(m.events ?? []), stderr: "" };
+}
+
+export class AppNotRunning extends Error {}
+
+export interface NewEvent {
+  title: string;
+  start: string;
+  end: string;
+  allDay?: boolean;
+  location?: string;
+  calendar?: string;
+  repeat?: "daily" | "weekly" | "monthly" | "yearly";
+  until?: string;
+}
+
+/** "2026-10-20T11:00" (London wall time), "2026-10-20" (midnight) or a full ISO with zone → epoch ms. */
+export function parseWhen(v: string): number {
+  if (/(Z|[+-]\d{2}:?\d{2})$/.test(v)) {
+    const ms = Date.parse(v);
+    if (Number.isNaN(ms)) throw new Error(`I couldn't read the time "${v}".`);
+    return ms;
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?$/.exec(v);
+  if (!m) throw new Error(`I couldn't read the time "${v}". Use YYYY-MM-DDTHH:MM.`);
+  const [, y, mo, d, h, mi] = m;
+  return fromWall({ y: +y!, mo: +mo!, d: +d!, h: h ? +h : 0, mi: mi ? +mi : 0, s: 0 });
+}
+
+/** Builds the `calendar_add` request from CLI flags. Throws a speakable message on bad input. */
+export function newEventFromArgs(args: { flags: Record<string, string[]> }): NewEvent {
+  const title = flag(args, "title");
+  const startArg = flag(args, "start");
+  if (!title || !startArg) throw new Error("Adding an event needs --title and --start.");
+  const allDay = flag(args, "all-day") === "true";
+  const start = parseWhen(startArg);
+  const endArg = flag(args, "end");
+  const minutes = flag(args, "minutes");
+  const end = endArg ? parseWhen(endArg) : allDay && !minutes ? start + 86_400_000 : start + Number(minutes ?? 60) * 60_000;
+  if (!(end > start)) throw new Error("The event has to end after it starts.");
+  const repeat = flag(args, "repeat");
+  if (repeat && !["daily", "weekly", "monthly", "yearly"].includes(repeat)) throw new Error("--repeat must be daily, weekly, monthly or yearly.");
+  const untilArg = flag(args, "until");
+  if (untilArg && !repeat) throw new Error("--until only makes sense with --repeat.");
+  // A date-only --until includes that whole day.
+  const until = untilArg ? (/T/.test(untilArg) ? parseWhen(untilArg) : parseWhen(untilArg) + 86_399_000) : undefined;
+  const ev: NewEvent = { title, start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+  if (allDay) ev.allDay = true;
+  const location = flag(args, "location");
+  if (location) ev.location = location;
+  const calendar = flag(args, "calendar");
+  if (calendar) ev.calendar = calendar;
+  if (repeat) ev.repeat = repeat as NewEvent["repeat"];
+  if (until !== undefined) ev.until = new Date(until).toISOString();
+  return ev;
+}
+
+/** Adds an event through the app; resolves with the calendar it went into. */
+export async function addEvent(ev: NewEvent, home?: string, timeoutMs?: number): Promise<string> {
+  const m = await askApp({ type: "calendar_add", ...ev }, home, timeoutMs);
+  if (!m) throw new AppNotRunning("I can only add events while the Jarvis notch app is running.");
+  if (m.error?.code === "denied") throw new AutomationDenied(m.error.message);
+  if (m.error) throw new Error(m.error.message);
+  return m.calendar ?? "your calendar";
 }
 
 type RunResult = { ok: boolean; stdout: string; stderr: string };
@@ -211,6 +285,13 @@ export function readCalendar(runner: Runner, from: number, to: number): Occurren
 if (import.meta.main) {
   const args = parseArgs(process.argv.slice(2));
   try {
+    if (args._[0] === "add") {
+      const ev = newEventFromArgs(args);
+      const cal = await addEvent(ev);
+      const when = formatOccurrences([{ title: ev.title, location: ev.location ?? "", start: ev.start, end: ev.end, allDay: !!ev.allDay, source: cal }], "");
+      console.log(`Added to ${cal}${ev.repeat ? `, repeating ${ev.repeat}${ev.until ? ` until ${ev.until.slice(0, 10)}` : ""}` : ""}:\n${when}`);
+      process.exit(0);
+    }
     const { from, to } = dayRange(flag(args, "day") ?? "today", Number(flag(args, "days") ?? 1), now().getTime());
     // 1. the notch app (holds the Calendars permission); 2. the EventKit helper; 3. AppleScript.
     const viaApp = await appCalendar(new Date(from), new Date(to));
@@ -219,6 +300,6 @@ if (import.meta.main) {
     const list = readCalendar(runner, from, to);
     console.log(flag(args, "json") ? JSON.stringify({ events: list }, null, 2) : formatOccurrences(list, "Nothing in your calendar."));
   } catch (e) {
-    fail((e as Error).message, e instanceof AutomationDenied ? 4 : 1);
+    fail((e as Error).message, e instanceof AutomationDenied ? 4 : e instanceof AppNotRunning ? 5 : 1);
   }
 }

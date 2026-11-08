@@ -80,13 +80,26 @@ export interface CalendarEvents {
   from: string; // ISO 8601
   to: string;
 }
+/** The calendar skill adds an event to Apple Calendar through the app. */
+export interface CalendarAdd {
+  type: "calendar_add";
+  id: string;
+  title: string;
+  start: string; // ISO 8601
+  end: string;
+  allDay?: boolean;
+  location?: string;
+  calendar?: string; // calendar name; default calendar when absent
+  repeat?: "daily" | "weekly" | "monthly" | "yearly";
+  until?: string; // ISO 8601, ends the series
+}
 /** Play a rendered WAV in the app (one gapless player); answered with `played`. */
 export interface Play {
   type: "play";
   id: string;
   file: string;
 }
-export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents | Play;
+export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents | CalendarAdd | Play;
 
 // App -> client
 export interface Welcome {
@@ -116,7 +129,13 @@ export interface CalendarEventsResult {
   events?: { calendar: string; title: string; start: string; end: string; allDay: boolean; location: string | null; recurrence: null }[];
   error?: { code: "denied" | "bad_range"; message: string };
 }
-export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult | Played;
+export interface CalendarAddResult {
+  type: "calendar_add_result";
+  id: string;
+  calendar?: string; // the calendar it went into
+  error?: { code: "denied" | "bad_range" | "no_calendar" | "bad_repeat" | "save_failed"; message: string };
+}
+export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult | CalendarAddResult | Played;
 
 /** One row of ~/Jarvis/actions.sqlite, as stored and as sent in `log`. */
 export interface ActionRow {

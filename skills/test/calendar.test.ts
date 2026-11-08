@@ -1,8 +1,9 @@
+import { parseArgs } from "../lib/env.ts";
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appCalendar, AutomationDenied, JXA, readCalendar, toOccurrences, type RawEvent } from "../calendar/apple.ts";
+import { addEvent, AppNotRunning, appCalendar, AutomationDenied, newEventFromArgs, parseWhen, JXA, readCalendar, toOccurrences, type RawEvent } from "../calendar/apple.ts";
 import { dayRange, formatOccurrences, loadTimetable, MissingKeyError, occurrences, parseIcs, type Deps } from "../calendar/ics.ts";
 
 const ICS = readFileSync(join(import.meta.dir, "fixtures/calendar/uni.ics"), "utf8");
@@ -211,7 +212,7 @@ describe("calendar through the notch app", () => {
         message(ws, raw) {
           const m = JSON.parse(String(raw));
           if (m.type === "hello") ws.send(JSON.stringify(m.token === "t" ? { type: "welcome", protocol: 1 } : { type: "error", message: "bad token" }));
-          else if (m.type === "calendar_events") ws.send(JSON.stringify(reply(m)));
+          else if (m.type === "calendar_events" || m.type === "calendar_add") ws.send(JSON.stringify(reply(m)));
         },
       },
     });
@@ -238,5 +239,46 @@ describe("calendar through the notch app", () => {
     server.stop(true);
     expect(() => readCalendar(() => r!, 0, 1000)).toThrow(AutomationDenied);
     expect(await appCalendar(new Date(0), new Date(1000), mkdtempSync(join(tmpdir(), "jarvis-none-")), 500)).toBeNull();
+  });
+
+  test("adds an event through the app and reports the calendar", async () => {
+    let asked: any;
+    const { home, server } = fakeApp((m) => {
+      asked = m;
+      return { type: "calendar_add_result", id: m.id, calendar: "Home" };
+    });
+    const ev = newEventFromArgs(parseArgs(["add", "--title", "Group project", "--start", "2026-10-20T11:00", "--repeat", "weekly", "--until", "2026-12-08"]));
+    expect(await addEvent(ev, home, 3000)).toBe("Home");
+    server.stop(true);
+    expect(asked).toMatchObject({ type: "calendar_add", title: "Group project", start: "2026-10-20T10:00:00.000Z", end: "2026-10-20T11:00:00.000Z", repeat: "weekly", until: "2026-12-08T23:59:59.000Z" });
+  });
+
+  test("add errors: denied, app errors, no app", async () => {
+    const ev = { title: "x", start: "2026-10-20T10:00:00.000Z", end: "2026-10-20T11:00:00.000Z" };
+    let { home, server } = fakeApp((m) => ({ type: "calendar_add_result", id: m.id, error: { code: "denied", message: "off" } }));
+    await expect(addEvent(ev, home, 3000)).rejects.toThrow(AutomationDenied);
+    server.stop(true);
+    ({ home, server } = fakeApp((m) => ({ type: "calendar_add_result", id: m.id, error: { code: "no_calendar", message: "There's no writable calendar called Work." } })));
+    await expect(addEvent(ev, home, 3000)).rejects.toThrow("no writable calendar");
+    server.stop(true);
+    await expect(addEvent(ev, mkdtempSync(join(tmpdir(), "jarvis-none-")), 500)).rejects.toThrow(AppNotRunning);
+  });
+});
+
+describe("calendar add arguments", () => {
+  const a = (...argv: string[]) => newEventFromArgs(parseArgs(["add", ...argv]));
+  test("London wall time across the clock change, default one hour", () => {
+    expect(parseWhen("2026-10-20T11:00")).toBe(Date.parse("2026-10-20T10:00:00Z"));
+    expect(parseWhen("2026-11-03T11:00")).toBe(Date.parse("2026-11-03T11:00:00Z"));
+    expect(parseWhen("2026-11-03T11:00:00Z")).toBe(Date.parse("2026-11-03T11:00:00Z"));
+    expect(a("--title", "T", "--start", "2026-11-03T11:00", "--minutes", "30").end).toBe("2026-11-03T11:30:00.000Z");
+    expect(a("--title", "T", "--start", "2026-11-03", "--all-day")).toMatchObject({ allDay: true, start: "2026-11-03T00:00:00.000Z", end: "2026-11-04T00:00:00.000Z" });
+  });
+  test("rejects bad input with a speakable message", () => {
+    expect(() => a("--start", "2026-10-20T11:00")).toThrow("--title");
+    expect(() => a("--title", "T", "--start", "next tuesday")).toThrow("couldn't read");
+    expect(() => a("--title", "T", "--start", "2026-10-20T11:00", "--end", "2026-10-20T10:00")).toThrow("end after");
+    expect(() => a("--title", "T", "--start", "2026-10-20T11:00", "--repeat", "fortnightly")).toThrow("--repeat");
+    expect(() => a("--title", "T", "--start", "2026-10-20T11:00", "--until", "2026-12-01")).toThrow("--until");
   });
 });
