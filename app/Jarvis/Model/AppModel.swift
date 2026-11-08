@@ -56,6 +56,8 @@ enum Panel: Equatable, Sendable {
     case notice(title: String, body: String)
     /// Hover log: the pointer rests on the notch while nothing else is shown.
     case recent([ActionItem])
+    /// One request opened from Recent: what was asked and said, and where the time went.
+    case details([ActionItem])
 
     var kind: StateKind {
         switch self {
@@ -66,7 +68,7 @@ enum Panel: Equatable, Sendable {
         case .question, .access, .blocked: .needs
         case .reminder: .reminder
         case .notice: .notice
-        case .recent: .log
+        case .recent, .details: .log
         }
     }
 
@@ -88,7 +90,7 @@ struct RunState: Equatable, Sendable {
     var request: String
     var startedAt: Double
     var sessionId: String?
-    var status: String = "Thinking"
+    var status: String = "Working on it"
     var steps: [RunStep] = []
     var hosts: [String] = []
     var captions: [Caption] = []
@@ -182,9 +184,25 @@ final class AppModel {
     @ObservationIgnored var postNotification: ((_ title: String, _ body: String) -> Void)?
     @ObservationIgnored var announce: ((String) -> Void)?
     @ObservationIgnored var loadRecent: (() -> [ActionItem])?
+    /// The old step-by-step Working list; off since Leo asked for no progress updates.
+    @ObservationIgnored var showSteps = false
     /// Notes what Leo was doing when listening starts, and writes it just before a request goes out.
     @ObservationIgnored var captureContext: (() -> Void)?
     @ObservationIgnored var willSubmit: ((String) -> Void)?
+    /// True while Listening shows, so Jarvis holds its speech until Leo has finished.
+    @ObservationIgnored var listeningChanged: ((Bool) -> Void)?
+    /// The day (yyyy-MM-dd) the morning rundown last played; the app keeps it in UserDefaults.
+    @ObservationIgnored var lastMorningBrief: String?
+    @ObservationIgnored var morningBriefGiven: ((String) -> Void)?
+    /// Reply without the hotkey (Leo, 2026-10-22): after an answer is spoken the
+    /// mic stays open this long, and speech then is a follow-up. Off in Settings,
+    /// and while JARVIS_MUTE is set.
+    @ObservationIgnored var replyWindowEnabled: () -> Bool = { false }
+    @ObservationIgnored var replyWindowChanged: ((Bool) -> Void)?
+    /// True while the mic waits for a reply; the pill shows a small mic.
+    private(set) var awaitingReply = false
+    @ObservationIgnored private var replyWindowRun = -1
+    static let replyWindow = 5.0
 
     @ObservationIgnored private var timers: [String: Scheduled] = [:]
     @ObservationIgnored private var speakingIDs: Set<String> = []
@@ -257,8 +275,10 @@ final class AppModel {
 
     private func beginListening(preroll: [Float]?) {
         if panel == .listening { return }
-        // Leo starts talking: Jarvis stops (Leo, 2026-10-13).
-        if speaking || runActive { launcher?.hushAll() }
+        closeReplyWindow()
+        // Leo starts talking: Jarvis stops (Leo, 2026-10-13). A run working
+        // quietly isn't hushed, so its answer still comes when it's done.
+        if speaking { launcher?.hushAll() }
         captureContext?()
         handsFree = preroll != nil
         if case let .question(ask) = panel { listenTarget = .answer(ask) } else { listenTarget = .request }
@@ -321,6 +341,41 @@ final class AppModel {
         }
     }
 
+    // MARK: - Reply window
+
+    private func openReplyWindow() {
+        guard replyWindowEnabled(), !awaitingReply else { return }
+        awaitingReply = true
+        replyWindowChanged?(true)
+        schedule("replyWindow", Self.replyWindow) { [weak self] in self?.closeReplyWindow() }
+    }
+
+    /// Called when listening starts (the reply came) or the window runs out.
+    func closeReplyWindow() {
+        guard awaitingReply else { return }
+        awaitingReply = false
+        cancelTimer("replyWindow")
+        replyWindowChanged?(false)
+    }
+
+    // MARK: - Morning rundown
+
+    /// The first unlock of the morning (5am to midday) plays "what's my day"
+    /// once (Leo, 2026-10-16), unless Jarvis is busy.
+    func screenUnlocked(at date: Date = Date(), calendar: Calendar = .current) {
+        let hour = calendar.component(.hour, from: date)
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        let day = String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        guard (5..<12).contains(hour), lastMorningBrief != day, panel == .idle, !runActive else { return }
+        lastMorningBrief = day
+        morningBriefGiven?(day)
+        // A moment for the display and audio to come back after the lid opens.
+        _ = scheduler.after(3) { [weak self] in
+            guard let self, self.panel == .idle, !self.runActive else { return }
+            self.submit("what's my day")
+        }
+    }
+
     // MARK: - Runs
 
     /// Sends a request to the launcher (spoken, typed with --request, or a button).
@@ -373,14 +428,15 @@ final class AppModel {
             if state != "working" { run?.finalState = state }
         case let .status(text, detail):
             queueStatus(text, detail)
-        case let .speak(text):
+        case let .speak(text, opener):
+            if opener { run?.status = text; return } // shown as the Working line, not a caption
             // Captions come from the socket (speak_start/speak_end, timed to the
             // audio). Without the socket, fall back to the launcher's stdout.
             stdoutSpeechCount += 1
             let n = stdoutSpeechCount
             // Kokoro takes about a second to render, so wait before assuming the
             // socket is down.
-            scheduler.after(3) { [weak self] in
+            _ = scheduler.after(3) { [weak self] in
                 guard let self, let run = self.run, !run.socketSpeech else { return }
                 let id = "stdout-\(n)"
                 self.speechStarted(id: id, text: text)
@@ -416,6 +472,8 @@ final class AppModel {
         if let host = Self.host(in: detail ?? ""), run?.hosts.contains(host) == false, text.hasPrefix("Reading") || text.hasPrefix("Opening") {
             run?.hosts.append(host)
         }
+        // Leo (2026-10-13): no step-by-step updates; the Working line is the run's opening sentence.
+        guard showSteps else { return }
         pendingStatus = (text, detail)
         let wait = Timing.statusMinInterval - (now - lastStatusAt)
         if wait <= 0 {
@@ -531,9 +589,21 @@ final class AppModel {
                 return
             }
         }
+        let spoken = run.captions.map(\.text).joined(separator: " ")
+        if run.reply.count > spoken.count + 20 {
+            // Only the first sentences were spoken (Leo, 2026-10-16): the notch shows the rest.
+            let full = run.reply.count > 320 ? String(run.reply.prefix(318)) + "…" : run.reply
+            // Already spoken (or not meant to be): shown in full at once, no reading animation.
+            self.run?.captions = [Caption(id: "reply", text: full, startedAt: 0)]
+        }
         if panel != .done {
             doneEnteredAt = scheduler.now
             show(.done, size: .expanded)
+        }
+        // Once per answer, after the voice has finished.
+        if !run.captions.isEmpty, replyWindowRun != run.token {
+            replyWindowRun = run.token
+            openReplyWindow()
         }
         let hold = run.savedLabel != nil ? Timing.doneHoldSaved : Timing.doneHold
         schedule("collapse", hold) { [weak self] in
@@ -567,8 +637,17 @@ final class AppModel {
 
     func received(_ msg: NotchProtocol.ClientMessage, from client: NotchServer.ClientID) {
         switch msg {
-        case let .speakStart(id, text, _):
-            speechStarted(id: id, text: text)
+        case let .speakStart(id, text, _, opener):
+            if opener, runActive {
+                // "Adding that to your Kanban": what it's working on, not the answer.
+                run?.socketSpeech = true
+                run?.status = text
+                speakingIDs.insert(id)
+                speaking = true
+                bumpLayout(.expand)
+            } else {
+                speechStarted(id: id, text: text)
+            }
         case let .speakEnd(id):
             speechEnded(id: id)
         case let .notify(_, title, body, _):
@@ -592,7 +671,7 @@ final class AppModel {
             if panel.isNeedsYou || panel == .listening { deferred.append(r) } else { present(r) }
         case let .runEvent(sessionId, event, text, keep, summary, rule):
             runEventFromSocket(sessionId: sessionId, event: event, text: text, keep: keep, summary: summary, rule: rule)
-        case .hello, .log, .unknown, .calendarEvents, .calendarAdd:
+        case .hello, .log, .unknown, .calendarEvents, .calendarAdd, .play:
             break
         }
     }
@@ -775,6 +854,43 @@ final class AppModel {
     }
 
     func openRecent(_ item: ActionItem) {
+        if item.details != nil {
+            show(.details([item]), size: .expanded)
+            return
+        }
+        guard item.saved, let id = item.sessionId else { return }
+        launcher?.open(sessionId: id)
+        finishAndHide()
+    }
+
+    func openConversation(_ group: [ActionItem]) {
+        let withDetails = group.filter { $0.details != nil }
+        guard !withDetails.isEmpty else { return }
+        show(.details(withDetails), size: .expanded)
+    }
+
+    /// Requests that followed on from each other (each started within two minutes
+    /// of the last one ending) are one conversation (Leo, 2026-10-22). `items` is
+    /// newest first, as Recent lists it; each group comes back oldest first.
+    nonisolated static func conversations(_ items: [ActionItem], gap: TimeInterval = 120) -> [[ActionItem]] {
+        var groups: [[ActionItem]] = []
+        for item in items.reversed() {
+            if let prev = groups.last?.last, let start = item.details?.started, prev.details != nil,
+               start.timeIntervalSince(prev.date) <= gap {
+                groups[groups.count - 1].append(item)
+            } else {
+                groups.append([item])
+            }
+        }
+        return groups.reversed()
+    }
+
+    /// From a request's details: back to the list, or into the saved conversation.
+    func backToRecent() {
+        show(.recent(loadRecent?() ?? []), size: .expanded)
+    }
+
+    func openDetailsRun(_ item: ActionItem) {
         guard item.saved, let id = item.sessionId else { return }
         launcher?.open(sessionId: id)
         finishAndHide()
@@ -800,7 +916,7 @@ final class AppModel {
                     self.evaluateEnd()
                 case .reminder:
                     self.setSize(.compact)
-                case .recent:
+                case .recent, .details:
                     self.finishAndHide()
                 default: break
                 }
@@ -815,11 +931,14 @@ final class AppModel {
         motion = grows ? .expand : .collapse
         if p.kind != panel.kind, p != .idle { moodSince = Date() }
         if p != .idle, p != lastPanel { lastPanel = p }
-        if p != panel { panel = p }
+        if p != panel {
+            if (p == .listening) != (panel == .listening) { listeningChanged?(p == .listening) }
+            panel = p
+        }
         if s != size { size = s }
         if s == .expanded { expandedContentAt = scheduler.now }
         layoutRevision &+= 1
-        if p == .idle { cancelAllTimers(except: []) }
+        if p == .idle { closeReplyWindow(); cancelAllTimers(except: []) }
         if s == .expanded, !p.isNeedsYou, p != .listening { armWatchdog() }
     }
 
@@ -848,7 +967,7 @@ final class AppModel {
             case .done: self.evaluateEnd()
             case .working, .reminder: self.setSize(.compact)
             case .notice: self.resolveNeedsYou()
-            case .recent: self.finishAndHide()
+            case .recent, .details: self.finishAndHide()
             default: break
             }
         }
@@ -866,6 +985,7 @@ final class AppModel {
         case .listening, .reminder: 2
         case .working, .question, .access: 3
         case .done, .blocked, .recent: 4
+        case .details: 5
         }
     }
 

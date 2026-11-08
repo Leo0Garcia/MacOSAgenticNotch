@@ -13,6 +13,7 @@ final class HotKeyCenter {
         var modifiers: UInt32
 
         static let optionSpace = Combo(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey))
+        static let optionShiftSpace = Combo(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey | shiftKey))
         static let escape = Combo(keyCode: UInt32(kVK_Escape), modifiers: 0)
 
         var label: String {

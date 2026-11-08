@@ -30,7 +30,7 @@ final class NotchController {
         case .hidden: return nil
         case .compact:
             w = n.width + 2 * Theme.wing + 12
-            h = n.height
+            h = n.height + Theme.pillDrop
         case .expanded:
             w = Theme.expandedWidth + 2 * Theme.topRadius
             h = n.height + max(env.expandedBodyHeight, 40) + Theme.dnkInset

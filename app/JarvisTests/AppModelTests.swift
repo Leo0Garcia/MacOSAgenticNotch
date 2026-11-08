@@ -119,6 +119,7 @@ import Testing
 
     @Test func statusLinesCoalesceTo350ms() {
         let (m, s, l, _) = makeModel()
+        m.showSteps = true
         m.submit("weather")
         l.emit(.status(text: "Searching the web", detail: "weather"))
         l.emit(.status(text: "Reading BBC Weather", detail: "bbc.co.uk/weather"))
@@ -413,9 +414,127 @@ import Testing
         #expect(m.panel == .listening)
     }
 
+    @Test func aQuietRunKeepsItsAnswerWhenLeoAsksSomethingElse() {
+        let (m, _, l, _) = makeModel()
+        m.submit("add my lectures to the Kanban")
+        m.hotkeyDown()
+        #expect(l.hushes == 0)
+    }
+
+    @Test func speechWaitsWhileLeoIsTalking() {
+        let (m, _, _, _) = makeModel()
+        var changes: [Bool] = []
+        m.listeningChanged = { changes.append($0) }
+        m.hotkeyDown()
+        m.listeningFinished("what's the time")
+        #expect(changes == [true, false])
+    }
+
     @Test func nothingToHushWhenIdle() {
         let (m, _, l, _) = makeModel()
         m.hotkeyDown()
         #expect(l.hushes == 0)
+    }
+}
+
+
+@MainActor
+@Suite struct QuietRunTests {
+    @Test func theOpeningLineIsTheWorkingStatusNotACaption() {
+        let (m, _, l, _) = makeModel()
+        m.submit("add buy chalk to my Kanban")
+        m.received(.speakStart(id: "1", text: "Adding that to your Kanban.", sessionId: nil, opener: true), from: 1)
+        #expect(m.panel == .working)
+        #expect(m.run?.status == "Adding that to your Kanban.")
+        #expect(m.run?.captions.isEmpty == true)
+        l.emit(.status(text: "Running a command", detail: "kanban add"))
+        #expect(m.run?.status == "Adding that to your Kanban.") // no step updates
+        m.speechEnded(id: "1")
+        m.speechStarted(id: "2", text: "Done, it's on the board.")
+        #expect(m.panel == .done)
+    }
+
+    @Test func aLongAnswerShowsInFullAfterTheSpokenPart() {
+        let (m, _, l, _) = makeModel()
+        m.submit("what's on my Kanban")
+        m.speechStarted(id: "a", text: "You have nineteen cards. Three are due this week.")
+        let full = "You have nineteen cards. Three are due this week. COMP2311 lab 4, the AI coursework and the Amra brief."
+        l.emit(.done(sessionId: "s", keep: false, summary: "Kanban", reply: full, name: nil))
+        l.exit(0)
+        m.speechEnded(id: "a")
+        #expect(m.run?.captions.map(\.text) == [full])
+    }
+}
+
+
+@MainActor
+@Suite struct MorningRundownTests {
+    private func at(_ hour: Int, day: Int = 16) -> Date {
+        var c = DateComponents(); c.year = 2026; c.month = 10; c.day = day; c.hour = hour
+        return Calendar.current.date(from: c)!
+    }
+
+    @Test func theFirstMorningUnlockGivesTheDayOnce() {
+        let (m, s, l, _) = makeModel()
+        var saved: [String] = []
+        m.morningBriefGiven = { saved.append($0) }
+        m.screenUnlocked(at: at(8))
+        s.advance(3)
+        #expect(l.requests == ["what's my day"])
+        #expect(saved == ["2026-10-16"])
+        l.emit(.done(sessionId: "", keep: false, summary: "", reply: "", name: nil)); l.exit(0)
+        s.advance(30)
+        m.screenUnlocked(at: at(9))
+        s.advance(3)
+        #expect(l.requests.count == 1)
+    }
+
+    @Test func notInTheAfternoonOrWhenBusy() {
+        let (m, s, l, _) = makeModel()
+        m.screenUnlocked(at: at(14))
+        s.advance(3)
+        #expect(l.requests.isEmpty)
+        m.submit("weather")
+        m.screenUnlocked(at: at(8, day: 17))
+        s.advance(3)
+        #expect(l.requests == ["weather"])
+    }
+}
+
+@MainActor
+@Suite struct ReplyWindowTests {
+    @Test func theMicStaysOpenBrieflyAfterAnAnswer() {
+        let (m, s, l, _) = makeModel()
+        var changes: [Bool] = []
+        m.replyWindowEnabled = { true }
+        m.replyWindowChanged = { changes.append($0) }
+        m.submit("what's the time")
+        m.speechStarted(id: "a", text: "It's ten past four.")
+        l.emit(.done(sessionId: "s", keep: false, summary: "", reply: "It's ten past four.", name: nil)); l.exit(0)
+        m.speechEnded(id: "a")
+        #expect(m.awaitingReply)
+        s.advance(AppModel.replyWindow + 0.1)
+        #expect(!m.awaitingReply)
+        #expect(changes == [true, false])
+    }
+
+    @Test func speakingCloseTheWindowAndOffMeansOff() {
+        let (m, _, l, _) = makeModel()
+        m.replyWindowEnabled = { true }
+        m.submit("what's the time")
+        m.speechStarted(id: "a", text: "It's ten past four.")
+        l.emit(.done(sessionId: "s", keep: false, summary: "", reply: "It's ten past four.", name: nil)); l.exit(0)
+        m.speechEnded(id: "a")
+        m.wakeTriggered(preroll: [])
+        #expect(!m.awaitingReply)
+        #expect(m.panel == .listening)
+
+        let (m2, _, l2, _) = makeModel()
+        m2.replyWindowEnabled = { false }
+        m2.submit("hi")
+        m2.speechStarted(id: "b", text: "Hello.")
+        l2.emit(.done(sessionId: "s", keep: false, summary: "", reply: "Hello.", name: nil)); l2.exit(0)
+        m2.speechEnded(id: "b")
+        #expect(!m2.awaitingReply)
     }
 }

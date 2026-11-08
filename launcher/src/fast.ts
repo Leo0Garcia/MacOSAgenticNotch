@@ -109,3 +109,12 @@ export function lightsConfig(repo: string): LightsConfig | null {
     return null;
   }
 }
+
+/** "Thanks" and friends: answered instantly, like a person would. */
+export function smallTalk(request: string): string | null {
+  const r = request.toLowerCase().replace(/[^a-z' ]+/g, " ").replace(/\s+/g, " ").trim().replace(/^jarvis /, "").replace(/ jarvis$/, "");
+  if (/^(thanks|thank you|thank you very much|thanks a lot|cheers|ta|nice one|great thanks|perfect thanks|that's great thanks|brilliant thanks)$/.test(r)) return "You're welcome.";
+  if (/^(good morning|morning)$/.test(r)) return "Good morning.";
+  if (/^(good night|night)$/.test(r)) return "Good night.";
+  return null;
+}

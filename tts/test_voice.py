@@ -18,4 +18,6 @@ assert settings({"custom": True, "blend": {}}).blend == voice.PRESETS["jarvis"].
 assert not any(f.startswith("aecho") for f in voice.polish(0))
 assert any(f.startswith("aecho") for f in voice.polish(1))
 assert -1.0 < voice.PRESETS["jarvis"].semitones < -0.5  # deeper than before, not as deep as "deeper"
-print("tts: 7 checks passed")
+assert not any(f.startswith("chorus") for f in voice.polish(1))  # clean, not a robot filter
+assert voice.PRESETS["jarvis"].effect == 0.3
+print("tts: 9 checks passed")

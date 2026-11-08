@@ -1,7 +1,7 @@
 // Small pieces of launcher state under ~/Jarvis: the last run (for
 // follow-ups) and the launcher log. The action log belongs to the bridge.
 
-import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { type Config, FOLLOWUP_WINDOW_MS, paths } from "./config";
 
@@ -55,4 +55,52 @@ export function recentRun(c: Config, now = Date.now()): LastRun | undefined {
 export function ensureDirs(c: Config): void {
   const p = paths(c);
   for (const d of [c.home, p.runs, p.state, p.logs, p.reminders]) mkdirSync(d, { recursive: true });
+}
+
+// ---- runs in progress, so a request mid-task knows what "it" is -----------
+
+export interface ActiveRun {
+  sessionId: string;
+  pid: number;
+  request: string;
+  startedAt: number;
+  /** The run's opening line, then its latest step. */
+  doing?: string;
+}
+
+export function saveActiveRun(c: Config, r: ActiveRun): void {
+  writeFileAtomic(`${paths(c).active}/${r.sessionId}.json`, JSON.stringify(r));
+}
+
+export function clearActiveRun(c: Config, sessionId: string): void {
+  rmSync(`${paths(c).active}/${sessionId}.json`, { force: true });
+}
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
+
+/** Runs still working, oldest first. Files left by a launcher that died are removed. */
+export function activeRuns(c: Config, except?: string): ActiveRun[] {
+  const dir = paths(c).active;
+  let files: string[];
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  const out: ActiveRun[] = [];
+  for (const f of files) {
+    try {
+      const r = JSON.parse(readFileSync(`${dir}/${f}`, "utf8")) as ActiveRun;
+      if (!alive(r.pid)) rmSync(`${dir}/${f}`, { force: true });
+      else if (r.sessionId !== except) out.push(r);
+    } catch {}
+  }
+  return out.sort((a, b) => a.startedAt - b.startedAt);
 }

@@ -88,6 +88,11 @@ struct ExpandedView: View {
             }
         case .working:
             ElapsedText(model: model, style: .tenths, visible: visible)
+        case .done where model.awaitingReply:
+            HStack(spacing: 5) {
+                ReplyCue()
+                Text("Reply").font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.6))
+            }
         case .done:
             LevelBars(style: .speaking, count: 3, barWidth: 2.5, gap: 2.2, height: 14, colors: Theme.rim(.done).colors,
                       level: nil, active: model.speaking, visible: visible)
@@ -97,13 +102,15 @@ struct ExpandedView: View {
         case let .reminder(r):
             HStack(spacing: 6) {
                 BellIcon(ringing: visible).frame(width: 13, height: 13)
-                Text(r.firedAt, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute())
+                Text(r.firedAt, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
                     .font(.system(size: 12, weight: .medium).monospacedDigit())
                     .foregroundStyle(Theme.reminder)
             }
         case let .recent(items):
             let today = items.filter { Calendar.current.isDateInToday($0.date) }.count
             Text("\(today) today").font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.6))
+        case let .details(items):
+            Text(secondsText(items.compactMap(\.details).reduce(0) { $0 + $1.totalMs })).font(.system(size: 12, weight: .medium).monospacedDigit()).foregroundStyle(.white.opacity(0.6))
         default: EmptyView()
         }
     }
@@ -133,6 +140,7 @@ struct ExpandedView: View {
         case let .reminder(r): "r-\(r.firedAt.timeIntervalSince1970)"
         case let .notice(t, _): "n-\(t)"
         case .recent: "recent"
+        case let .details(items): "details-\(items.last?.id ?? 0)"
         default: "\(panel.kind)"
         }
     }
@@ -148,6 +156,7 @@ struct ExpandedView: View {
         case let .reminder(r): reminder(r)
         case let .notice(title, body): notice(title, body)
         case let .recent(items): recent(items)
+        case let .details(items): RunDetailsView(items: items, back: { model.backToRecent() }, openRun: { model.openDetailsRun($0) })
         }
     }
 
@@ -226,7 +235,7 @@ struct ExpandedView: View {
                     let words = c.text.split(separator: " ").map(String.init)
                     let per = words.isEmpty ? 0 : c.estimatedDuration / Double(words.count)
                     ForEach(Array(words.enumerated()), id: \.offset) { i, w in
-                        SpokenWord(word: w, delay: Double(i) * per, font: Theme.body)
+                        SpokenWord(word: w, revealAt: c.startedAt + Double(i) * per, now: { model.scheduler.now }, font: Theme.body)
                             .id("\(c.id)-\(i)")
                     }
                 }
@@ -347,7 +356,7 @@ struct ExpandedView: View {
             HStack {
                 Text("WHAT JARVIS DID").font(.system(size: 11.5, weight: .medium)).tracking(0.46)
                 Spacer()
-                Text("Hold \(env.hotkeyLabel) to talk").font(.system(size: 11.5))
+                Text("Hold \(env.hotkeyLabel) to talk · ⌥⇧ Space to type").font(.system(size: 11.5))
             }
             .foregroundStyle(.white.opacity(0.4))
             .padding(.bottom, 6)
@@ -355,8 +364,13 @@ struct ExpandedView: View {
                 Text("Nothing yet. Hold \(env.hotkeyLabel) and ask for something.")
                     .font(Theme.sub).foregroundStyle(.white.opacity(secondary))
             }
-            ForEach(items) { item in
-                RecentRow(item: item) { model.openRecent(item) }
+            ForEach(AppModel.conversations(items), id: \.last!.id) { group in
+                if group.count == 1 {
+                    RecentRow(item: group[0]) { model.openRecent(group[0]) }
+                } else {
+                    // Follow-ups in one conversation: one row, labelled by how it started.
+                    RecentRow(item: group[0], count: group.count) { model.openConversation(group) }
+                }
             }
         }
     }
@@ -374,6 +388,8 @@ struct ExpandedView: View {
 /// One hover-log row: time, summary, badge (NOTCH-DESIGN Large layout, 26 pt).
 struct RecentRow: View {
     var item: ActionItem
+    /// More than 1: a conversation, shown by its first request.
+    var count = 1
     var open: () -> Void
     @State private var hover = false
 
@@ -388,7 +404,7 @@ struct RecentRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(item.date, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute())
+            Text(item.date, format: .dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
                 .font(.system(size: 12).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.4))
                 .frame(width: 44, alignment: .leading)
@@ -403,14 +419,160 @@ struct RecentRow: View {
                     .padding(.horizontal, 7).frame(height: 18)
                     .background(Capsule().fill(b.2))
             }
+            if count > 1 {
+                Text("\(count) requests").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                    .padding(.horizontal, 7).frame(height: 18)
+                    .background(Capsule().fill(.white.opacity(0.1)))
+            }
+            if item.details != nil || count > 1 {
+                Text("›").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(hover ? 0.7 : 0.3))
+            }
         }
         .padding(.horizontal, 8)
         .frame(height: 26)
-        .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(item.saved && hover ? 0.08 : 0)))
+        .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(openable && hover ? 0.08 : 0)))
         .padding(.horizontal, -8)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        .onTapGesture { if item.saved { open() } }
+        .onTapGesture { if openable { open() } }
+        .accessibilityAddTraits(openable ? .isButton : [])
+    }
+
+    private var openable: Bool { item.saved || item.details != nil || count > 1 }
+}
+
+/// "0.4 s", "12 s", "2 min 5 s"
+func secondsText(_ ms: Double) -> String {
+    let s = ms / 1000
+    if s < 10 { return String(format: "%.1f s", s) }
+    if s < 60 { return "\(Int(s.rounded())) s" }
+    return "\(Int(s) / 60) min \(Int(s) % 60) s"
+}
+
+/// One request from Recent: what was asked and said, a bar of where the time
+/// went, and the steps (Leo, 2026-10-22: "click into a request and see all the details").
+struct RunDetailsView: View {
+    /// One request, or a conversation's requests oldest first.
+    var items: [ActionItem]
+    var back: () -> Void
+    var openRun: (ActionItem) -> Void
+
+    static let sliceColors: [String: Color] = [
+        "Starting Claude": Color(hex: 0x9AA4B2), "Thinking": Color(hex: 0x7D7AFF), "Tools": Color(hex: 0x5AC8FA),
+        "Speaking": Color(hex: 0x30D158), "Working": Color(hex: 0x63E6BE),
+    ]
+
+    private var all: [RunDetails] { items.compactMap(\.details) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Button(action: back) { Text("‹ Recent") }.buttonStyle(.plain)
+                    .font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.55))
+                    .accessibilityLabel("Back to recent requests")
+                Spacer()
+                Text(meta).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
+            }
+            .padding(.bottom, 6)
+            if items.count == 1, let d = all.first { single(items[0], d) } else { conversation }
+        }
+    }
+
+    /// A conversation: each request with its answer and timing, newest last.
+    private var conversation: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if items.count > 3 {
+                Text("\(items.count - 3) earlier requests").font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.4))
+            }
+            ForEach(items.suffix(3)) { item in
+                if let d = item.details {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(d.request).font(.system(size: 14, weight: .medium)).foregroundStyle(.white).lineLimit(1)
+                            Spacer()
+                            Text(secondsText(d.totalMs)).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(.white.opacity(0.45))
+                        }
+                        if !d.reply.isEmpty {
+                            Text(d.reply).font(.system(size: 12.5)).foregroundStyle(.white.opacity(0.6)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Self.bar(d, legend: false).padding(.top, 2)
+                    }
+                }
+            }
+            if let saved = items.last(where: { $0.saved && $0.sessionId != nil }) {
+                Button("Open the conversation ↗") { openRun(saved) }.buttonStyle(SavedChipStyle())
+            }
+        }
+    }
+
+    private func single(_ item: ActionItem, _ details: RunDetails) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(details.request).font(.system(size: 15, weight: .medium)).foregroundStyle(.white).lineLimit(2)
+            if !details.reply.isEmpty {
+                Text(details.reply).font(.system(size: 13)).foregroundStyle(.white.opacity(0.65)).lineLimit(3).fixedSize(horizontal: false, vertical: true).padding(.top, 3)
+            }
+            if let p = details.problem, details.outcome == "error" {
+                Text(p).font(.system(size: 12)).foregroundStyle(Theme.attentionText).lineLimit(2).padding(.top, 3)
+            }
+            Self.bar(details, legend: true).padding(.top, 10)
+            ForEach(Array(details.steps.prefix(4).enumerated()), id: \.offset) { _, s in
+                HStack(spacing: 6) {
+                    Text(s.error == true ? "✕" : "✓").font(.system(size: 10)).foregroundStyle(s.error == true ? Theme.recording : Theme.success)
+                    Text(s.detail.map { "\(s.label) · \($0)" } ?? s.label).font(.system(size: 12)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                    Spacer()
+                    if let ms = s.ms { Text(secondsText(ms)).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(.white.opacity(0.45)) }
+                }
+                .frame(height: 19)
+            }
+            .padding(.top, 2)
+            if details.steps.count > 4 {
+                Text("and \(details.steps.count - 4) more steps").font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.4))
+            }
+            if item.saved, item.sessionId != nil {
+                Button("Open the conversation ↗") { openRun(item) }.buttonStyle(SavedChipStyle()).padding(.top, 8)
+            }
+        }
+    }
+
+    private var meta: String {
+        if items.count > 1 {
+            return "Conversation · \(items.count) requests · \(secondsText(all.reduce(0) { $0 + $1.totalMs }))"
+        }
+        guard let d = all.first else { return "" }
+        var parts = [d.route == "claude" || d.route == "warm" ? (d.model ?? "Claude") : "No Claude run"]
+        if let t = d.turns { parts.append("\(t) turn\(t == 1 ? "" : "s")") }
+        if let c = d.costUsd, c > 0 { parts.append(String(format: "$%.3f", c)) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Where the time went: one bar, a slice per phase, with an optional legend.
+    static func bar(_ details: RunDetails, legend: Bool) -> some View {
+        let slices = details.breakdown.filter { $0.ms > 0 }
+        let total = max(slices.reduce(0) { $0 + $1.ms }, 1)
+        return VStack(alignment: .leading, spacing: 5) {
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    ForEach(Array(slices.enumerated()), id: \.offset) { _, s in
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(sliceColors[s.label] ?? .gray)
+                            .frame(width: max(3, (geo.size.width - CGFloat(slices.count - 1) * 2) * s.ms / total))
+                    }
+                }
+            }
+            .frame(height: legend ? 8 : 5)
+            if legend {
+                HStack(spacing: 10) {
+                    ForEach(Array(slices.enumerated()), id: \.offset) { _, s in
+                        HStack(spacing: 4) {
+                            Circle().fill(sliceColors[s.label] ?? .gray).frame(width: 6, height: 6)
+                            Text("\(s.label) \(secondsText(s.ms))").font(.system(size: 11).monospacedDigit()).foregroundStyle(.white.opacity(0.55))
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Took \(secondsText(details.totalMs)): " + slices.map { "\($0.label) \(secondsText($0.ms))" }.joined(separator: ", "))
     }
 }
 
@@ -572,16 +734,32 @@ struct PillLeading: View {
         } else {
             PixelCharacter(mood: Mood(panel.kind), scale: 2, since: model.moodSince, level: env.level,
                            speaking: model.speaking, visible: model.size == .compact)
-                .frame(width: Self.wingWidth, height: max(20, env.notchSize.height - 12), alignment: .leading)
+                .frame(width: Self.wingWidth, height: max(20, env.notchSize.height - 12) + Theme.pillDrop, alignment: .leading)
                 .background(alignment: .topLeading) {
                     // The rim round the whole pill, drawn from the leading wing.
                     let w = env.notchSize.width + 2 * Theme.wing
                     AuroraRim(kind: panel.kind, topRadius: 6, bottomRadius: 14, visible: model.size == .compact, showGlow: false)
-                        .frame(width: w, height: env.notchSize.height)
+                        .frame(width: w, height: env.notchSize.height + Theme.pillDrop)
                         .offset(x: -14, y: -4)
                         .opacity(panel.kind == .needs ? 1 : 0.55)
                 }
         }
+    }
+}
+
+/// The mic is open for a reply: a small mic that breathes, in the listening colour.
+struct ReplyCue: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var on = false
+
+    var body: some View {
+        Image(systemName: "mic.fill")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Theme.rim(.listening).colors[0])
+            .opacity(on || reduceMotion ? 1 : 0.45)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(), value: on)
+            .onAppear { on = true }
+            .accessibilityLabel("Listening for a reply")
     }
 }
 
@@ -597,6 +775,8 @@ struct PillTrailing: View {
             switch panel {
             case .working:
                 ElapsedText(model: model, style: .seconds, visible: model.size == .compact)
+            case .done where model.awaitingReply:
+                ReplyCue()
             case .done:
                 LevelBars(style: .speaking, count: 3, barWidth: 2.5, gap: 2.2, height: 14, colors: Theme.rim(.done).colors,
                           level: nil, active: model.speaking, visible: model.size == .compact)
@@ -608,7 +788,7 @@ struct PillTrailing: View {
                 EmptyView()
             }
         }
-        .frame(width: model.panel == .idle ? 0 : PillLeading.wingWidth, height: max(20, env.notchSize.height - 12), alignment: .trailing)
+        .frame(width: model.panel == .idle ? 0 : PillLeading.wingWidth, height: max(20, env.notchSize.height - 12) + (model.panel == .idle ? 0 : Theme.pillDrop), alignment: .trailing)
         .opacity(model.panel == .idle ? 0 : 1)
     }
 }

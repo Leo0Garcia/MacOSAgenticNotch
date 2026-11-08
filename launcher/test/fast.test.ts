@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseLights, statusSentence } from "../src/fast";
+import { parseLights, smallTalk, statusSentence } from "../src/fast";
 
 const config = JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "skills", "lights", "lights.json"), "utf8"));
 const args = (r: string) => parseLights(r, config)?.args ?? null;
@@ -34,4 +34,10 @@ test("confirmations and status read naturally", () => {
   expect(parseLights("bed and desk lights purple at 20%", config)?.say).toBe("Done, bed lights and desk lights purple at 20 percent.");
   expect(statusSentence("main: off\nlamp: on at 10%\nbed: on at 100%\ndesk: off")).toBe("The lamp at 10 percent and the bed lights at 100 percent are on; the rest are off.");
   expect(statusSentence("main: off\nlamp: off")).toBe("All your lights are off.");
+});
+
+test("thanks gets a natural answer without a run", () => {
+  expect(smallTalk("Thanks!")).toBe("You're welcome.");
+  expect(smallTalk("thank you Jarvis")).toBe("You're welcome.");
+  expect(smallTalk("thanks, now add milk to the list")).toBeNull();
 });

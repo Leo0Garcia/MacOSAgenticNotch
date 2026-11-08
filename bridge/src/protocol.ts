@@ -28,6 +28,8 @@ export interface SpeakStart {
   id: string;
   text: string;
   session_id: string | null;
+  /** The run's opening line ("Adding that to your Kanban"), not its answer: the notch shows it as Working. */
+  opener?: boolean;
 }
 export interface SpeakEnd {
   type: "speak_end";
@@ -91,12 +93,24 @@ export interface CalendarAdd {
   repeat?: "daily" | "weekly" | "monthly" | "yearly";
   until?: string; // ISO 8601, ends the series
 }
-export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents | CalendarAdd;
+/** Play a rendered WAV in the app (one gapless player); answered with `played`. */
+export interface Play {
+  type: "play";
+  id: string;
+  file: string;
+}
+export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents | CalendarAdd | Play;
 
 // App -> client
 export interface Welcome {
   type: "welcome";
   protocol: number;
+  /** The app plays `play` files itself. */
+  play?: boolean;
+}
+export interface Played {
+  type: "played";
+  id: string;
 }
 export interface Answer {
   type: "answer";
@@ -121,7 +135,7 @@ export interface CalendarAddResult {
   calendar?: string; // the calendar it went into
   error?: { code: "denied" | "bad_range" | "no_calendar" | "bad_repeat" | "save_failed"; message: string };
 }
-export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult | CalendarAddResult;
+export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult | CalendarAddResult | Played;
 
 /** One row of ~/Jarvis/actions.sqlite, as stored and as sent in `log`. */
 export interface ActionRow {

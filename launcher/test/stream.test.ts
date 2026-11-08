@@ -77,3 +77,98 @@ test("a run that ends with only structured output is flagged as silent", () => {
   expect(play(progress).res.endedSilently).toBe(true);
   expect(play(runs.weather()).res.endedSilently).toBe(false);
 });
+
+test("only the opening line and the final answer are spoken", () => {
+  const said: [string, string][] = [];
+  const m = new RunMonitor({ onSentence: (s, k) => said.push([k, s]) });
+  // As Claude streams it: one API message with a text block and then a tool_use block.
+  let n = 0;
+  const se = (event: object) => ({ type: "stream_event", event, parent_tool_use_id: null, session_id: "sid-1", uuid: `q${n++}` });
+  const msg = (textBody: string, tool?: string) => [
+    se({ type: "message_start", message: { id: `m${n}`, role: "assistant", content: [] } }),
+    se({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+    se({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: textBody } }),
+    se({ type: "content_block_stop", index: 0 }),
+    ...(tool ? [se({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: `t${n}`, name: tool, input: {} } }), se({ type: "content_block_stop", index: 1 })] : []),
+    se({ type: "message_stop" }),
+  ];
+  const stream = [
+    init(),
+    ...msg("Adding that to your Kanban. Let me find the board.", "Bash"),
+    toolResult("t1", "ok"),
+    ...msg("Checking it went in.", "Bash"),
+    toolResult("t2", "ok"),
+    ...msg("Done, buy chalk is on your board.", "StructuredOutput"),
+    result({ structured: { keep: false, summary: "Added buy chalk" } }),
+  ];
+  for (const e of stream) m.line(JSON.stringify(e));
+  m.finish(0);
+  expect(said).toEqual([["opener", "Adding that to your Kanban."], ["reply", "Done, buy chalk is on your board."]]);
+});
+
+test("a long answer is spoken for two sentences; the whole reply stays in the result", () => {
+  const { said, res } = play(jsonl([init(), text(["One. Two. Three. Four."]), structured(false, "x"), result({ structured: { keep: false, summary: "x" } })]));
+  expect(said).toEqual(["One.", "Two."]);
+  expect(res.reply).toBe("One. Two. Three. Four.");
+});
+
+test("a tool call with no opening line gets one", () => {
+  const { said } = play(jsonl([init(), toolUse("t", "Bash", { command: "ls" }), toolResult("t", "ok"), text(["Done."]), structured(false, "x"), result({ structured: { keep: false, summary: "x" } })]));
+  expect(said).toEqual(["On it.", "Done."]);
+});
+
+test("hitting the usage limit is said plainly, not logged as a saved task", () => {
+  const limit = { ...result(), is_error: true, api_error_status: 429, api_error: "usage_limit_reached", result: "You've hit your session limit · resets 5:10pm (Europe/London)" };
+  const synthetic = { type: "assistant", message: { model: "<synthetic>", role: "assistant", content: [{ type: "text", text: limit.result }] }, parent_tool_use_id: null, session_id: "{{SID}}" };
+  const { said, res } = play(jsonl([init(), synthetic, limit]));
+  expect(said).toEqual([]);
+  expect(res).toMatchObject({ limited: true, keep: false, summary: "Hit the Claude usage limit", reply: "I've hit my Claude usage limit. It resets at 5:10pm." });
+});
+
+test("an expired Claude sign-in is said plainly, with the fix", () => {
+  const err = { ...result(), is_error: true, terminal_reason: "api_error", api_error_status: null, result: "Failed to authenticate: OAuth session expired and could not be refreshed" };
+  const synthetic = { type: "assistant", message: { model: "<synthetic>", role: "assistant", content: [{ type: "text", text: err.result }] }, parent_tool_use_id: null, session_id: "{{SID}}" };
+  const { said, res } = play(jsonl([init(), synthetic, err]));
+  expect(said).toEqual([]);
+  expect(res).toMatchObject({ limited: true, keep: false, summary: "Claude sign-in expired" });
+  expect(res.reply).toContain("type /login");
+});
+
+test("a long answer starts being spoken while it is still streaming", () => {
+  const said: string[] = [];
+  const m = new RunMonitor({ onSentence: (s) => said.push(s) });
+  const [start, block, ...rest] = text(["Your next lecture is Theory of Computing at noon. ", "It's in building 32. ", "After that you've got ", "a free afternoon."]);
+  m.line(JSON.stringify(init()));
+  for (const e of [start, block, ...rest.slice(0, 3)]) m.line(JSON.stringify(e).replaceAll("{{SID}}", "sid-1"));
+  // The message hasn't finished, and the first two sentences are already out.
+  expect(said).toEqual(["Your next lecture is Theory of Computing at noon.", "It's in building 32."]);
+  for (const e of rest.slice(3)) m.line(JSON.stringify(e).replaceAll("{{SID}}", "sid-1"));
+  m.finish(0);
+  expect(said).toHaveLength(2);
+});
+
+test("narration that looked like an answer becomes the opening line, and the real answer is still spoken", () => {
+  const said: [string, string][] = [];
+  const m = new RunMonitor({ onSentence: (s, kind) => said.push([kind, s]) });
+  const se = (event: object) => ({ type: "stream_event", event, parent_tool_use_id: null, session_id: "sid-1" });
+  const stream = [
+    init(),
+    ...text(["Let me look. ", "I'll check your calendar. ", "Then the board"]).slice(0, -1).filter((e: any) => e.event?.type !== "message_stop" && e.event?.type !== "message_delta"),
+    se({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "t1", name: "Bash", input: {} } }),
+    se({ type: "message_stop" }),
+    toolResult("t1", "ok"),
+    ...text(["You're free at 3pm. Nothing else today."]),
+    ...structured(false, "x"),
+    result({ structured: { keep: false, summary: "x" } }),
+  ];
+  for (const e of stream) m.line(JSON.stringify(e).replaceAll("{{SID}}", "sid-1"));
+  m.finish(0);
+  expect(said).toEqual([["reply", "Let me look."], ["reply", "I'll check your calendar."], ["reply", "You're free at 3pm."], ["reply", "Nothing else today."]]);
+});
+
+test("tool calls and their results are reported for the timing breakdown", () => {
+  const seen: string[] = [];
+  const m = new RunMonitor({ onTool: (name, _i, id) => seen.push(`start ${name} ${id}`), onToolDone: (id, err) => seen.push(`done ${id} ${err}`), onFirstText: () => seen.push("text") });
+  for (const e of [init(), ...toolUse("t9", "Bash", { command: "ls" }), toolResult("t9", "ok"), ...text(["Done."])]) m.line(JSON.stringify(e));
+  expect(seen).toEqual(["start Bash t9", "done t9 false", "text"]);
+});

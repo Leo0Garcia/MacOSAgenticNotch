@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		01F5CDF0C18D3C22DE4621D9 /* ServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C21FA14451953CCB7700F3 /* ServicesTests.swift */; };
 		07E7F32B3857ED215DE59FBE /* DynamicNotchKit in Frameworks */ = {isa = PBXBuildFile; productRef = CBA1238A2ADC24C14C52CEC8 /* DynamicNotchKit */; };
+		1246402D11D47AEAC6A3899F /* SpeechPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B8627B1CE2CD8D8200F4BCC /* SpeechPlayer.swift */; };
 		1460C3FA36476C886A1E044E /* VoicePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0B74F072FAB468DCADE6C2 /* VoicePipeline.swift */; };
 		1F3A51E135A1D16A3298B49D /* Paths.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1DAAC0795F8207A606A3679 /* Paths.swift */; };
 		25FE325CBE88F6666137AEFC /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F62732A168498A1CD3DB2F46 /* AppModel.swift */; };
@@ -32,6 +33,7 @@
 		A40601FCE06DD85364927DD5 /* PixelCharacter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 395A970936DC23AF4486A2C0 /* PixelCharacter.swift */; };
 		A6CEEF5AB6921E7C3A45E1B8 /* Transcriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53425C9A136675D37536EFA7 /* Transcriber.swift */; };
 		B0D0DF4C3F2F7FC12AF64F74 /* DemoDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10091DCC5C1AD71F38B67CAE /* DemoDriver.swift */; };
+		B22AF3E66A770DBAD127DFC5 /* TypeBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B79EFB225668B41BBF2569D7 /* TypeBox.swift */; };
 		C360B5629CF11A1FA05A9F1B /* NotchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91164898664277B5D50905E6 /* NotchViews.swift */; };
 		D69E45C4400DEE5DBF937B33 /* Scheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6BE6B677B24B6A3ECD9766 /* Scheduler.swift */; };
 		DF6EC4DD8D8A029748F382AE /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8F0993EA9183644A00101A8E /* WhisperKit */; };
@@ -39,6 +41,7 @@
 		EE159A7E6418AAD0BDD57172 /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF730C9F89F0B4290CAA7FA /* AudioCapture.swift */; };
 		F458E80ADF7A0F0724BAC9EF /* Snapshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 701F7E02FB205441533705D3 /* Snapshots.swift */; };
 		FD1BD447C82FB4C545F41946 /* Launcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB30A56BEBAB614A9399B2D7 /* Launcher.swift */; };
+		FFB56E9C35EF4921949558AC /* Appearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848AFC8CDE50CE91E877D410 /* Appearance.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,18 +63,21 @@
 		2FF33F34C3080DF1EB6C1F9A /* SystemNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNotifier.swift; sourceTree = "<group>"; };
 		386DF619897905B59E1F4A01 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		395A970936DC23AF4486A2C0 /* PixelCharacter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelCharacter.swift; sourceTree = "<group>"; };
+		4B8627B1CE2CD8D8200F4BCC /* SpeechPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlayer.swift; sourceTree = "<group>"; };
 		53425C9A136675D37536EFA7 /* Transcriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcriber.swift; sourceTree = "<group>"; };
 		53C21FA14451953CCB7700F3 /* ServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesTests.swift; sourceTree = "<group>"; };
 		5AA085A4901CE3801C9A88F1 /* NotchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchController.swift; sourceTree = "<group>"; };
 		5E85DCABB29F13DBE2800822 /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		701F7E02FB205441533705D3 /* Snapshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshots.swift; sourceTree = "<group>"; };
 		7E8CE23C76139818D8F09644 /* FlowText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowText.swift; sourceTree = "<group>"; };
+		848AFC8CDE50CE91E877D410 /* Appearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Appearance.swift; sourceTree = "<group>"; };
 		8658147A374608398F17A8A8 /* NotchProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchProtocol.swift; sourceTree = "<group>"; };
 		91164898664277B5D50905E6 /* NotchViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchViews.swift; sourceTree = "<group>"; };
 		96CD752F98C50BE99787ECD7 /* WakeWord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeWord.swift; sourceTree = "<group>"; };
 		A40FCE4078864C56A9189ADB /* Aurora.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Aurora.swift; sourceTree = "<group>"; };
 		AB30A56BEBAB614A9399B2D7 /* Launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Launcher.swift; sourceTree = "<group>"; };
 		B39173ECFE82B9FEE63664D7 /* ComputerContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerContext.swift; sourceTree = "<group>"; };
+		B79EFB225668B41BBF2569D7 /* TypeBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypeBox.swift; sourceTree = "<group>"; };
 		D758DDA5F42A49B6CB275DED /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D87F560B5D01E95B8EE62180 /* NotchServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchServer.swift; sourceTree = "<group>"; };
 		DAA2D9A96890795C2F02A32B /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
@@ -104,6 +110,7 @@
 			isa = PBXGroup;
 			children = (
 				5AA085A4901CE3801C9A88F1 /* NotchController.swift */,
+				B79EFB225668B41BBF2569D7 /* TypeBox.swift */,
 			);
 			path = Notch;
 			sourceTree = "<group>";
@@ -111,6 +118,7 @@
 		562D5088798827372CD6647B /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				848AFC8CDE50CE91E877D410 /* Appearance.swift */,
 				386DF619897905B59E1F4A01 /* SettingsView.swift */,
 				F10AA7980DDF3540B7DB4F4F /* VoiceSettings.swift */,
 			);
@@ -166,6 +174,7 @@
 			isa = PBXGroup;
 			children = (
 				0DF730C9F89F0B4290CAA7FA /* AudioCapture.swift */,
+				4B8627B1CE2CD8D8200F4BCC /* SpeechPlayer.swift */,
 				53425C9A136675D37536EFA7 /* Transcriber.swift */,
 				EC0B74F072FAB468DCADE6C2 /* VoicePipeline.swift */,
 				96CD752F98C50BE99787ECD7 /* WakeWord.swift */,
@@ -321,6 +330,7 @@
 				87681E7347A2C171AAC5FD95 /* ActionsStore.swift in Sources */,
 				622074694C067EBF468C556F /* AppDelegate.swift in Sources */,
 				25FE325CBE88F6666137AEFC /* AppModel.swift in Sources */,
+				FFB56E9C35EF4921949558AC /* Appearance.swift in Sources */,
 				EE159A7E6418AAD0BDD57172 /* AudioCapture.swift in Sources */,
 				2CB1CD9B2C41D50CCE7439C3 /* Aurora.swift in Sources */,
 				E31E8FF84FDC1487E74BB67C /* CalendarService.swift in Sources */,
@@ -339,9 +349,11 @@
 				D69E45C4400DEE5DBF937B33 /* Scheduler.swift in Sources */,
 				8D068F5CD261B90D6FE49225 /* SettingsView.swift in Sources */,
 				F458E80ADF7A0F0724BAC9EF /* Snapshots.swift in Sources */,
+				1246402D11D47AEAC6A3899F /* SpeechPlayer.swift in Sources */,
 				7FD318C30BD7A3CB92FC9B74 /* SystemNotifier.swift in Sources */,
 				8D7AF99A5FAA74DC8222DF5C /* Theme.swift in Sources */,
 				A6CEEF5AB6921E7C3A45E1B8 /* Transcriber.swift in Sources */,
+				B22AF3E66A770DBAD127DFC5 /* TypeBox.swift in Sources */,
 				1460C3FA36476C886A1E044E /* VoicePipeline.swift in Sources */,
 				75F6C7FC09162F02910BA943 /* VoiceSettings.swift in Sources */,
 				5CD26BA5E07CA040E3A9D535 /* WakeWord.swift in Sources */,

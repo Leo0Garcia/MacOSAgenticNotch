@@ -8,7 +8,7 @@ enum LauncherEvent: Equatable, Sendable {
     /// A warm run has started claude and is waiting for the request.
     case ready(sessionId: String?)
     case state(String, sessionId: String?)
-    case speak(String)
+    case speak(String, opener: Bool = false)
     case status(text: String, detail: String?)
     case denied(tool: String, rule: String?, reason: String?)
     case warning(String)
@@ -24,7 +24,7 @@ enum LauncherEvent: Equatable, Sendable {
         switch event {
         case "ready": return .ready(sessionId: s("sessionId"))
         case "state": return s("state").map { .state($0, sessionId: s("sessionId")) }
-        case "speak": return s("text").map { .speak($0) }
+        case "speak": return s("text").map { .speak($0, opener: o["opener"] as? Bool ?? false) }
         case "status": return s("text").map { .status(text: $0, detail: s("detail")) }
         case "denied": return .denied(tool: s("tool") ?? "unknown", rule: s("rule"), reason: s("reason"))
         case "warning": return s("message").map { .warning($0) }
@@ -241,7 +241,11 @@ final class Launcher: LauncherRunning {
 
     /// Leo interrupted: every run already going stops talking (it keeps working, silently).
     /// The warm run hasn't said anything yet, so it's left alone.
+    /// Stops the app's own speech player too.
+    var onHush: (() -> Void)?
+
     func hushAll() {
+        onHush?()
         for p in running where p.isRunning && p !== warm?.process {
             kill(p.processIdentifier, SIGUSR1)
         }

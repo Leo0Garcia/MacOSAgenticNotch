@@ -33,7 +33,7 @@ enum NotchProtocol {
     /// Client to app. Unknown types decode as `.unknown` and are ignored.
     enum ClientMessage: Equatable, Sendable {
         case hello(protocol: Int, token: String, client: ClientKind, pid: Int32?, sessionId: String?)
-        case speakStart(id: String, text: String, sessionId: String?)
+        case speakStart(id: String, text: String, sessionId: String?, opener: Bool = false)
         case speakEnd(id: String)
         case notify(id: String, title: String, body: String, sessionId: String?)
         case ask(id: String, question: String, options: [String], timeoutMs: Int, sessionId: String?)
@@ -45,6 +45,8 @@ enum NotchProtocol {
         case calendarEvents(id: String, from: String, to: String)
         /// The calendar skill adds an event to Apple Calendar through the app.
         case calendarAdd(id: String, event: NewCalendarEvent)
+        /// Play a rendered WAV through the app (gapless); answered with `played`.
+        case play(id: String, file: String)
         case unknown(type: String)
     }
 
@@ -57,6 +59,7 @@ enum NotchProtocol {
         case calendarEventsError(id: String, code: String, message: String)
         case calendarAddResult(id: String, calendar: String)
         case calendarAddError(id: String, code: String, message: String)
+        case played(id: String)
     }
 
     /// An event to add. `repeat` is daily, weekly, monthly or yearly (on the start's day); `until` ends the series.
@@ -114,7 +117,7 @@ enum NotchProtocol {
                 protocol: try int("protocol"), token: try str("token"), client: client,
                 pid: (obj["pid"] as? NSNumber)?.int32Value, sessionId: optStr("session_id"))
         case "speak_start":
-            return .speakStart(id: try str("id"), text: try str("text"), sessionId: optStr("session_id"))
+            return .speakStart(id: try str("id"), text: try str("text"), sessionId: optStr("session_id"), opener: obj["opener"] as? Bool ?? false)
         case "speak_end":
             return .speakEnd(id: try str("id"))
         case "notify":
@@ -144,6 +147,8 @@ enum NotchProtocol {
             return .calendarAdd(id: try str("id"), event: NewCalendarEvent(
                 title: try str("title"), start: try str("start"), end: try str("end"), allDay: obj["allDay"] as? Bool ?? false,
                 location: optStr("location"), calendar: optStr("calendar"), repeat: optStr("repeat"), until: optStr("until")))
+        case "play":
+            return .play(id: try str("id"), file: try str("file"))
         default:
             return .unknown(type: type)
         }
@@ -153,7 +158,7 @@ enum NotchProtocol {
         var obj: [String: Any]
         switch msg {
         case .welcome:
-            obj = ["type": "welcome", "protocol": version]
+            obj = ["type": "welcome", "protocol": version, "play": true]
         case let .answer(id, text, via):
             obj = ["type": "answer", "id": id, "text": text, "via": via.rawValue]
         case let .error(id, message):
@@ -170,6 +175,8 @@ enum NotchProtocol {
             obj = ["type": "calendar_add_result", "id": id, "calendar": calendar]
         case let .calendarAddError(id, code, message):
             obj = ["type": "calendar_add_result", "id": id, "error": ["code": code, "message": message]]
+        case let .played(id):
+            obj = ["type": "played", "id": id]
         }
         let data = (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])) ?? Data()
         return String(decoding: data, as: UTF8.self)

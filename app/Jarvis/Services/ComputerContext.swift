@@ -53,8 +53,21 @@ final class ComputerContext {
         if UserDefaults.standard.bool(forKey: Self.shareScreenKey), Self.isAboutScreen(request), let shot = screenshot() {
             ctx["screenshot"] = shot
         }
+        // "Summarise this" / "explain this": the clipboard is what "this" means (Leo, 2026-10-16).
+        if Self.isAboutScreen(request) || request.range(of: #"\b(clipboard|copied)\b"#, options: [.regularExpression, .caseInsensitive]) != nil,
+           !Self.isConcealed(NSPasteboard.general.types ?? []),
+           let clip = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !clip.isEmpty {
+            ctx["clipboard"] = String(clip.prefix(Self.clipboardMax))
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: ctx) else { return }
         try? writeAtomically(data, to: paths.home.appendingPathComponent("state/context.json"), mode: 0o600)
+    }
+
+    nonisolated static let clipboardMax = 6000
+
+    /// Password managers mark copied secrets (nspasteboard.org): never send those.
+    nonisolated static func isConcealed(_ types: [NSPasteboard.PasteboardType]) -> Bool {
+        types.contains { ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType", "com.agilebits.onepassword"].contains($0.rawValue) }
     }
 
     /// "Summarise this", "what's on my screen", "reply to what I'm looking at"…

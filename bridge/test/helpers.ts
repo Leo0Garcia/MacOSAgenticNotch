@@ -34,7 +34,7 @@ export class FakeApp {
   onAsk: ((m: Extract<ClientMessage, { type: "ask" }>, ws: ServerWebSocket<{ authed: boolean }>) => void) | null = null;
   private listeners: ((m: ClientMessage) => void)[] = [];
 
-  constructor(public home: string, opts: { writeFile?: boolean; pid?: number } = {}) {
+  constructor(public home: string, opts: { writeFile?: boolean; pid?: number; play?: boolean } = {}) {
     const app = this;
     this.server = Bun.serve<{ authed: boolean }, {}>({
       hostname: "127.0.0.1",
@@ -60,12 +60,13 @@ export class FakeApp {
             }
             ws.data.authed = true;
             app.received.push(m);
-            ws.send(JSON.stringify({ type: "welcome", protocol: 1 }));
+            ws.send(JSON.stringify({ type: "welcome", protocol: 1, ...(opts.play ? { play: true } : {}) }));
             return;
           }
           app.received.push(m);
           for (const l of app.listeners) l(m);
           if (m.type === "ask") app.onAsk?.(m, ws);
+          if (m.type === "play") setTimeout(() => ws.send(JSON.stringify({ type: "played", id: m.id })), 20);
         },
       },
     });

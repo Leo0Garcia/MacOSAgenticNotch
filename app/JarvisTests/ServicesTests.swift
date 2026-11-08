@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import SwiftUI
 @testable import Jarvis
 
 @Suite struct ProtocolTests {
@@ -17,7 +18,31 @@ import Testing
             == .log(.init(id: 3, ts: "2026-10-11T10:00:00Z", session_id: nil, kind: "run", summary: "x", detail: nil, saved: true)))
         #expect(try NotchProtocol.decode(#"{"type":"run_event","session_id":"s","event":"denied","text":"no","rule":"no-money"}"#)
             == .runEvent(sessionId: "s", event: "denied", text: "no", keep: nil, summary: nil, rule: "no-money"))
+        #expect(try NotchProtocol.decode(#"{"type":"play","id":"p","file":"/tmp/jarvis-say-1.wav"}"#) == .play(id: "p", file: "/tmp/jarvis-say-1.wav"))
         #expect(try NotchProtocol.decode(#"{"type":"something_new","x":1}"#) == .unknown(type: "something_new"))
+    }
+
+    @MainActor @Test func paletteDefaultsToAuroraAndRemembersCustomColours() {
+        let d = UserDefaults(suiteName: "jarvis-appearance-test")!
+        d.removePersistentDomain(forName: "jarvis-appearance-test")
+        let a = Appearance(defaults: d)
+        #expect(a.palette.id == "aurora")
+        #expect(a.palette.done == [0x30D158, 0x63E6BE, 0x5AC8FA]) // Leo's green and blue stay the default
+        let custom = Appearance.Palette.from([0x111111, 0x222222, 0x333333])
+        #expect(custom.listening == [0x111111, 0x222222, 0x111111])
+        #expect(Appearance.hex(Color(hex: 0x5AC8FA)) == 0x5AC8FA)
+    }
+
+    @Test func copiedPasswordsAreNeverSent() {
+        #expect(ComputerContext.isConcealed([.string, .init("org.nspasteboard.ConcealedType")]))
+        #expect(!ComputerContext.isConcealed([.string]))
+    }
+
+    @Test func speechPlayerOnlyPlaysJarvisRenders() {
+        #expect(SpeechPlayer.allowed("/var/folders/x/T/jarvis-say-1-2-abc.wav"))
+        #expect(!SpeechPlayer.allowed("/Users/leo/Music/song.wav"))
+        #expect(!SpeechPlayer.allowed("/tmp/jarvis-say-1.mp3"))
+        #expect(!SpeechPlayer.allowed("/tmp/../etc/jarvis-say-1.wav"))
     }
 
     @Test func rejectsBadFrames() {
@@ -27,9 +52,10 @@ import Testing
     }
 
     @Test func encodesAppMessages() {
-        #expect(NotchProtocol.encode(.welcome) == #"{"protocol":1,"type":"welcome"}"#)
+        #expect(NotchProtocol.encode(.welcome) == #"{"play":true,"protocol":1,"type":"welcome"}"#)
         #expect(NotchProtocol.encode(.answer(id: "q", text: "yes", via: .voice)) == #"{"id":"q","text":"yes","type":"answer","via":"voice"}"#)
         #expect(NotchProtocol.encode(.error(id: nil, message: "bad token")) == #"{"message":"bad token","type":"error"}"#)
+        #expect(NotchProtocol.encode(.played(id: "p")) == #"{"id":"p","type":"played"}"#)
     }
 
     @Test func parsesLauncherEvents() {
@@ -138,7 +164,7 @@ import Testing
         // Right token: welcome, then messages reach the delegate; answers come back.
         let good = connect(port)
         try await good.send(.string(#"{"type":"hello","protocol":1,"token":"\#(nf.token)","client":"bridge","pid":1,"session_id":"s"}"#))
-        #expect(try await receiveText(good) == #"{"protocol":1,"type":"welcome"}"#)
+        #expect(try await receiveText(good) == #"{"play":true,"protocol":1,"type":"welcome"}"#)
         try await good.send(.string(#"{"type":"ask","id":"q1","question":"Which?","options":["A"],"timeout_ms":5000,"session_id":"s"}"#))
         for _ in 0..<50 where rec.messages.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
         let (msg, client) = try #require(rec.messages.first)
@@ -300,5 +326,23 @@ import Testing
         #expect(ComputerContext.isAboutScreen("reply to the email I'm looking at"))
         #expect(!ComputerContext.isAboutScreen("what's the weather in Southampton"))
         #expect(!ComputerContext.isAboutScreen("add buy chalk to my Kanban"))
+    }
+}
+
+@Suite struct ConversationTests {
+    private func item(_ id: Int, start: String, end: String) -> ActionItem {
+        let d = RunDetails(v: 1, request: "r\(id)", reply: "", route: "claude", model: nil, outcome: "done", saved: false, startedAt: start,
+                           totalMs: 1000, breakdown: [], steps: [], turns: nil, costUsd: nil, problem: nil)
+        return ActionItem(id: id, date: ISO8601DateFormatter().date(from: end)!, sessionId: nil, kind: "run", summary: "s\(id)", saved: false, details: d)
+    }
+
+    @Test func followUpsWithinTwoMinutesAreOneConversation() {
+        let a = item(1, start: "2026-10-22T18:00:00Z", end: "2026-10-22T18:00:20Z")
+        let b = item(2, start: "2026-10-22T18:01:30Z", end: "2026-10-22T18:01:50Z") // 70 s after a ended
+        let c = item(3, start: "2026-10-22T18:30:00Z", end: "2026-10-22T18:30:10Z") // much later
+        var reminder = ActionItem(id: 4, date: ISO8601DateFormatter().date(from: "2026-10-22T18:30:30Z")!, sessionId: nil, kind: "reminder", summary: "x", saved: false)
+        reminder.details = nil
+        let groups = AppModel.conversations([reminder, c, b, a]) // newest first, as Recent lists them
+        #expect(groups.map { $0.map(\.id) } == [[4], [3], [1, 2]])
     }
 }

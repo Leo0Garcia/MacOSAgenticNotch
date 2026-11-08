@@ -23,4 +23,6 @@ cp -R "$app" "$home/Jarvis.app.new"
 rm -rf "$home/Jarvis.app"
 mv "$home/Jarvis.app.new" "$home/Jarvis.app"
 open "$home/Jarvis.app"
+# Daily agents: Moodle deadline check 08:30, sign-in check 08:00, wrap-up prompt 00:00.
+sh "$here/../launcher/run.sh" schedules install || echo "note: couldn't install the daily schedules"
 echo "installed $home/Jarvis.app"

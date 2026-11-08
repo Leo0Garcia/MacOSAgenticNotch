@@ -186,6 +186,28 @@ final class WakeListener {
     }
 
     private var oneShot = false
+    private var replyOpen = false
+
+    /// After Jarvis answers, the mic stays open briefly: speech starting now is a
+    /// follow-up, no wake word needed. Closing doesn't cut a reply already started.
+    func setReplyWindow(_ open: Bool) {
+        if open {
+            guard !triggered, !replyOpen else { return }
+            if !enabled {
+                guard startStream() else { return }
+                oneShot = true
+            }
+            reset()
+            replyOpen = true
+        } else {
+            guard replyOpen else { return }
+            replyOpen = false
+            if !triggered, !enabled {
+                oneShot = false
+                stopStream()
+            }
+        }
+    }
 
     private func startStream() -> Bool {
         guard AudioCapture.permission == .authorized else {
@@ -253,6 +275,15 @@ final class WakeListener {
             preroll = Array((preroll + frame).suffix(Int(AudioCapture.sampleRate / 2)))
         case .started:
             if triggered { spokeAfterTrigger = true; return }
+            if replyOpen {
+                // A reply to what Jarvis just said: no wake word.
+                replyOpen = false
+                triggered = true
+                framesSinceTrigger = 0
+                spokeAfterTrigger = true
+                model?.wakeTriggered(preroll: preroll + frame)
+                return
+            }
             segment = preroll + frame
             rejected = false
             lastCheckAt = 0

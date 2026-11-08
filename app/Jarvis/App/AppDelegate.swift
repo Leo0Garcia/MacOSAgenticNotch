@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var server: NotchServer?
     private var launcher: Launcher?
     private var hotkeys: HotKeyCenter?
+    private lazy var typeBox = TypeBox { [weak self] text in self?.model.submit(text) }
     private var escapeID: UInt32?
     private var voice: VoicePipeline?
     private var wake: WakeListener?
@@ -29,9 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Settings > General. Defaults: off (Leo prefers ⌥ Space), "Jarvis".
     static let wakeEnabledKey = "WakeWordEnabled"
+    static let replyWindowKey = "ReplyWithoutHotkey"
     static let wakeWordKey = "WakeWord"
     private let notifier = SystemNotifier()
     private let calendar = CalendarService()
+    private let speechPlayer = SpeechPlayer()
     private var notificationsRequested = false
     private var demo: DemoDriver?
     private var signalSources: [DispatchSourceSignal] = []
@@ -51,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env = NotchEnvironment(level: capture.level)
 
         let launcher = Launcher(paths: paths)
+        launcher.onHush = { [weak self] in self?.speechPlayer.stop() }
         self.launcher = launcher
         model.launcher = launcher
         env.snooze = { text, minutes in launcher.snooze(text: text, minutes: minutes) }
@@ -59,6 +63,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let context = ComputerContext(paths: paths)
         model.captureContext = { context.capture() }
         model.willSubmit = { context.write(for: $0) }
+        let listening = paths.home.appendingPathComponent("run/listening")
+        model.listeningChanged = { on in
+            if on {
+                try? FileManager.default.createDirectory(at: listening.deletingLastPathComponent(), withIntermediateDirectories: true)
+                FileManager.default.createFile(atPath: listening.path, contents: nil)
+            } else {
+                try? FileManager.default.removeItem(at: listening)
+            }
+        }
+        try? FileManager.default.removeItem(at: listening) // left over from a crash
+        UserDefaults.standard.register(defaults: [Self.replyWindowKey: true])
+        model.replyWindowEnabled = {
+            UserDefaults.standard.bool(forKey: Self.replyWindowKey) && ProcessInfo.processInfo.environment["JARVIS_MUTE"] != "1"
+                && AudioCapture.permission == .authorized
+        }
+        model.replyWindowChanged = { [weak self] open in self?.wake?.setReplyWindow(open) }
+        model.lastMorningBrief = UserDefaults.standard.string(forKey: "morningBriefDay")
+        model.morningBriefGiven = { UserDefaults.standard.set($0, forKey: "morningBriefDay") }
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.screenUnlocked() }
+        }
         let actions = paths.home.appendingPathComponent("actions.sqlite")
         model.loadRecent = { ActionsStore.newest(8, file: actions) }
 
@@ -204,6 +229,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys = hk
         let ok = hk.register(.optionSpace, onPress: { [weak self] in self?.pushToTalkDown() }, onRelease: { [weak self] in self?.model.hotkeyUp() })
         env.hotkeyLabel = HotKeyCenter.Combo.optionSpace.label
+        if hk.register(.optionShiftSpace, onPress: { [weak self] in self?.typeBox.toggle() }) == nil {
+            AppLog.write("⌥⇧ Space is taken by another app, so the type box is off")
+        }
         if ok == nil {
             AppLog.write("⌥ Space is taken by another app")
             model.postNotification?("Jarvis", "⌥ Space is already used by another app, so push-to-talk is off.")
@@ -281,6 +309,10 @@ extension AppDelegate: NotchServerDelegate {
                 case let .failure(f): server.send(.calendarAddError(id: id, code: f.code, message: f.message), to: client)
                 }
             }
+            return
+        }
+        if case let .play(id, file) = message {
+            speechPlayer.play(file) { server.send(.played(id: id), to: client) }
             return
         }
         model.received(message, from: client)

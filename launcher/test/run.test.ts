@@ -47,7 +47,7 @@ test("weather: runs claude with the design flags from ~/Jarvis, speaks, and fina
   expect(call.env).toMatchObject({ JARVIS_REPO: w.repo, JARVIS_HOME: jarvis, JARVIS_RUN_SESSION_ID: out.sessionId });
   expect(call.env.PATH.split(":")[0]).toBe(join(process.execPath, ".."));
 
-  expect(said).toEqual(["It's 14 degrees and cloudy in Southampton.", "Light rain is likely after 6pm."]);
+  expect(said).toEqual(["It's 14 degrees and cloudy in Southampton. Light rain is likely after six p.m."]); // one chunk, times said naturally, so the intonation carries
   const kinds = events.map((e) => (e.event === "state" ? `state:${e.state}` : e.event));
   expect(kinds).toEqual(["state:working", "speak", "speak", "done", "state:done"]);
   expect(finals).toEqual([
@@ -98,12 +98,25 @@ test("a saved run is named, kept, and logged as a saved run row in the bridge's 
   const argv = w.lastCall().argv;
   expect(argv[argv.indexOf("--name") + 1]).toBe("Jarvis: Research: solid-state batteries");
   expect(finals[0].keep).toBe(true);
-  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Researched solid-state batteries", detail: null, saved: 1 }]);
+  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Researched solid-state batteries", detail: expect.any(String), saved: 1 }]);
 });
 
 test("an ephemeral run's row isn't saved", async () => {
   const { out } = await go("what's the weather", runs.weather());
-  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Told Leo the Southampton weather", detail: null, saved: 0 }]);
+  expect(actions(out.sessionId!)).toEqual([{ kind: "run", summary: "Told Leo the Southampton weather", detail: expect.any(String), saved: 0 }]);
+});
+
+test("each run's row carries its details: request, reply, steps and where the time went", async () => {
+  let t = 1_000_000;
+  const tick = () => (t += 100);
+  const fixture = jsonl([init(), toolUse("t1", "Bash", { command: "ls ~/Documents" }), toolResult("t1", "ok"), ...structured(false, "Listed Documents"), result({ structured: { keep: false, summary: "Listed Documents" } })]);
+  const { out } = await go("what's in my documents", fixture, {}, tick);
+  const d = JSON.parse((actions(out.sessionId!)[0] as { detail: string }).detail);
+  expect(d).toMatchObject({ v: 1, request: "what's in my documents", route: "claude", outcome: "done", saved: false, turns: 3, costUsd: 0.01 });
+  expect(d.steps).toHaveLength(1);
+  expect(d.steps[0].ms).toBeGreaterThan(0);
+  expect(d.breakdown.map((b: { label: string }) => b.label)).toEqual(["Starting Claude", "Thinking", "Tools", "Speaking"]);
+  expect(d.breakdown.reduce((n: number, b: { ms: number }) => n + b.ms, 0)).toBe(d.totalMs);
 });
 
 test("'and also' within 2 minutes of a saved run resumes it and can't discard it", async () => {
@@ -125,9 +138,9 @@ test("'and also' after an ephemeral run starts a new run with the last exchange 
   const second = await go("Jarvis, and also tomorrow?", runs.weather(), {}, () => t);
   const argv = w.lastCall().argv;
   expect(argv[argv.indexOf("--session-id") + 1]).not.toBe(first.out.sessionId);
-  expect(argv[1]).toBe(
-    "This follows on from Leo's previous request a moment ago.\nLeo: what's the weather in Southampton\nJarvis: It's 14 degrees and cloudy in Southampton. Light rain is likely after 6pm.\n\nLeo now says: Jarvis, and also tomorrow?",
-  );
+  expect(argv[1]).toStartWith("<jarvis-activity>");
+  expect(argv[1]).toContain(`Just finished (60 seconds ago): Leo: "what's the weather in Southampton" Jarvis: "It's 14 degrees and cloudy in Southampton. Light rain is likely after 6pm."`);
+  expect(argv[1]).toEndWith("</jarvis-activity>\n\nJarvis, and also tomorrow?");
   expect(second.out.exitCode).toBe(0);
 });
 
@@ -259,7 +272,7 @@ test("a run that ends without a spoken answer speaks its summary instead of goin
     result({ structured: { keep: false, summary: "Checked the weather: 15 degrees and overcast" } }),
   ]);
   const { out, said, events } = await go("what's the weather", silent);
-  expect(said).toEqual(["Checked the weather: 15 degrees and overcast"]);
+  expect(said).toEqual(["On it.", "Checked the weather: 15 degrees and overcast"]); // a tool with no opening line gets a default one
   expect(out.reply).toBe("Checked the weather: 15 degrees and overcast");
   expect(events.filter((e) => e.event === "status")).toEqual([{ event: "status", text: "Running a command", detail: "Fetch weather" }]);
 });

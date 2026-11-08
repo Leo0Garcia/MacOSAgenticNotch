@@ -8,6 +8,7 @@ export const RESULT_SCHEMA = {
   properties: {
     keep: { type: "boolean", description: "true if Leo will come back to this (research, a brief, code changes); false for questions, lookups and one-shot actions" },
     summary: { type: "string", description: "one line saying what was done, for the notch log" },
+    say: { type: "string", description: "what you'd say to Leo out loud, naturally (\"You're welcome.\"), if your text reply didn't already say it" },
   },
   required: ["keep", "summary"],
   additionalProperties: false,

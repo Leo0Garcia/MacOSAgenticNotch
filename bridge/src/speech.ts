@@ -12,6 +12,39 @@ import { runCommand, type Runner } from "./system";
 
 export const MAX_SPEAK_CHARS = 600;
 
+const ONES = "twelve one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split(" ");
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty"];
+const num = (n: number) => (n < 20 ? (n === 0 ? "zero" : ONES[n]!) : TENS[Math.floor(n / 10)] + (n % 10 ? `-${ONES[n % 10]}` : ""));
+
+/** One clock time the way Leo would say it: "half past two", "six p.m.", "quarter to five". */
+function sayTime(h: number, m: number, suffix?: string): string {
+  const pm = suffix ? suffix === "p" : h >= 12;
+  const h12 = (x: number) => ONES[x % 12]!;
+  if (m === 0) {
+    if (!suffix && h === 12) return "midday";
+    if (!suffix && h === 0) return "midnight";
+    return `${h12(h)} ${pm ? "p.m." : "a.m."}`;
+  }
+  if (m === 15) return `quarter past ${h12(h)}`;
+  if (m === 30) return `half past ${h12(h)}`;
+  if (m === 45) return `quarter to ${h12(h + 1)}`;
+  return `${h12(h)} ${m < 10 ? `oh ${num(m)}` : num(m)}${suffix ? ` ${suffix}.m.` : ""}`;
+}
+
+/**
+ * Times in a sentence, spoken naturally (Leo, 2026-10-16): "14:30" → "half
+ * past two", "17:00" → "five p.m.", "9am" → "nine a.m.", "12:00–13:00" →
+ * "midday to one p.m.". Only what's spoken changes; captions keep the digits.
+ */
+export function speakableTimes(text: string): string {
+  const T = String.raw`\b([01]?\d|2[0-3]):([0-5]\d)(?:\s*([ap])(?:\.m\.|m\b))?`;
+  return text
+    .replace(new RegExp(`${T}\\s*[–—-]\\s*${T}`, "gi"), (_, h1, m1, s1, h2, m2, s2) => `${sayTime(+h1, +m1, s1?.toLowerCase())} to ${sayTime(+h2, +m2, s2?.toLowerCase())}`)
+    .replace(new RegExp(T, "gi"), (_, h, m, s) => sayTime(+h, +m, s?.toLowerCase()))
+    .replace(/\b(1[0-2]|0?[1-9])\s*([ap])(?:\.m\.|m\b)/gi, (_, h, s) => `${ONES[+h % 12]} ${s.toLowerCase()}.m.`)
+    .replace(/\.m\.\./g, ".m.");
+}
+
 /**
  * Picks the most natural installed voice for `say`: Premium beats Enhanced
  * beats the compact default, British English first (Leo is in the UK).
@@ -47,6 +80,21 @@ export function defaultVoice(run: Runner = runCommand, env = process.env): Promi
   return voiceCache;
 }
 const STALE_LOCK_MS = 60_000;
+
+/**
+ * The notch app keeps ~/Jarvis/run/listening while Leo is talking to it.
+ * Speech waits until it's gone (Leo, 2026-10-15: "it should wait till I'm
+ * finished"). A marker older than this is left over from a crash and ignored.
+ */
+export const LISTENING_MAX_MS = 60_000;
+
+export function leoIsTalking(home: string, now = Date.now()): boolean {
+  try {
+    return now - statSync(join(home, "run", "listening")).mtimeMs < LISTENING_MAX_MS;
+  } catch {
+    return false;
+  }
+}
 
 /** Renders a sentence to a WAV file; null means "use say instead". */
 export interface Synth {
@@ -130,10 +178,14 @@ export interface SpeakerOptions {
  */
 export const HOLD_AFTER_LAST_SENTENCE_MS = 1500;
 
+/** Longest text rendered in one go (two sentences at most). */
+export const CHUNK_CHARS = 250;
+
 export class Speaker {
   private queue: Promise<void> = Promise.resolve();
   private count = 0;
   private pending = 0;
+  private batch: { text: string; opener: boolean; resolve: () => void; reject: (e: unknown) => void }[] = [];
   private holding = false;
   private releaseTimer: ReturnType<typeof setTimeout> | null = null;
   /** Written into the lock so this speaker can tell it still holds it. */
@@ -146,23 +198,47 @@ export class Speaker {
     this.synth = opts.synth !== undefined ? opts.synth : KokoroSynth.available(opts.home) ? new KokoroSynth(opts.home) : null;
   }
 
-  /** Queues text and resolves when it has been spoken (or failed). */
-  say(text: string): Promise<void> {
+  /**
+   * Queues text and resolves when it has been spoken (or failed). Sentences
+   * queued together are rendered two at a time (up to CHUNK_CHARS), so the
+   * intonation carries across instead of resetting every sentence.
+   */
+  say(text: string, opts: { opener?: boolean } = {}): Promise<void> {
     const t = text.trim().slice(0, MAX_SPEAK_CHARS);
     if (!t) return Promise.resolve();
-    // Render now, while earlier sentences are still playing, so there's no gap.
-    const audio = this.synth ? this.synth.render(t).catch(() => null) : Promise.resolve(null);
-    this.pending++;
-    if (this.releaseTimer) {
-      clearTimeout(this.releaseTimer);
-      this.releaseTimer = null;
-    }
-    const job = this.queue.then(() => this.speakNow(t, audio)).finally(() => {
-      this.pending--;
-      if (this.pending === 0) this.scheduleRelease();
+    return new Promise<void>((resolve, reject) => {
+      this.batch.push({ text: t, opener: opts.opener === true, resolve, reject });
+      if (this.batch.length === 1) queueMicrotask(() => this.flush());
     });
-    this.queue = job.catch(() => {});
-    return job;
+  }
+
+  private flush() {
+    const items = this.batch.splice(0);
+    if (!items.length) return; // already flushed by idle()
+    const chunks: (typeof items)[] = [];
+    for (const it of items) {
+      const cur = chunks.at(-1);
+      const len = cur ? cur.reduce((n, c) => n + c.text.length + 1, 0) : 0;
+      // An opening line stays on its own: it's spoken before the work starts.
+      if (cur && !it.opener && !cur[0]!.opener && cur.length < 2 && len + it.text.length <= CHUNK_CHARS) cur.push(it);
+      else chunks.push([it]);
+    }
+    for (const chunk of chunks) {
+      const text = chunk.map((c) => c.text).join(" ");
+      // Render now, while earlier sentences are still playing, so there's no gap.
+      const audio = this.synth ? this.synth.render(speakableTimes(text)).catch(() => null) : Promise.resolve(null);
+      this.pending++;
+      if (this.releaseTimer) {
+        clearTimeout(this.releaseTimer);
+        this.releaseTimer = null;
+      }
+      const job = this.queue.then(() => this.speakNow(text, audio, chunk[0]!.opener)).finally(() => {
+        this.pending--;
+        if (this.pending === 0) this.scheduleRelease();
+      });
+      this.queue = job.catch(() => {});
+      job.then(() => chunk.forEach((c) => c.resolve()), (e) => chunk.forEach((c) => c.reject(e)));
+    }
   }
 
   /**
@@ -188,6 +264,7 @@ export class Speaker {
 
   /** Resolves when everything queued so far has been spoken, and gives the voice back. */
   async idle(): Promise<void> {
+    if (this.batch.length) this.flush();
     await this.queue;
     if (this.pending === 0) this.letGo();
   }
@@ -213,7 +290,7 @@ export class Speaker {
     if (lockOwner(lock) === this.token) release(lock);
   }
 
-  private async speakNow(text: string, audio: Promise<string | null>) {
+  private async speakNow(text: string, audio: Promise<string | null>, opener = false) {
     if (this.silenced()) {
       const f = await audio;
       if (f) rmSync(f, { force: true });
@@ -230,11 +307,24 @@ export class Speaker {
         utimesSync(lock, now, now);
       } catch {}
     }
+    while (leoIsTalking(this.opts.home)) {
+      await Bun.sleep(this.opts.pollMs ?? 50);
+      try {
+        const now = new Date();
+        utimesSync(lock, now, now);
+      } catch {}
+    }
+    if (this.silenced()) {
+      // Hushed while Leo was talking: drop this sentence.
+      const f = await audio;
+      if (f) rmSync(f, { force: true });
+      return;
+    }
     const id = `${process.pid}-${++this.count}`;
     const link = this.opts.link;
     try {
       const file = await audio;
-      await link?.send({ type: "speak_start", id, text, session_id: this.opts.sessionId ?? null });
+      await link?.send({ type: "speak_start", id, text, session_id: this.opts.sessionId ?? null, ...(opener ? { opener: true } : {}) });
       // JARVIS_MUTE=1: captions only, no sound (for test runs while Leo is around).
       if (process.env.JARVIS_MUTE === "1") {
         if (file) rmSync(file, { force: true });
@@ -242,6 +332,8 @@ export class Speaker {
       }
       if (file) {
         try {
+          // The app's player first (no gap between sentences), afplay without it.
+          if (link && (await link.play(id, file))) return;
           const r = await (this.opts.run ?? runCommand)(["afplay", file]);
           if (r.code === 0 || this.silenced()) return; // killed because Leo interrupted: no say fallback
         } finally {
@@ -251,7 +343,7 @@ export class Speaker {
       // Text goes on stdin (`say -f -`) so a sentence starting with "-" can't become a flag.
       const voice = this.opts.voice !== undefined ? this.opts.voice : await defaultVoice();
       const args = voice ? ["say", "-v", voice, "-f", "-"] : ["say", "-f", "-"];
-      const r = await (this.opts.run ?? runCommand)(args, { stdin: text });
+      const r = await (this.opts.run ?? runCommand)(args, { stdin: speakableTimes(text) });
       if (r.code !== 0 && this.silenced()) return;
       if (r.code !== 0) throw new Error(`say failed (exit ${r.code}): ${r.stderr.trim() || "no output"}`);
     } finally {

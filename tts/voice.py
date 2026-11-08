@@ -33,28 +33,37 @@ class Preset:
 
 
 def polish(effect: float) -> list[str]:
-    """The "Jarvis" polish, scaled by `effect` (0–1): tidy low end and crisp
-    presence always; a small hard room and a faint doubled sheen as it rises,
-    evened out by a gentle compressor."""
+    """The film JARVIS sound, scaled by `effect` (0–1): a clean, close-mic'd
+    voice. Tidy low end, a little presence and air, gentle compression, and
+    only a trace of a small room. No chorus: that read as a robot filter
+    (Leo, 2026-10-15)."""
     e = max(0.0, min(1.0, effect))
     fx = [
-        "highpass=f=85",
-        "equalizer=f=220:t=q:w=1.2:g=-2",
-        f"equalizer=f=3200:t=q:w=1.0:g={1 + 2 * e:.2f}",
-        f"equalizer=f=9000:t=q:w=1.0:g={0.5 + 1 * e:.2f}",
+        "highpass=f=80",
+        "equalizer=f=250:t=q:w=1.2:g=-1.5",
+        f"equalizer=f=3500:t=q:w=1.2:g={1 + 2 * e:.2f}",
+        f"equalizer=f=10000:t=q:w=1.0:g={0.5 + 1.5 * e:.2f}",
+        f"acompressor=threshold=-22dB:ratio={1.5 + e:.2f}:attack=8:release=120",
     ]
     if e > 0.02:
-        fx += [
-            f"aecho=0.85:0.5:18|37:{0.14 * e:.3f}|{0.08 * e:.3f}",
-            f"chorus=0.9:0.9:12:{0.12 * e:.3f}:0.25:1.5",
-            f"acompressor=threshold=-20dB:ratio={1 + 1.5 * e:.2f}:attack=5:release=80",
-        ]
+        fx.append(f"aecho=0.9:0.6:12:{0.1 * e:.3f}")
     return fx + ["alimiter=limit=0.89"]
+
+
+def shift_pitch(audio: np.ndarray, semitones: float) -> np.ndarray:
+    """Rubber Band pitch shift (through pedalboard) at the same length. Much
+    cleaner than ffmpeg's asetrate + atempo, which smeared the voice."""
+    if not semitones:
+        return audio
+    from pedalboard import PitchShift
+
+    return PitchShift(semitones=semitones)(audio.reshape(1, -1), SR).reshape(-1)
 
 
 PRESETS = {
     # Leo, 2026-10-11: "jarvis" good but a little deeper, not as deep as "deeper".
-    "jarvis": Preset("jarvis", {"bm_george": 0.55, "bm_fable": 0.25, "bm_daniel": 0.1, "bm_lewis": 0.1}, 1.04, -0.75, 1.0),
+    # Leo, 2026-10-15: film JARVIS is clean, so the polish is down to 0.3.
+    "jarvis": Preset("jarvis", {"bm_george": 0.55, "bm_fable": 0.25, "bm_daniel": 0.1, "bm_lewis": 0.1}, 1.04, -0.75, 0.3),
     "natural": Preset("natural", {"bm_george": 0.55, "bm_fable": 0.3, "bm_daniel": 0.15}, 1.0, 0.0, 0.0),
     "deeper": Preset("deeper", {"bm_george": 0.6, "bm_lewis": 0.4}, 1.0, -1.0, 1.0),
 }
@@ -120,12 +129,8 @@ class Voice:
         one of PRESETS (or is a Preset); otherwise the settings file decides."""
         name = preset or DEFAULT
         p = name if isinstance(name, Preset) else PRESETS.get(name) or self.current()
-        audio = self.raw(text, p)
-        filters = []
-        if p.semitones:
-            ratio = 2 ** (p.semitones / 12)
-            filters += [f"asetrate={int(SR * ratio)}", f"atempo={1 / ratio:.5f}", f"aresample={SR}"]
-        filters += polish(p.effect)
+        audio = shift_pitch(self.raw(text, p), p.semitones)
+        filters = polish(p.effect)
         filters.append("loudnorm=I=-18:TP=-1.5:LRA=9")  # same loudness for every preset
         pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
         cmd = [FFMPEG, "-loglevel", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "pipe:0"]

@@ -51,6 +51,7 @@ export const paths = (c: Config) => ({
   /** What Leo was doing when he asked, written by the notch app (DESIGN 4.6). */
   context: join(c.home, "state", "context.json"),
   lastRun: join(c.home, "state", "last-run.json"),
+    active: join(c.home, "state", "active"),
   /** Per-run MCP config with the session id as a literal argument (DESIGN 8.1). */
   mcpConfig: (sessionId: string) => join(c.home, "runs", `${sessionId}.mcp.json`),
   versionCache: join(c.home, "state", "claude-version.json"),
