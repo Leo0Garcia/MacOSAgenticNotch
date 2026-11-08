@@ -32,6 +32,12 @@ export function deleteTranscript(c: Config, sessionId: string): string[] {
   return removed;
 }
 
+/** Whether Claude Code still has the session's transcript, so it can be resumed. */
+export function hasTranscript(c: Config, sessionId: string): boolean {
+  const root = join(c.claudeConfigDir, "projects");
+  return UUID.test(sessionId) && existsSync(root) && readdirSync(root).some((d) => existsSync(join(root, d, `${sessionId}.jsonl`)));
+}
+
 /** Deletes a run's own files in ~/Jarvis/runs, refusing anything else. */
 export function deleteRunFile(c: Config, file: string): void {
   const p = resolve(file);

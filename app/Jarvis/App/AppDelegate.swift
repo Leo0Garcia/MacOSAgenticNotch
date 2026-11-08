@@ -117,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         voice.prepare()
         startSpeechServer()
+        Task { await self.model.resumeInterrupted() }
         // A warm run, so the first request doesn't pay Claude Code's start-up.
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { launcher.prepareWarm() }
         observeWakeSettings()

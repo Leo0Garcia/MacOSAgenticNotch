@@ -378,8 +378,9 @@ final class AppModel {
 
     // MARK: - Runs
 
-    /// Sends a request to the launcher (spoken, typed with --request, or a button).
-    func submit(_ request: String) {
+    /// Sends a request to the launcher (spoken, typed with --request, or a button),
+    /// or carries on an interrupted run's session.
+    func submit(_ request: String, resuming sessionId: String? = nil) {
         if speaking { launcher?.hushAll() } // a typed or linked request interrupts too
         let now = scheduler.now
         runTokens += 1
@@ -400,15 +401,31 @@ final class AppModel {
             launcherFailed("The launcher isn't connected.")
             return
         }
-        willSubmit?(request)
+        // A second request replaces the run on screen; the first one's events are dropped.
+        let onEvent: @MainActor (LauncherEvent) -> Void = { [weak self] e in if self?.run?.token == token { self?.launcherEvent(e) } }
+        let exited: @MainActor (Int32) -> Void = { [weak self] code in if self?.run?.token == token { self?.launcherExited(code) } }
         do {
-            // A second request replaces the run on screen; the first one's events are dropped.
-            try launcher.run(
-                request,
-                onEvent: { [weak self] e in if self?.run?.token == token { self?.launcherEvent(e) } },
-                exited: { [weak self] code in if self?.run?.token == token { self?.launcherExited(code) } })
+            if let sessionId {
+                try launcher.resume(sessionId, onEvent: onEvent, exited: exited)
+            } else {
+                willSubmit?(request)
+                try launcher.run(request, onEvent: onEvent, exited: exited)
+            }
         } catch {
             launcherFailed(error.localizedDescription)
+        }
+    }
+
+    /// At launch: carries on the runs a restart cut off. Each shows like a new
+    /// request, so the last one is on screen; background ones run unseen.
+    func resumeInterrupted() async {
+        guard let launcher else { return }
+        for r in await launcher.interrupted() {
+            if r.background == true {
+                try? launcher.resume(r.sessionId, onEvent: { _ in }, exited: { _ in })
+            } else {
+                submit(r.request, resuming: r.sessionId)
+            }
         }
     }
 

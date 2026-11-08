@@ -3,6 +3,8 @@
 //
 //   run "<request>"     one Jarvis run (request on stdin if no argument); NDJSON events on stdout
 //   open <session-id>   open a saved run in Claude Desktop's Code tab
+//   interrupted         runs cut off by a restart, claimed, as a JSON array (the app resumes each)
+//   resume <session-id> carry on a claimed interrupted run; NDJSON events like run
 //   moodle-watch        the daily read-only Moodle deadline check (launchd runs it)
 //   moodle-watch save   deadlines JSON on stdin -> state/deadlines.json and reminders
 //   moodle-watch install | login-needed
@@ -22,6 +24,7 @@ import { runCommand } from "../../bridge/src/system";
 import { installWatch, saveDeadlines, WATCH_REQUEST } from "./moodle-watch";
 import { installMorningCheck, installWrapupPrompt, morningCheck, wrapupPrompt } from "./schedules";
 import { run } from "./run";
+import { claimInterrupted, resumeRun, takeClaimed } from "./resume";
 import { installScout, scout } from "./scout";
 
 function usage(): never {
@@ -40,6 +43,17 @@ export async function main(argv: string[]): Promise<number> {
     case "run": {
       const request = args.length ? args.join(" ") : await Bun.stdin.text();
       return (await run(c, request)).exitCode;
+    }
+    case "interrupted":
+      console.log(JSON.stringify(claimInterrupted(c)));
+      return 0;
+    case "resume": {
+      const r = args[0] ? takeClaimed(c, args[0]) : undefined;
+      if (!r) {
+        process.stderr.write(`no claimed interrupted run ${args[0] ?? ""}\n`);
+        return 1;
+      }
+      return (await resumeRun(c, r)).exitCode;
     }
     case "warm": {
       const lines = console[Symbol.asyncIterator]();
