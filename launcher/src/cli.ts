@@ -8,18 +8,21 @@
 //   moodle-watch install | login-needed
 //   morning-check       08:00: is Claude still signed in? Also the Kanban's start-of-day snapshot
 //   wrapup-prompt       00:00: asks in the notch whether Leo wants his wrap-up
+//   kanban-scout        new Kanban cards Jarvis could do: asks in the notch, runs on a yes
 //   schedules install   installs the Moodle watch, morning check and midnight prompt agents
 //   warm                start claude now, print {"event":"ready"}, then read the
 //                       request as one line on stdin (the notch app keeps one ready)
 //
 // Reminders have their own entry point, src/reminders.ts, which the bridge calls.
 
+import { join } from "node:path";
 import { configFromEnv } from "./config";
 import { osNotify } from "../../bridge/src/notch";
 import { runCommand } from "../../bridge/src/system";
 import { installWatch, saveDeadlines, WATCH_REQUEST } from "./moodle-watch";
 import { installMorningCheck, installWrapupPrompt, morningCheck, wrapupPrompt } from "./schedules";
 import { run } from "./run";
+import { installScout, scout } from "./scout";
 
 function usage(): never {
   process.stderr.write('usage: run.sh run "<request>" | open <session-id>\n');
@@ -70,6 +73,9 @@ export async function main(argv: string[]): Promise<number> {
     case "morning-check":
       console.log(`${new Date().toISOString()} ${await morningCheck(c)}`);
       return 0;
+    case "kanban-scout":
+      console.log(`${new Date().toISOString()} ${await scout(c)}`);
+      return 0;
     case "wrapup-prompt":
       console.log(`${new Date().toISOString()} ${await wrapupPrompt(c)}`);
       return 0;
@@ -78,7 +84,8 @@ export async function main(argv: string[]): Promise<number> {
       installWatch(c);
       installMorningCheck(c);
       installWrapupPrompt(c);
-      console.log("Installed: Moodle check 08:30, sign-in check 08:00, wrap-up prompt 00:00");
+      installScout(c, join(c.env.JARVIS_MASTER_VAULT ?? "/Users/leogarcia/Documents/Obsidian Master Vault", "Kanban.md"));
+      console.log("Installed: Moodle check 08:30, sign-in check 08:00, wrap-up prompt 00:00, Kanban scout (on board changes)");
       return 0;
     }
     case "open": {
