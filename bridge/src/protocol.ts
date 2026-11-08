@@ -99,7 +99,13 @@ export interface Play {
   id: string;
   file: string;
 }
-export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents | CalendarAdd | Play;
+/** Can Apple's on-device model answer this? Answered with `quick_answer_result`. */
+export interface QuickAnswer {
+  type: "quick_answer";
+  id: string;
+  text: string;
+}
+export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents | CalendarAdd | Play | QuickAnswer;
 
 // App -> client
 export interface Welcome {
@@ -135,7 +141,13 @@ export interface CalendarAddResult {
   calendar?: string; // the calendar it went into
   error?: { code: "denied" | "bad_range" | "no_calendar" | "bad_repeat" | "save_failed"; message: string };
 }
-export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult | CalendarAddResult | Played;
+export interface QuickAnswerResult {
+  type: "quick_answer_result";
+  id: string;
+  /** null: not one for the on-device model; send it to Claude. */
+  answer: string | null;
+}
+export type AppMessage = Welcome | Answer | ErrorMsg | CalendarEventsResult | CalendarAddResult | Played | QuickAnswerResult;
 
 /** One row of ~/Jarvis/actions.sqlite, as stored and as sent in `log`. */
 export interface ActionRow {

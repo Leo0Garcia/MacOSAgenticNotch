@@ -47,6 +47,8 @@ enum NotchProtocol {
         case calendarAdd(id: String, event: NewCalendarEvent)
         /// Play a rendered WAV through the app (gapless); answered with `played`.
         case play(id: String, file: String)
+        /// Can Apple's on-device model answer this (small talk, timeless facts)? Answered with `quickAnswerResult`.
+        case quickAnswer(id: String, text: String)
         case unknown(type: String)
     }
 
@@ -60,6 +62,7 @@ enum NotchProtocol {
         case calendarAddResult(id: String, calendar: String)
         case calendarAddError(id: String, code: String, message: String)
         case played(id: String)
+        case quickAnswerResult(id: String, answer: String?)
     }
 
     /// An event to add. `repeat` is daily, weekly, monthly or yearly (on the start's day); `until` ends the series.
@@ -147,6 +150,8 @@ enum NotchProtocol {
             return .calendarAdd(id: try str("id"), event: NewCalendarEvent(
                 title: try str("title"), start: try str("start"), end: try str("end"), allDay: obj["allDay"] as? Bool ?? false,
                 location: optStr("location"), calendar: optStr("calendar"), repeat: optStr("repeat"), until: optStr("until")))
+        case "quick_answer":
+            return .quickAnswer(id: try str("id"), text: try str("text"))
         case "play":
             return .play(id: try str("id"), file: try str("file"))
         default:
@@ -177,6 +182,8 @@ enum NotchProtocol {
             obj = ["type": "calendar_add_result", "id": id, "error": ["code": code, "message": message]]
         case let .played(id):
             obj = ["type": "played", "id": id]
+        case let .quickAnswerResult(id, answer):
+            obj = ["type": "quick_answer_result", "id": id, "answer": answer ?? NSNull()]
         }
         let data = (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])) ?? Data()
         return String(decoding: data, as: UTF8.self)

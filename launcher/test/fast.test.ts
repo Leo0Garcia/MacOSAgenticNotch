@@ -41,3 +41,9 @@ test("thanks gets a natural answer without a run", () => {
   expect(smallTalk("thank you Jarvis")).toBe("You're welcome.");
   expect(smallTalk("thanks, now add milk to the list")).toBeNull();
 });
+
+test("only short, impersonal, timeless asks try Apple's on-device model first", () => {
+  const { quickCandidate } = require("../src/fast");
+  for (const r of ["how are you doing", "what's the capital of Peru", "tell me a joke", "Jarvis, what does photosynthesis mean"]) expect(quickCandidate(r)).toBe(true);
+  for (const r of ["what's on my calendar", "add milk to the kanban", "what's the weather", "what time is it", "summarise this", "hi", "open Spotify"]) expect(quickCandidate(r)).toBe(false);
+});

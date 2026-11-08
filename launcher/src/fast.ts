@@ -118,3 +118,15 @@ export function smallTalk(request: string): string | null {
   if (/^(good night|night)$/.test(r)) return "Good night.";
   return null;
 }
+
+/**
+ * Worth asking Apple's on-device model first (small talk, a timeless question)?
+ * Short, and nothing about Leo's things, the time or an action, so requests
+ * bound for Claude don't wait on it.
+ */
+export function quickCandidate(request: string): boolean {
+  const r = request.toLowerCase().replace(/^jarvis[,:]?\s+/, "");
+  const words = r.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 14) return false;
+  return !/\b(?:my|mine|i|i'm|i've|we|our|this|that|these|it|add|remind|open|close|send|email|text|message|check|find|search|look|book|play|pause|turn|set|make|create|write|draft|delete|remove|move|schedule|plan|start|stop|run|show|read|summari[sz]e|today|tonight|tomorrow|yesterday|week|weekend|now|time|date|weather|news|latest|current|price|score|kanban|calendar|moodle|lecture|notes?|lights?|volume|reminder|timer|file|folder|screen|tab|clipboard)\b/.test(r);
+}

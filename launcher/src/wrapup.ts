@@ -55,7 +55,7 @@ export function boardFromLanes(lanes: { complete: boolean; cards: string[] }[]):
 }
 
 // Requests that aren't worth recounting at night.
-const ROUTINE = /^(?:gave leo the rundown|checked what's next|volume:|checked the lights|lights:|wrapped up|noted:|timer:|opened |told leo the time|hit the claude usage limit|claude sign-in expired|claude api error|couldn't start)/i;
+const ROUTINE = /^(?:quick reply:|gave leo the rundown|checked what's next|volume:|checked the lights|lights:|wrapped up|noted:|timer:|opened |told leo the time|hit the claude usage limit|claude sign-in expired|claude api error|couldn't start)/i;
 
 export interface WrapInput {
   now: Date;

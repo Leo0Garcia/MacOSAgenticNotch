@@ -119,3 +119,17 @@ test("fireReminder without the app notifies and speaks", async () => {
   expect(run.calls[0]!.cmd.slice(-2)).toEqual(["Reminder", "bins"]);
   expect(run.calls[1]).toEqual({ cmd: ["say", "-f", "-"], stdin: "Reminder: bins" });
 });
+
+test("asks the app for a quick on-device answer; null when it has none or isn't there", async () => {
+  const app = new FakeApp(home);
+  app.onQuick = (text) => (text === "how are you" ? "Very well, thanks." : null);
+  const link = new NotchLink({ home, client: "launcher", sessionId: null });
+  try {
+    expect(await link.quickAnswer("how are you")).toBe("Very well, thanks.");
+    expect(await link.quickAnswer("what's on my calendar")).toBeNull();
+  } finally {
+    link.close();
+    app.stop();
+  }
+  expect(await new NotchLink({ home, client: "launcher", sessionId: null, connectTimeoutMs: 100 }).quickAnswer("hi", 200)).toBeNull();
+});
