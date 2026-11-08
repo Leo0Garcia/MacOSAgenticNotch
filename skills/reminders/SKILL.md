@@ -1,7 +1,8 @@
 ---
 name: reminders
 description: Set a reminder that fires through the notch and a macOS notification at a time Leo gives, even when no run is active. Use for "remind me to X at 6pm", "in 20 minutes", "tomorrow at 9".
-when_to_use: "remind me", "set a reminder", "don't let me forget", "nudge me at"
+when_to_use: >-
+  "remind me", "set a reminder", "don't let me forget", "nudge me at"
 allowed-tools: mcp__jarvis__remind
 ---
 

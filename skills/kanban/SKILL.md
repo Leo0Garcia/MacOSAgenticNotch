@@ -1,7 +1,8 @@
 ---
 name: kanban
 description: Read and edit Leo's Kanban board (Kanban.md at the root of his Obsidian master vault). Use when Leo asks what's outstanding, or to add, move, finish or remove a task or card on his board.
-when_to_use: "what's on my board", "add X to my kanban", "move X to in progress", "mark X done", "take X off the board", "what have I got to do"
+when_to_use: >-
+  "what's on my board", "add X to my kanban", "move X to in progress", "mark X done", "take X off the board", "what have I got to do"
 allowed-tools: Bash(bun ${CLAUDE_SKILL_DIR}/kanban.ts *)
 ---
 
