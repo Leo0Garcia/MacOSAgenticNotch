@@ -14,7 +14,7 @@ import { deleteRunFile, deleteTranscript, finalize, type FinalizeInput } from ".
 import { buildSystemPrompt, checkClaudeVersion, linkSkills } from "./setup";
 import { type ActiveRun, clearActiveRun, ensureDirs, type LastRun, log, recentRun, saveActiveRun, saveLastRun, writeFileAtomic } from "./store";
 import { withContext } from "./context";
-import { lightsConfig, parseLights, smallTalk, statusSentence } from "./fast";
+import { lightsConfig, parseLights, quickCandidate, smallTalk, statusSentence } from "./fast";
 import { parseInstant, runInstant } from "./instant";
 import { type RunDetails, Timeline } from "./details";
 import { toolStatus } from "./status";
@@ -113,10 +113,11 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
 
   // The fast path speaks through a notch link too, so the caption shows as the audio starts.
   const fastWithCaptions = async (req: string) => {
-    if ((!lightsConfig(c.repo) && !smallTalk(req) && !parseInstant(req)) || c.env.JARVIS_FAST === "0") return null;
-    link = new NotchLink({ home: c.home, client: "launcher", sessionId: null, connectTimeoutMs: 300 });
+    if ((!lightsConfig(c.repo) && !smallTalk(req) && !parseInstant(req) && !quickCandidate(req)) || c.env.JARVIS_FAST === "0") return null;
+    const l = new NotchLink({ home: c.home, client: "launcher", sessionId: null, connectTimeoutMs: 300 });
+    link = l;
     speaker = new Speaker({ home: c.home, link, run: opts.speechRunner });
-    return tryFast(c, req, speak, emit, finish, now(), timeline);
+    return tryFast(c, req, speak, emit, finish, now(), timeline, (t) => l.quickAnswer(t));
   };
 
   const warm = opts.awaitRequest;
@@ -363,6 +364,7 @@ async function tryFast(
   finish: () => Promise<void>,
   at: number,
   timeline: Timeline,
+  quickAnswer: (text: string) => Promise<string | null> = async () => null,
 ): Promise<RunOutcome | null> {
   if (c.env.JARVIS_FAST === "0") return null;
   const hello = smallTalk(request);
@@ -397,7 +399,11 @@ async function tryFast(
   }
   const config = lightsConfig(c.repo);
   const cmd = config && parseLights(request, config);
-  if (!cmd) return null;
+  if (!cmd) {
+    // Small talk or a timeless question: Apple's on-device model, no Claude run.
+    const a = quickCandidate(request) ? await quickAnswer(request) : null;
+    return a ? done(a, `Quick reply: ${request.slice(0, 60)}`, "chat", "Apple on-device model") : null;
+  }
   const script = `${c.repo}/skills/lights/lights.ts`;
   const p = Bun.spawn([c.bunBin, script, ...cmd.args], { cwd: c.home, env: childEnv(c), stdout: "pipe", stderr: "pipe" });
   const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited]);

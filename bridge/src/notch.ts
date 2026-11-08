@@ -39,6 +39,7 @@ export class NotchLink {
   private connecting: Promise<boolean> | null = null;
   private waiters = new Map<string, (a: Answer | null) => void>();
   private played = new Map<string, () => void>();
+  private quick = new Map<string, (a: string | null) => void>();
   private canPlay = false;
   private closed = false;
 
@@ -111,6 +112,8 @@ export class NotchLink {
           }
         } else if (msg.type === "played") {
           this.played.get(msg.id)?.();
+        } else if (msg.type === "quick_answer_result") {
+          this.quick.get(msg.id)?.(msg.answer);
         } else if (msg.type === "error" && !settled) {
           done(false);
         }
@@ -120,6 +123,7 @@ export class NotchLink {
         done(false);
         if (this.ws === ws) this.ws = null;
         for (const done of this.played.values()) done();
+        for (const done of this.quick.values()) done(null);
         // Anyone waiting on an answer gets "no answer" rather than hanging.
         for (const [id, w] of this.waiters) {
           this.waiters.delete(id);
@@ -162,6 +166,21 @@ export class NotchLink {
         clearTimeout(timer);
         resolve(false);
       }
+    });
+  }
+
+  /** Apple's on-device model's answer from the app, or null (not one for it, no app, or too slow). */
+  async quickAnswer(text: string, timeoutMs = 2500): Promise<string | null> {
+    const id = `q-${process.pid}-${Date.now()}`;
+    if (!(await this.send({ type: "quick_answer", id, text }))) return null;
+    return new Promise((resolve) => {
+      const finish = (a: string | null) => {
+        clearTimeout(timer);
+        this.quick.delete(id);
+        resolve(a);
+      };
+      const timer = setTimeout(() => finish(null), timeoutMs);
+      this.quick.set(id, finish);
     });
   }
 

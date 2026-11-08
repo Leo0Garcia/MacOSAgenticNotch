@@ -32,6 +32,7 @@ export class FakeApp {
   server: Server;
   token = "test-token-" + Math.random().toString(36).slice(2);
   onAsk: ((m: Extract<ClientMessage, { type: "ask" }>, ws: ServerWebSocket<{ authed: boolean }>) => void) | null = null;
+  onQuick: ((text: string) => string | null) | null = null;
   private listeners: ((m: ClientMessage) => void)[] = [];
 
   constructor(public home: string, opts: { writeFile?: boolean; pid?: number; play?: boolean } = {}) {
@@ -66,6 +67,7 @@ export class FakeApp {
           app.received.push(m);
           for (const l of app.listeners) l(m);
           if (m.type === "ask") app.onAsk?.(m, ws);
+          if (m.type === "quick_answer") ws.send(JSON.stringify({ type: "quick_answer_result", id: m.id, answer: app.onQuick?.(m.text) ?? null }));
           if (m.type === "play") setTimeout(() => ws.send(JSON.stringify({ type: "played", id: m.id })), 20);
         },
       },

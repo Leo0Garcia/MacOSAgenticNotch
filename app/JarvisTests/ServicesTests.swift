@@ -19,6 +19,7 @@ import SwiftUI
         #expect(try NotchProtocol.decode(#"{"type":"run_event","session_id":"s","event":"denied","text":"no","rule":"no-money"}"#)
             == .runEvent(sessionId: "s", event: "denied", text: "no", keep: nil, summary: nil, rule: "no-money"))
         #expect(try NotchProtocol.decode(#"{"type":"play","id":"p","file":"/tmp/jarvis-say-1.wav"}"#) == .play(id: "p", file: "/tmp/jarvis-say-1.wav"))
+        #expect(try NotchProtocol.decode(#"{"type":"quick_answer","id":"q","text":"hi there"}"#) == .quickAnswer(id: "q", text: "hi there"))
         #expect(try NotchProtocol.decode(#"{"type":"something_new","x":1}"#) == .unknown(type: "something_new"))
     }
 
@@ -56,6 +57,8 @@ import SwiftUI
         #expect(NotchProtocol.encode(.answer(id: "q", text: "yes", via: .voice)) == #"{"id":"q","text":"yes","type":"answer","via":"voice"}"#)
         #expect(NotchProtocol.encode(.error(id: nil, message: "bad token")) == #"{"message":"bad token","type":"error"}"#)
         #expect(NotchProtocol.encode(.played(id: "p")) == #"{"id":"p","type":"played"}"#)
+        #expect(NotchProtocol.encode(.quickAnswerResult(id: "q", answer: "Lima.")) == #"{"answer":"Lima.","id":"q","type":"quick_answer_result"}"#)
+        #expect(NotchProtocol.encode(.quickAnswerResult(id: "q", answer: nil)) == #"{"answer":null,"id":"q","type":"quick_answer_result"}"#)
     }
 
     @Test func parsesLauncherEvents() {
