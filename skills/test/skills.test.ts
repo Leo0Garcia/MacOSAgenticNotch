@@ -21,6 +21,12 @@ describe.each(SKILLS)("%s", (name) => {
     expect(String(fm.description).length + String(fm.when_to_use ?? "").length).toBeLessThan(1536);
   });
 
+  test("frontmatter is valid YAML, or Claude Code silently skips the skill", () => {
+    const parsed = Bun.YAML.parse(md.split("---")[1]!) as Record<string, unknown>;
+    expect(parsed.name).toBe(name);
+    expect(typeof parsed.description).toBe("string");
+  });
+
   test("every script it references exists", () => {
     for (const m of md.matchAll(/\$\{CLAUDE_SKILL_DIR\}\/([\w./-]+\.ts)/g)) {
       expect(statSync(join(ROOT, name, m[1]!)).isFile()).toBe(true);
