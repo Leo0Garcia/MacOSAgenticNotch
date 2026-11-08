@@ -20,7 +20,7 @@ import { type RunDetails, Timeline } from "./details";
 import { toolStatus } from "./status";
 import { checkResult, retryPrompt, worthChecking } from "./checker";
 import { appendOutcome, noteCorrection, taskType, usedName } from "./outcomes";
-import { type Denial, initProblem, RunMonitor } from "./stream";
+import { DEFAULT_OPENER, type Denial, initProblem, RunMonitor } from "./stream";
 
 /** Lines the launcher prints on stdout, one JSON object each, for the notch app. */
 export type LauncherEvent =
@@ -234,6 +234,8 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   const monitor = new RunMonitor({
     onSentence: (s, kind) => {
       if (kind === "opener") markActive(s);
+      // A picked-up run has already said what it's doing.
+      if (opts.pickUp && s === DEFAULT_OPENER) return;
       speak(s, kind);
     },
     onFirstText: () => timeline.mark("firstText"),
