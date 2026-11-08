@@ -59,7 +59,10 @@ final class DashboardWindow: NSObject, NSWindowDelegate {
     }
 
     func windowDidChangeOcclusionState(_ notification: Notification) {
-        store.setVisible(window?.occlusionState.contains(.visible) == true)
+        let visible = window?.occlusionState.contains(.visible) == true
+        store.setVisible(visible)
+        // On screen, the dashboard shows the conversation; covered, minimised or closed, the notch does.
+        store.model.dashboardShowing = visible && window?.isMiniaturized == false
     }
 
     func windowDidEnterFullScreen(_ notification: Notification) { store.ambient = true }
@@ -67,6 +70,7 @@ final class DashboardWindow: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         store.setVisible(false)
+        store.model.dashboardShowing = false
         store.ambient = false
         if let m = escMonitor { NSEvent.removeMonitor(m) }
         escMonitor = nil

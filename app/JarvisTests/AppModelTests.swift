@@ -566,3 +566,22 @@ import Testing
         #expect(!m2.awaitingReply)
     }
 }
+
+
+@MainActor
+@Suite struct LiveLineTests {
+    @Test func theLiveLineFollowsTheConversation() {
+        let (m, _, l, _) = makeModel()
+        #expect(m.liveLine == nil)
+        m.hotkeyDown()
+        #expect(m.liveLine?.text == "Listening…")
+        m.updateTranscript(Transcript(confirmed: "what's the", hypothesis: "time"))
+        #expect(m.liveLine?.who == "You")
+        #expect(m.liveLine?.text == "what's the time")
+        m.listeningFinished("what's the time")
+        #expect(m.liveLine?.who == "Jarvis")
+        m.speechStarted(id: "a", text: "It's ten past four.")
+        #expect(m.liveLine?.text == "It's ten past four.")
+        _ = l
+    }
+}
