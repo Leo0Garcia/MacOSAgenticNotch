@@ -203,6 +203,15 @@ If the model call fails, the run is still logged with a "Librarian problem" line
 
 Known limits: AppleScript doesn't expand repeating Apple Calendar events, so a repeating event shows only on its first day (the calendar skill's reader can replace this probe once it exists). The timetable reader expands DAILY/WEEKLY rules, which covers university feeds.
 
+### Second brain
+
+`~/Jarvis-Memory` is also Leo's second brain (2026-11-08): `People/`, `Projects/` (each uni module, each Wix client, internships) and `Topics/` (concepts from the lecture notes), wikilinked to each other, with frontmatter `type`, `aliases`, `sources` (master-vault paths) and `updated`, a MOC per area (`People MOC.md`, `Projects MOC.md`, `Topics MOC.md`) and `Home.md` linking them. Notes summarise their master-vault sources in a few lines and link back with `obsidian://` links; Me.md, Log/ and Research/ stay as they are and are linked into.
+
+- **First pass:** `run.sh brain first-pass` (`launcher/src/brain.ts`) is a background Sonnet run, like the Moodle watch, with its normal tools under guard. It reads the master vault (skipping dot folders, Skills/ and attachments), Me.md, Log/, Research/, the week's timetable (`skills/calendar/ics.ts --days 7 --json`) and `~/Jarvis/state/deadlines.json`. Expect 20 to 40 minutes of background Sonnet work, a sizeable share of a day's usage; run it once.
+- **Nightly tidy:** `run.sh brain tidy`, a launchd agent at 03:30 (`com.jarvis.brain-tidy`, installed by `run.sh schedules install`), merges duplicates, fixes broken links, adds missing ones and refreshes the MOCs. It skips itself until `Home.md` exists. A few minutes of Sonnet a night.
+- **After each run:** the librarian picks People/Projects/Topics notes named in the run by name or frontmatter alias, and its prompt files facts into those notes with wikilinks rather than only into the log.
+- **Safety:** guard allows writes to the master vault, so the prompts say it is read only for these jobs, and `runBrain` snapshots the size and mtime of every master-vault file (dot folders aside) before and after; any difference is logged in `launcher.log` ("MASTER VAULT CHANGED DURING A BRAIN RUN") and raised as a notification. Leo editing his vault during a run also trips it. Before each run the memory vault is backed up to `~/Jarvis/backups/Jarvis-Memory-<date>.tar.gz` (first backup of the day kept); undo with `tar -xzf <backup> -C ~`.
+
 ## 6. Day-one capabilities (skills/)
 
 Each skill is `skills/<name>/SKILL.md` plus, where something must be exact, a Bun script beside it. Scripts do the deterministic parts (parsing, atomic writes, secrets); Claude does the reading and the talking. Each has a fixture-based test (`cd skills && bun test`). None calls the model or a live service in tests. Details: `skills/README.md`.
