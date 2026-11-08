@@ -1,7 +1,8 @@
 ---
 name: calendar
 description: Leo's university timetable (iCal subscription, read only) and his personal Apple Calendar (read, and add events). Use for "what's on today", "when's my next lecture", "am I free tomorrow afternoon", "add X to my calendar", "put a weekly meeting in".
-when_to_use: "timetable", "lectures", "labs", "what's on", "am I free", "my calendar", "my schedule", "next class", "add to my calendar", "book in", "repeating event"
+when_to_use: >-
+  "timetable", "lectures", "labs", "what's on", "am I free", "my calendar", "my schedule", "next class", "add to my calendar", "book in", "repeating event"
 allowed-tools: Bash(bun ${CLAUDE_SKILL_DIR}/ics.ts *), Bash(bun ${CLAUDE_SKILL_DIR}/apple.ts *)
 ---
 

@@ -212,6 +212,33 @@ import SwiftUI
         ])
     }
 
+    @Test func launcherListsAndResumesInterruptedRuns() async throws {
+        let repo = tempDir()
+        let launcherDir = repo.appendingPathComponent("launcher")
+        try FileManager.default.createDirectory(at: launcherDir, withIntermediateDirectories: true)
+        let script = """
+        #!/bin/sh
+        case "$1" in
+          interrupted) printf '%s\\n' '[{"sessionId":"s1","pid":1,"request":"tidy my downloads","startedAt":1},{"sessionId":"s2","pid":1,"request":"check Moodle","startedAt":2,"background":true}]' ;;
+          resume) printf '%s\\n' "{\\"event\\":\\"state\\",\\"state\\":\\"working\\",\\"sessionId\\":\\"$2\\"}" ;;
+          *) exit 64 ;;
+        esac
+        """
+        try script.write(to: launcherDir.appendingPathComponent("run.sh"), atomically: true, encoding: .utf8)
+        let launcher = Launcher(paths: Paths(home: repo.appendingPathComponent("home"), repo: repo))
+        launcher.keepWarm = false
+        #expect(await launcher.interrupted() == [
+            .init(sessionId: "s1", request: "tidy my downloads", background: nil),
+            .init(sessionId: "s2", request: "check Moodle", background: true),
+        ])
+        var events: [LauncherEvent] = []
+        var code: Int32?
+        try launcher.resume("s1", onEvent: { events.append($0) }, exited: { code = $0 })
+        for _ in 0..<100 where code == nil { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(code == 0)
+        #expect(events == [.state("working", sessionId: "s1")])
+    }
+
     @Test func missingLauncherThrows() {
         let launcher = Launcher(paths: Paths(home: tempDir(), repo: tempDir()))
         #expect(throws: LauncherError.self) { try launcher.run("x", onEvent: { _ in }, exited: { _ in }) }

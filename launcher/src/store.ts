@@ -66,6 +66,8 @@ export interface ActiveRun {
   startedAt: number;
   /** The run's opening line, then its latest step. */
   doing?: string;
+  /** A scheduled run nobody is listening to, resumed quietly too. */
+  background?: boolean;
 }
 
 export function saveActiveRun(c: Config, r: ActiveRun): void {
@@ -85,7 +87,7 @@ const alive = (pid: number) => {
   }
 };
 
-/** Runs still working, oldest first. Files left by a launcher that died are removed. */
+/** Runs still working, oldest first. Files left by a launcher that died move to interrupted/. */
 export function activeRuns(c: Config, except?: string): ActiveRun[] {
   const dir = paths(c).active;
   let files: string[];
@@ -98,7 +100,10 @@ export function activeRuns(c: Config, except?: string): ActiveRun[] {
   for (const f of files) {
     try {
       const r = JSON.parse(readFileSync(`${dir}/${f}`, "utf8")) as ActiveRun;
-      if (!alive(r.pid)) rmSync(`${dir}/${f}`, { force: true });
+      if (!alive(r.pid)) {
+        mkdirSync(paths(c).interrupted, { recursive: true });
+        renameSync(`${dir}/${f}`, `${paths(c).interrupted}/${f}`);
+      }
       else if (r.sessionId !== except) out.push(r);
     } catch {}
   }

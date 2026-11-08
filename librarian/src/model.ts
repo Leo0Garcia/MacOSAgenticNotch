@@ -38,10 +38,22 @@ export function librarianArgs(cfg: Config): string[] {
 
 export type ModelCall = (cfg: Config, input: string) => Promise<ModelOutput>;
 
-export const callModel: ModelCall = async (cfg, input) => {
+export const callModel: ModelCall = async (cfg, input) => validateOutput(await structuredOutput(cfg, librarianArgs(cfg), input));
+
+/** The same call with a different task, schema and system prompt. */
+export function withTask(args: string[], task: string, schema: object, systemPrompt: string): string[] {
+  const out = [...args];
+  out[1] = task;
+  out[out.indexOf("--json-schema") + 1] = JSON.stringify(schema);
+  const i = out.indexOf("--system-prompt-file");
+  out.splice(i, 2, "--system-prompt", systemPrompt);
+  return out;
+}
+
+export async function structuredOutput(cfg: Config, args: string[], input: string): Promise<unknown> {
   const cwd = join(librarianDir(cfg), "work");
   await mkdir(cwd, { recursive: true });
-  const proc = Bun.spawn([cfg.claudeBin, ...librarianArgs(cfg)], {
+  const proc = Bun.spawn([cfg.claudeBin, ...args], {
     cwd,
     env: { ...process.env, CLAUDE_CODE_SKIP_PROMPT_HISTORY: "1", JARVIS_REPO: cfg.repo },
     stdin: new TextEncoder().encode(input),
@@ -72,5 +84,5 @@ export const callModel: ModelCall = async (cfg, input) => {
     throw new Error(`claude run failed: ${String(result.subtype ?? `exit ${code}`)}`);
   }
   if (result.structured_output === undefined) throw new Error("claude returned no structured_output");
-  return validateOutput(result.structured_output);
-};
+  return result.structured_output;
+}

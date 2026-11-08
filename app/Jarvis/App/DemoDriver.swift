@@ -143,5 +143,7 @@ final class DemoLauncher: LauncherRunning {
     func exit(model: AppModel, _ code: Int32) { exited?(code) }
     func open(sessionId: String) {}
     func hushAll() {}
+    func interrupted() async -> [InterruptedRun] { [] }
+    func resume(_ sessionId: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws {}
     func cancelAll() {}
 }

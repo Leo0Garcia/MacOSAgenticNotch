@@ -7,7 +7,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathS
 import { join } from "node:path";
 import { finalize } from "../src/finalize";
 import { type LauncherEvent, run } from "../src/run";
-import { GUARD_BANK, init, jsonl, result, runs, structured, toolResult, toolUse } from "./fixtures";
+import { GUARD_BANK, init, jsonl, result, runs, structured, text, toolResult, toolUse } from "./fixtures";
 import { makeWorld } from "./helpers";
 
 const w = makeWorld();
@@ -326,4 +326,39 @@ test("stale per-run MCP configs from killed runs are swept", async () => {
   sweepStaleMcpConfigs(dir);
   expect(existsSync(old)).toBe(false);
   expect(existsSync(fresh)).toBe(true);
+});
+
+test("the checker: a run that did something is checked, and retried once (resumed) when it falls short", async () => {
+  const kanban = jsonl([
+    init(),
+    toolUse("toolu_k", "Bash", { command: "bun kanban.ts add 'Buy chalk'" }),
+    toolResult("toolu_k", "added"),
+    text(["Added buy chalk to your Kanban."]),
+    structured(false, "Added a Kanban card"),
+    result({ structured: { keep: false, summary: "Added a Kanban card" } }),
+  ]);
+  const verdicts = [{ ok: false, problem: "The card went into Done, not Not Started." }];
+  const checked: string[][] = [];
+  const checkRunner = async (cmd: string[]) => {
+    checked.push(cmd);
+    const v = verdicts.shift() ?? { ok: true };
+    return { code: 0, stdout: JSON.stringify({ is_error: false, structured_output: v }), stderr: "" };
+  };
+  w.setFixture(kanban);
+  const events: LauncherEvent[] = [];
+  const finals: FinalizeInput[] = [];
+  w.said.length = 0;
+  const out = await run(w.config({ JARVIS_CHECK: "1" }), "add buy chalk to my kanban board please", { emit: (e) => events.push(e), finalize: async (f) => void finals.push(f), speechRunner: w.speechRunner, checkRunner });
+  expect(checked).toHaveLength(1); // the retry isn't checked again
+  // The retry logs its own line; the outer run's "retried" comes last, so it wins.
+  const outcome = JSON.parse(readFileSync(join(jarvis, "state", "outcomes.jsonl"), "utf8").trim().split("\n").at(-1)!);
+  expect(outcome).toMatchObject({ sessionId: out.sessionId, type: "other", outcome: "retried", problem: "The card went into Done, not Not Started." });
+  expect(checked[0]!.join(" ")).toContain("Bash {\"command\":\"bun kanban.ts add 'Buy chalk'\"} → added");
+  expect(w.said).toContain("Hang on, that's not quite right. Fixing it.");
+  const retry = w.lastCall().argv;
+  expect(retry[1]).toStartWith("A check of your work found a problem: The card went into Done, not Not Started.");
+  expect(retry[retry.indexOf("--resume") + 1]).toBe(out.sessionId);
+  expect(events.filter((e) => e.event === "done")).toHaveLength(1); // only the retry reports done
+  expect(finals).toHaveLength(1); // finalized once, by the outer run
+  expect(events.some((e) => e.event === "status" && e.text === "Checking the result")).toBe(true);
 });

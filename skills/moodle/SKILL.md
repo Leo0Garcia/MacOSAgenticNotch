@@ -1,7 +1,8 @@
 ---
 name: moodle
 description: Read Leo's Southampton ECS Moodle (moodle.ecs.soton.ac.uk) through Claude in Chrome with his logged-in session - modules, deadlines, announcements. Strictly read only; never submits, uploads, enrols or posts.
-when_to_use: "what's due", "Moodle deadlines", "any announcements", "what's on Moodle for COMP2211", "when is the coursework due"
+when_to_use: >-
+  "what's due", "Moodle deadlines", "any announcements", "what's on Moodle for COMP2211", "when is the coursework due"
 allowed-tools: Bash(bun ${CLAUDE_SKILL_DIR}/page.ts *)
 ---
 
