@@ -41,6 +41,8 @@ enum Snapshots {
         func run(_ request: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws {}
         func open(sessionId: String) {}
         func hushAll() {}
+        func interrupted() async -> [InterruptedRun] { [] }
+        func resume(_ sessionId: String, onEvent: @escaping @MainActor (LauncherEvent) -> Void, exited: @escaping @MainActor (Int32) -> Void) throws {}
         func cancelAll() {}
     }
 
@@ -66,6 +68,38 @@ enum Snapshots {
             write(expanded(m, env), to: dir.appendingPathComponent("\(name).png"))
             write(pill(m, env), to: dir.appendingPathComponent("\(name)-pill.png"))
         }
+        let store = dashboardStore(level: level)
+        for ambient in [false, true] {
+            store.ambient = ambient
+            write(DashboardView(store: store, hotkeyLabel: "⌥ Space") {}.frame(width: 1320, height: 840),
+                  to: dir.appendingPathComponent(ambient ? "dashboard-ambient.png" : "dashboard.png"))
+        }
+    }
+
+    /// The dashboard with two launcher runs, the app's own run waiting on a
+    /// question, and a day's worth of Today (the orb itself doesn't render offscreen).
+    private static func dashboardStore(level: AudioLevel) -> DashboardStore {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-snapshots-\(getpid())")
+        let fm = FileManager.default
+        try? fm.createDirectory(at: home.appendingPathComponent("state/active"), withIntermediateDirectories: true)
+        try? fm.createDirectory(at: home.appendingPathComponent("reminders"), withIntermediateDirectories: true)
+        let ms = Date().timeIntervalSince1970 * 1000
+        let iso = ISO8601DateFormatter()
+        func put(_ path: String, _ json: String) { try? Data(json.utf8).write(to: home.appendingPathComponent(path)) }
+        put("state/active/a.json", #"{"sessionId":"a","pid":\#(getpid()),"request":"Notes for COMP2311 lecture 12","startedAt":\#(ms - 340_000),"doing":"Reading the lecture 12 slides"}"#)
+        put("state/active/b.json", #"{"sessionId":"b","pid":\#(getpid()),"request":"Fix the Amra Skincare footer","startedAt":\#(ms - 95_000),"doing":"Editing the footer"}"#)
+        put("state/deadlines.json", #"{"deadlines":[{"title":"Coursework 2","course":"COMP2312","due":"\#(iso.string(from: Date().addingTimeInterval(3 * 86400)))"}]}"#)
+        put("reminders/r.json", #"{"id":"r","text":"Call Sue","at":"\#(iso.string(from: Date().addingTimeInterval(3600)))"}"#)
+        let m = AppModel(scheduler: ManualScheduler())
+        m.launcher = NoLauncher()
+        m.submit("Apply to the Oracle internship")
+        m.received(.ask(id: "q", question: "Oracle asks about visa sponsorship. Do you need it?", options: ["No", "Yes"], timeoutMs: 60000, sessionId: nil), from: 1)
+        let store = DashboardStore(model: m, paths: Paths(home: home, repo: home), micLevel: level, voiceLevel: AudioLevel())
+        store.refresh()
+        let day = Calendar.current.startOfDay(for: Date())
+        store.events = [TodayEvent(title: "COMP2311 lecture", start: day.addingTimeInterval(9 * 3600), end: day.addingTimeInterval(23.9 * 3600), allDay: false, location: "B32"),
+                        TodayEvent(title: "COMP2321 lab", start: day.addingTimeInterval(14 * 3600), end: day.addingTimeInterval(23.95 * 3600), allDay: false, location: nil)]
+        return store
     }
 
     private static func cases(env: NotchEnvironment) -> [(String, AppModel)] {

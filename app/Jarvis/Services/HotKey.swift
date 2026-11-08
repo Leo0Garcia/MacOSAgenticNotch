@@ -15,6 +15,8 @@ final class HotKeyCenter {
         static let optionSpace = Combo(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey))
         static let optionShiftSpace = Combo(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey | shiftKey))
         static let escape = Combo(keyCode: UInt32(kVK_Escape), modifiers: 0)
+        /// Opens the dashboard.
+        static let optionShiftJ = Combo(keyCode: UInt32(kVK_ANSI_J), modifiers: UInt32(optionKey | shiftKey))
 
         var label: String {
             var s = ""
@@ -25,6 +27,7 @@ final class HotKeyCenter {
             switch Int(keyCode) {
             case kVK_Space: s += " Space"
             case kVK_Escape: s += "Esc"
+            case kVK_ANSI_J: s += "J"
             default: s += "key \(keyCode)"
             }
             return s
