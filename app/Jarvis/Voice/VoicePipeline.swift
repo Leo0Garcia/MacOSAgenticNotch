@@ -74,6 +74,17 @@ final class VoicePipeline: VoiceInput {
         }
     }
 
+    /// Names Whisper mishears, as a decoding hint for the final transcription:
+    /// on a 373-clip test it cut word errors from 6.7% to 3.0% and fixed
+    /// "Chrononight" (0/32 to 32/32) and "Amra" (13/40 to 40/40), for about
+    /// 160 ms. Clips under 1.2 s (one-word commands) skip it: with it, "Stop."
+    /// once came out as "Store.". Only add a word here when it's actually misheard.
+    nonisolated static let nameHint = "Jarvis, Amra, Chrononight, Sue, Kanban, COMP2311."
+
+    nonisolated static func hint(for sampleCount: Int) -> String? {
+        Double(sampleCount) / AudioCapture.sampleRate >= 1.2 ? nameHint : nil
+    }
+
     func finish() async -> String {
         loop?.cancel()
         loop = nil
@@ -85,7 +96,7 @@ final class VoicePipeline: VoiceInput {
             while case .loading = model?.speechModel { try? await Task.sleep(for: .milliseconds(100)) }
         }
         let t0 = Date()
-        guard let text = try? await transcriber.transcribe(samples) else { return "" }
+        guard let text = try? await transcriber.transcribe(samples, prompt: Self.hint(for: samples.count)) else { return "" }
         AppLog.write(String(format: "final transcription of %.1fs audio took %.0f ms", Double(samples.count) / AudioCapture.sampleRate, Date().timeIntervalSince(t0) * 1000))
         publish(text)
         return text

@@ -34,6 +34,11 @@ import SwiftUI
         #expect(Appearance.hex(Color(hex: 0x5AC8FA)) == 0x5AC8FA)
     }
 
+    @Test func longRequestsGetTheNameHintShortCommandsDont() {
+        #expect(VoicePipeline.hint(for: Int(AudioCapture.sampleRate * 2)) == VoicePipeline.nameHint)
+        #expect(VoicePipeline.hint(for: Int(AudioCapture.sampleRate * 0.8)) == nil)
+    }
+
     @Test func copiedPasswordsAreNeverSent() {
         #expect(ComputerContext.isConcealed([.string, .init("org.nspasteboard.ConcealedType")]))
         #expect(!ComputerContext.isConcealed([.string]))
