@@ -82,15 +82,6 @@ canvas { display: block; width: 100%; height: 100%; }
   }
   size(); window.addEventListener('resize', size);
 
-  function glowTexture() {
-    const c = document.createElement('canvas'); c.width = c.height = 128;
-    const g = c.getContext('2d'); const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.25, 'rgba(255,255,255,0.55)');
-    grd.addColorStop(0.6, 'rgba(255,255,255,0.12)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
-    return new THREE.CanvasTexture(c);
-  }
-  const GLOW = glowTexture();
 
   // Particles: three shells.
   const N = 2400, pos = new Float32Array(N * 3), seed = new Float32Array(N);
@@ -114,13 +105,25 @@ canvas { display: block; width: 100%; height: 100%; }
       }`,
     fragmentShader: `
       uniform vec3 uColor, uColor2; varying float vA; varying float vMix;
-      void main(){ float d = length(gl_PointCoord-0.5); float a = smoothstep(0.5, 0.0, d);
+      void main(){ float d = length(gl_PointCoord-0.5); float a = 1.0 - smoothstep(0.0, 0.5, d);
         vec3 c = mix(uColor, uColor2, step(0.78, vMix)); gl_FragColor = vec4(c*(0.7+a), a*vA); }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const pts = new THREE.Points(g, mat); scene.add(pts);
 
-  const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffffff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+  // The core glow, drawn analytically (a textured sprite here showed speckles in WebKit).
+  const coreMat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(1, 1, 1) }, uOpacity: { value: 0.85 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `uniform vec3 uColor; uniform float uOpacity; varying vec2 vUv;
+      void main(){ float d = clamp(length(vUv-0.5)*2.0, 0.0, 1.0);
+        float g = 1.0 - smoothstep(0.0, 1.0, d); g = g*g*(0.6 + 0.4*(1.0 - smoothstep(0.0, 0.35, d)));
+        gl_FragColor = vec4(uColor*g*uOpacity, 1.0); }`,
+    transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+  });
+  const core = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), coreMat);
+  core.material.color = coreMat.uniforms.uColor.value;
+  Object.defineProperty(core.material, 'opacity', { get: () => coreMat.uniforms.uOpacity.value, set: (v) => { coreMat.uniforms.uOpacity.value = v; } });
   core.scale.set(1.6, 1.6, 1); scene.add(core);
 
   // Agent lights: one per running agent, each on its own tilted orbit.
@@ -129,7 +132,15 @@ canvas { display: block; width: 100%; height: 100%; }
   ag.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX * 3), 3));
   ag.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX * 3), 3));
   ag.setDrawRange(0, 0);
-  const agPts = new THREE.Points(ag, new THREE.PointsMaterial({ size: 0.13, map: GLOW, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  // Drawn in a shader too: textured points speckle in WebKit like the sprite did.
+  const agPts = new THREE.Points(ag, new THREE.ShaderMaterial({
+    uniforms: { uPx: { value: renderer.getPixelRatio() } },
+    vertexShader: `attribute vec3 color; uniform float uPx; varying vec3 vC;
+      void main(){ vC = color; vec4 mv = modelViewMatrix*vec4(position,1.0); gl_Position = projectionMatrix*mv; gl_PointSize = uPx*28.0*(4.2/-mv.z); }`,
+    fragmentShader: `varying vec3 vC; void main(){ float d = length(gl_PointCoord-0.5)*2.0; float g = 1.0 - smoothstep(0.0, 1.0, d); g = g*g;
+      gl_FragColor = vec4(vC*g, 1.0); }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
   scene.add(agPts);
   const orbit = (i) => [i * 2.399, ((i * 0.618) % 1 - 0.5) * 2.4, 0.6 + (i % 3) * 0.2];
   const AMBER = new THREE.Color('#F5B547'), WHITE = new THREE.Color('#ffffff'), tmp = new THREE.Color();
