@@ -1,6 +1,6 @@
 # app/
 
-The Jarvis notch app: Swift 6 / SwiftUI on DynamicNotchKit, macOS 15+. Spec: docs/DESIGN.md section 7 (what it does) and docs/NOTCH-DESIGN.md (how it looks and moves: Aurora, the pixel character, the Large 520 × 360 layout collapsing to the 289 × 32 pill).
+The Jarvis notch app: Swift 6 / SwiftUI on DynamicNotchKit, macOS 15+. Spec: docs/DESIGN.md section 7 (what it does) and docs/NOTCH-DESIGN.md (how it looks and moves: Aurora, the Nebula orb, the Large 520 × 360 layout collapsing to the 289 × 32 pill).
 
 ```
 cd app && xcodebuild -scheme Jarvis build          # the project is generated from project.yml (xcodegen) and committed

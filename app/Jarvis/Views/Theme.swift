@@ -27,7 +27,7 @@ enum Theme {
     static let bodyPadding = EdgeInsets(top: 12, leading: 22 - dnkInset, bottom: 22 - dnkInset, trailing: 22 - dnkInset)
     /// Width our expanded view lays out at, so the visible shape is 520 wide.
     static var contentWidth: CGFloat { expandedWidth - 2 * dnkInset }
-    static let characterColumn: CGFloat = 56
+    static let orbColumn: CGFloat = 56
     static let columnGap: CGFloat = 18
 
     // Section 4.
@@ -40,8 +40,6 @@ enum Theme {
     static let step = Font.system(size: 13, weight: .regular)
     static let button = Font.system(size: 13, weight: .medium)
 
-    static let bodyColor = Color(hex: 0xD97757)
-    static let shadeColor = Color(hex: 0xB8613F)
     static let success = Color(hex: 0x30D158)
     static let attention = Color(hex: 0xFF9F0A)
     static let attentionText = Color(hex: 0xFFB340)
