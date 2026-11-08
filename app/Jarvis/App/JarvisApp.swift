@@ -9,7 +9,7 @@ struct JarvisApp: App {
 
     var body: some Scene {
         MenuBarExtra("Jarvis", systemImage: "waveform") {
-            MenuContent(model: delegate.model)
+            MenuContent(model: delegate.model, openDashboard: { delegate.showDashboard() })
         }
         Settings {
             SettingsView(voice: delegate.voiceSettings, model: delegate.model, socket: delegate.speechSocket)
@@ -19,11 +19,13 @@ struct JarvisApp: App {
 
 private struct MenuContent: View {
     let model: AppModel
+    var openDashboard: () -> Void
 
     var body: some View {
         Text("Hold ⌥ Space and talk")
         Text(speechStatus)
         Divider()
+        Button("Dashboard", action: openDashboard)
         SettingsLink { Text("Settings…") }
             .keyboardShortcut(",")
         Button("Quit Jarvis") { NSApp.terminate(nil) }
