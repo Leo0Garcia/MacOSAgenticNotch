@@ -1,7 +1,8 @@
 ---
 name: slack-digest
 description: Read a Slack channel, thread or DM with a named person through Leo's Slack connector, summarise it, and pull Leo's to-dos into his Jarvis memory vault. Read only; never sends, schedules, reacts or posts.
-when_to_use: "what's happening in #amra", "catch me up on Slack", "what did Sue say", "summarise that thread", "any to-dos for me in Slack"
+when_to_use: >-
+  "what's happening in #amra", "catch me up on Slack", "what did Sue say", "summarise that thread", "any to-dos for me in Slack"
 allowed-tools: Bash(bun ${CLAUDE_SKILL_DIR}/todos.ts *)
 ---
 
