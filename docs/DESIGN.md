@@ -177,6 +177,7 @@ Projects/<name>.md     # frontmatter: status, repos, people, slack_channels, cla
 Projects/_template.md
 People/<name>.md
 Log/YYYY-MM-DD.md
+Lessons.md             # written by the librarian script only (section 5, Learning from outcomes)
 ```
 
 Projects/ is the registry: "Jarvis, register the Amra project, Slack #amra, people Sue and Ellen" creates `Projects/Amra.md` and missing `People/` notes from the template.
@@ -196,9 +197,12 @@ Then the script appends the run to `Log/YYYY-MM-DD.md` and regenerates `Index.md
 - Live snapshot: frontmost apps (`lsappinfo`, which needs no Accessibility or Automation permission), running Claude sessions (`claude agents --json`), today's Apple Calendar events (`osascript`, read-only; needs Calendar access, which macOS asks Leo for once), today's timetable from the iCal cache `~/Jarvis/cache/uni.ics` (the calendar skill owns fetching it)
 - Open Needs Leo items across active projects
 - Today's runs from the log
+- Lessons from past runs (from `Lessons.md`, capped at 2 KB)
 - Active projects (status != archived), last so a long registry is what gets truncated (cap 16 KB)
 
 If the model call fails, the run is still logged with a "Librarian problem" line, the job moves to `~/Jarvis/librarian/failed/` (`cli.ts retry` re-queues it), and the briefing says so. `cli.ts briefing` rebuilds the briefing without a run (e.g. at app start); `cli.ts init-vault` copies `vault-template/` into `~/Jarvis-Memory` without overwriting. If `briefing.md` is missing or stale, the launcher still runs with whatever is there.
+
+**Learning from outcomes (Leo, 2026-11-08).** After every Claude run (not the instant, lights or quick-reply paths) the launcher appends a line to `~/Jarvis/state/outcomes.jsonl`: time, session, task type, outcome (`done`, `failed`, `retried` by the checker, `blocked` by guard, `corrected`), the clipped request, summary and problem. The task type comes from what the run used, with no model call: its skills (the Skill tool or a `skills/<name>/` script) first, then its main tools (kanban, calendar, moodle, notes, lights, reminders, slack, email, browser, web research, code, else other). If Leo's next request comes within two minutes and reads like a correction ("no", "that's wrong", "I said", "undo that"), a `corrected` line for the earlier session is appended; the file is never rewritten. After each job the librarian looks for task types with two or more failed, retried or corrected runs in the last 30 days that it hasn't learned from (`~/Jarvis/librarian/learned.json`), and asks Haiku (same no-tools call, its own schema and prompt) for one short lesson per type. Lessons go into `Lessons.md`, one section per type, newest first, deduplicated, at most five each; the filing model can't edit it.
 
 Known limits: AppleScript doesn't expand repeating Apple Calendar events, so a repeating event shows only on its first day (the calendar skill's reader can replace this probe once it exists). The timetable reader expands DAILY/WEEKLY rules, which covers university feeds.
 

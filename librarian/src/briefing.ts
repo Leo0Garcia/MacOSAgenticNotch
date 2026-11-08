@@ -11,9 +11,11 @@ import { getFront, itemText, parseNote, sectionItems, stripFrontmatter } from ".
 import type { Snapshot } from "./snapshot";
 import { hhmm, isoDate } from "./time";
 import { readProjects } from "./vault";
+import { LESSONS_NOTE, parseLessons } from "./lessons";
 
 export const MAX_BRIEFING = 16_000;
 const MAX_ME = 3_000;
+const MAX_LESSONS = 2_000;
 
 function list(v: unknown): string {
   if (Array.isArray(v)) return v.join(", ");
@@ -92,6 +94,12 @@ export async function buildBriefing(cfg: Config, snap: Snapshot): Promise<string
   const entries = log ? log.split("\n").filter((l) => /^- \d\d:\d\d /.test(l)) : [];
   out.push("## Earlier today", "");
   out.push(...(entries.length ? entries.slice(-8) : ["No runs yet today."]), "");
+
+  const lessons = [...parseLessons((await readIfExists(join(cfg.memory, LESSONS_NOTE))) ?? "")].filter(([, l]) => l.length);
+  if (lessons.length) {
+    out.push("## Lessons from past runs", "", "What the librarian learned from runs that failed, were retried or that Leo corrected, by task type:", "");
+    out.push(lessons.flatMap(([type, l]) => l.map((x) => `- ${type}: ${x}`)).join("\n").slice(0, MAX_LESSONS), "");
+  }
 
   // Projects go last so a long registry is what gets truncated, not the snapshot.
   out.push("## Active projects", "");

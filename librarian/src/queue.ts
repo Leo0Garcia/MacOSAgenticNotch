@@ -10,6 +10,7 @@ import { librarianDir, type Config } from "./config";
 import { atomicWrite } from "./fsutil";
 import { appendLog } from "./log";
 import { callModel, type ModelCall } from "./model";
+import { callLessons, learnLessons, type LessonCall } from "./lessons";
 import { applyOps, type ModelOutput } from "./ops";
 import { defaultRunner, takeSnapshot, type Runner } from "./snapshot";
 import { condenseStream } from "./transcript";
@@ -101,9 +102,11 @@ export async function logLine(cfg: Config, line: string): Promise<void> {
 export interface Deps {
   model: ModelCall;
   run: Runner;
+  /** Writes lessons from repeated failures; defaults to the same claude call path. */
+  lessons?: LessonCall;
 }
 
-export const defaultDeps: Deps = { model: callModel, run: defaultRunner };
+export const defaultDeps: Deps = { model: callModel, run: defaultRunner, lessons: callLessons };
 
 export function modelInput(cfg: Config, job: Job, ctx: Awaited<ReturnType<typeof relevantNotes>>): string {
   const notes = ctx.notes.map((n) => `<note path="${n.rel}">\n${n.text}\n</note>`).join("\n\n");
@@ -217,6 +220,12 @@ export async function drain(cfg: Config, deps: Deps = defaultDeps): Promise<bool
           cfg,
           `job=${job?.id ?? file} session=${job?.sessionId ?? "-"} ${result.ok ? "ok" : `FAILED ${result.problem}`} applied=${result.applied} skipped=${result.skipped}`,
         );
+        try {
+          const learned = await learnLessons(cfg, deps.lessons);
+          if (learned.length) await logLine(cfg, `lessons for ${learned.join(", ")}`);
+        } catch (err) {
+          await logLine(cfg, `lessons failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
         try {
           await refresh(cfg, deps);
         } catch (err) {
