@@ -129,11 +129,24 @@ struct NotchButtonStyle: ButtonStyle {
             .foregroundStyle(primary ? Theme.primaryButtonText : .white)
             .padding(.horizontal, 15)
             .frame(height: 30)
-            .background(
-                Capsule().fill(primary
-                    ? Theme.attention.opacity(hover || configuration.isPressed ? 0.34 : 0.24)
-                    : Color.white.opacity(hover || configuration.isPressed ? 0.2 : 0.12)))
+            // Glass over the black pill: a lit rim on a dark capsule, still black around it.
+            .liquidGlass(primary
+                    ? Theme.attention.opacity(hover || configuration.isPressed ? 0.4 : 0.3)
+                    : Color.white.opacity(hover || configuration.isPressed ? 0.14 : 0.06), interactive: true, in: .capsule)
             .contentShape(Capsule())
             .onHover { hover = $0 }
+    }
+}
+
+extension View {
+    /// Liquid Glass, tinted. Offscreen (snapshots, warm-up) ImageRenderer drops glass
+    /// views and everything in them, so there it draws a flat stand-in with the same tint.
+    @MainActor @ViewBuilder
+    func liquidGlass(_ tint: Color? = nil, interactive: Bool = false, enabled: Bool = true, in shape: some Shape) -> some View {
+        if OffscreenRender.active {
+            background { if enabled { shape.fill(tint ?? .white.opacity(0.07)).overlay(shape.stroke(.white.opacity(0.14))) } }
+        } else {
+            glassEffect(enabled ? .regular.tint(tint).interactive(interactive) : .identity, in: shape)
+        }
     }
 }

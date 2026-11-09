@@ -627,7 +627,7 @@ struct SavedChipStyle: ButtonStyle {
             .foregroundStyle(.white.opacity(0.85))
             .padding(.horizontal, 12)
             .frame(height: 28)
-            .background(Capsule().fill(.white.opacity(hover ? 0.16 : 0.1)))
+            .liquidGlass(.white.opacity(hover ? 0.12 : 0.05), interactive: true, in: .capsule)
             .contentShape(Capsule())
             .onHover { hover = $0 }
     }
