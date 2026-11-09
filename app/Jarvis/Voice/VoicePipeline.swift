@@ -90,7 +90,10 @@ final class VoicePipeline: VoiceInput {
         loop = nil
         let samples = simulating ? capture.buffer.snapshot() : capture.stop()
         simulating = false
-        guard samples.count >= Self.minSamples else { return "" }
+        guard samples.count >= Self.minSamples else {
+            AppLog.write("push-to-talk captured only \(samples.count) samples")
+            return ""
+        }
         if !ready {
             // First press before the model finished loading: wait for it.
             while case .loading = model?.speechModel { try? await Task.sleep(for: .milliseconds(100)) }

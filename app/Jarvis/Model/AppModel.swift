@@ -321,6 +321,7 @@ final class AppModel {
             if let preroll { try voice?.start(preroll: preroll) } else { try voice?.start() }
         } catch {
             listenProblem = error.localizedDescription
+            AppLog.write("couldn't start listening: \(error.localizedDescription)")
         }
         show(.listening, size: .expanded)
     }
