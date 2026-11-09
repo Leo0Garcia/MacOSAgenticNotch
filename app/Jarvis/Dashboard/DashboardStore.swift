@@ -15,6 +15,7 @@ final class DashboardStore {
     var events: [TodayEvent] = []
     private(set) var deadlines: [Deadline] = []
     private(set) var reminders: [ReminderEntry] = []
+    private(set) var queue: [QueueItem] = []
     /// Ticks with the poll, so elapsed times and the clock move without their own timers.
     private(set) var now = Date()
     /// Fullscreen, side panels faded back (Esc or the button leaves it).
@@ -27,6 +28,8 @@ final class DashboardStore {
     @ObservationIgnored let micLevel: AudioLevel
     @ObservationIgnored let voiceLevel: AudioLevel
     @ObservationIgnored var calendarToday: () async -> [NotchProtocol.CalendarEvent] = { [] }
+    /// `run.sh queue <action> <id>`; the launcher owns queue.json.
+    @ObservationIgnored var queueAction: (QueueItem.Action, String) -> Void = { _, _ in }
     @ObservationIgnored private var poll: Task<Void, Never>?
     @ObservationIgnored private var ticks = 0
     @ObservationIgnored private var todayLoadedAt = Date.distantPast
@@ -59,6 +62,7 @@ final class DashboardStore {
         let active = ActiveRuns.read(dir: paths.home.appendingPathComponent("state/active"))
         cards = Agents.cards(active: active, current: model.run, currentRunning: model.runActive, needsYou: model.panel.isNeedsYou, now: now,
                              open: OpenTask.read(file: tasksFile))
+        queue = QueueItem.read(file: paths.home.appendingPathComponent("state/queue.json"))
         stages = Dictionary(cards.map { ($0.id, Agents.record($0.stage, into: stages[$0.id] ?? [], at: now)) }, uniquingKeysWith: { a, _ in a })
         if ticks % 5 == 0 {
             // Recent is work an agent did: Claude runs only, not instant replies or reminders.
@@ -94,6 +98,37 @@ final class DashboardStore {
     func dismissTask(_ id: String) {
         OpenTask.remove(id, file: tasksFile)
         refresh()
+    }
+
+    /// Leo approved, declined, dismissed or retried a queue item. Shown at once;
+    /// the launcher's write lands well before the next poll.
+    func act(_ action: QueueItem.Action, _ item: QueueItem) {
+        queueAction(action, item.id)
+        switch action {
+        case .decline, .dismiss: queue.removeAll { $0.id == item.id }
+        case .approve, .retry:
+            guard let i = queue.firstIndex(where: { $0.id == item.id }) else { return }
+            queue[i].status = "approved"
+            queue[i].sessionId = nil
+            queue[i].summary = nil
+            queue[i].needsYou = nil
+        }
+    }
+
+    /// A queue item's run as a card, for its progress and log: the live card while it runs.
+    func card(for item: QueueItem) -> AgentCard? {
+        guard let sid = item.sessionId else { return nil }
+        if let live = cards.first(where: { $0.sessionId == sid }) { return live }
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return AgentCard(id: "queue-\(item.id)", request: item.title, stage: item.summary ?? "", startedAt: iso.date(from: item.updatedAt) ?? now,
+                         status: item.phase == .needsYou ? .waiting : .paused, sessionId: sid)
+    }
+
+    /// The live stage of a queue item's run, from its active-run file.
+    func stage(for item: QueueItem) -> String? {
+        guard let sid = item.sessionId else { return nil }
+        return cards.first { $0.sessionId == sid }?.stage
     }
 
     /// A finished request with this session, for "Show the log".

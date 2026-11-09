@@ -296,3 +296,59 @@ private func write(_ text: String, _ url: URL) throws {
         #expect(!html.contains("http://") && !html.contains("https://"))
     }
 }
+
+@Suite struct QueueTests {
+    private let json = #"""
+    {"closed":[{"title":"x","request":"x","how":"declined","at":"2026-11-09T08:00:00Z"}],"items":[
+     {"id":"d1","source":"kanban","title":"Done one","request":"r","why":"","status":"done","sessionId":"s1","summary":"Did it","createdAt":"2026-11-09T08:00:00.000Z","updatedAt":"2026-11-09T09:00:00.000Z"},
+     {"id":"p1","source":"university","title":"Write notes","request":"r","why":"Empty note","status":"proposed","createdAt":"2026-11-09T08:00:00.000Z","updatedAt":"2026-11-09T08:00:00.000Z"},
+     {"id":"n1","source":"email","title":"Draft reply","request":"r","why":"","status":"done","sessionId":"s2","summary":"Needs the date","needsYou":true,"createdAt":"2026-11-09T08:00:00.000Z","updatedAt":"2026-11-09T08:00:00.000Z"},
+     {"id":"r1","source":"kanban","title":"Running one","request":"r","why":"","status":"running","sessionId":"s3","createdAt":"2026-11-09T08:00:00.000Z","updatedAt":"2026-11-09T08:00:00.000Z"},
+     {"id":"f1","source":"other","title":"Failed one","request":"r","why":"","status":"failed","summary":"claude exited 1","createdAt":"2026-11-09T08:00:00.000Z","updatedAt":"2026-11-09T08:00:00.000Z"},
+     {"id":"p2","source":"freelance","title":"Second proposal","request":"r","why":"","status":"proposed","createdAt":"2026-11-09T08:00:00.000Z","updatedAt":"2026-11-09T08:00:00.000Z"}]}
+    """#
+
+    @Test func decodesTheLaunchersQueueInPanelOrder() throws {
+        let f = try tempDir().appendingPathComponent("queue.json")
+        try write(json, f)
+        let q = QueueItem.read(file: f)
+        #expect(q.map(\.id) == ["p1", "p2", "r1", "n1", "f1", "d1"])
+        #expect(q.map(\.phase) == [.proposed, .proposed, .running, .needsYou, .failed, .done])
+        #expect(q[0].actions == [.approve, .decline])
+        #expect(q[2].actions.isEmpty)
+        #expect(q[3].actions == [.dismiss])
+        #expect(q[4].actions == [.retry, .dismiss])
+        #expect(q[5].actions == [.dismiss])
+        #expect(QueueItem.read(file: f.appendingPathExtension("missing")).isEmpty)
+        try write("{\"items\": 3}", f)
+        #expect(QueueItem.read(file: f).isEmpty)
+    }
+
+    @MainActor @Test func thePanelsActionsGoToTheLauncherAndShowAtOnce() throws {
+        let home = try tempDir()
+        try write(json, home.appendingPathComponent("state/queue.json"))
+        try write("{\"sessionId\":\"s3\",\"pid\":\(getpid()),\"request\":\"Running one\",\"startedAt\":1000,\"doing\":\"Reading the slides\"}",
+                  home.appendingPathComponent("state/active/s3.json"))
+        let (m, _, _, _) = makeModel()
+        let store = DashboardStore(model: m, paths: Paths(home: home, repo: home), micLevel: AudioLevel(), voiceLevel: AudioLevel())
+        var sent: [String] = []
+        store.queueAction = { sent.append("\($0.rawValue) \($1)") }
+        store.refresh()
+        let byId = { (id: String) in store.queue.first { $0.id == id }! }
+        // Running: the live stage from its active-run file, and its live card for the log.
+        #expect(store.stage(for: byId("r1")) == "Reading the slides")
+        #expect(store.card(for: byId("r1"))?.id == "s3")
+        // Finished: a card with its session, so the log opens; a proposal has no run yet.
+        #expect(store.card(for: byId("d1"))?.sessionId == "s1")
+        #expect(store.card(for: byId("n1"))?.status == .waiting)
+        #expect(store.card(for: byId("p1")) == nil)
+
+        store.act(.approve, byId("p1"))
+        store.act(.decline, byId("p2"))
+        store.act(.retry, byId("f1"))
+        store.act(.dismiss, byId("d1"))
+        #expect(sent == ["approve p1", "decline p2", "retry f1", "dismiss d1"])
+        #expect(store.queue.map(\.id) == ["p1", "r1", "n1", "f1"])
+        #expect(byId("p1").phase == .approved && byId("f1").phase == .approved && byId("f1").summary == nil)
+    }
+}

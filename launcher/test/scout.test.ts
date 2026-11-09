@@ -44,30 +44,40 @@ function world() {
 
 const noon = new Date("2026-11-08T12:00:00Z");
 
-test("new cards Jarvis can do are asked about; a yes sends the request, nothing runs without one", async () => {
+const queue = (c: { home: string }) => JSON.parse(readFileSync(join(c.home, "state", "queue.json"), "utf8"));
+const answer = (answers: string[], asked: string[]) => ({ ask: async (m: { question: string }) => (asked.push(m.question), { type: "answer" as const, id: "x", text: answers.shift()!, via: "button" as const }), close() {} });
+
+test("cards Jarvis can do become queue proposals, offered in the notch; an approval starts the worker", async () => {
   const w = world();
   const asked: string[] = [];
-  const answers = ["Not now", "Do it"];
-  const link = { ask: async (m: { question: string }) => (asked.push(m.question), { type: "answer" as const, id: "x", text: answers.shift()!, via: "button" as const }), close() {} };
-  const out = await scout(w.c, { now: noon, run: w.run, link: link as any, kanbanFile: "/nonexistent" });
+  const kicks: string[][] = [];
+  const exec = (cmd: string[]) => (kicks.push(cmd), { code: 0, stdout: "", stderr: "" });
+  const out = await scout(w.c, { now: noon, run: w.run, link: answer(["Not now", "Approve"], asked) as any, exec, kanbanFile: "/nonexistent" });
   expect(asked).toEqual([
     "From your Kanban: “Write notes: COMP2311 Lecture 17”. I could write the notes from the slides.",
-    "From your Kanban: “Pay the gym membership”. That one's yours to do, but I could set you a reminder to pay it.",
+    "From your Kanban: “Pay the gym membership”, which is yours to do. I could set you a reminder to pay it.",
   ]);
-  expect(w.calls.find((c) => c[0] === "open")).toEqual(["open", "jarvis://ask?q=Remind%20me%20to%20pay%20the%20gym%20membership%20tomorrow%20at%209am"]);
-  expect(out).toContain("3 new card(s)");
-  // The next look doesn't re-sort or re-ask the same cards.
-  const again = await scout(w.c, { now: noon, run: w.run, link: link as any, kanbanFile: "/nonexistent" });
+  const items = queue(w.c).items;
+  expect(items.map((x: any) => [x.source, x.title, x.request, x.status])).toEqual([
+    ["kanban", "Write the notes from the slides", "Write my COMP2311 Lecture 17 notes from the Moodle slides", "proposed"],
+    ["kanban", "Set you a reminder to pay it", "Remind me to pay the gym membership tomorrow at 9am", "approved"],
+  ]);
+  // Nothing runs from the scout itself: the worker agent is kicked.
+  expect(w.calls.find((c) => c[0] === "open")).toBeUndefined();
+  expect(kicks[0]).toContain("kickstart");
+  expect(out).toContain("2 added to the queue");
+  // The next look doesn't re-sort, re-queue or re-ask the same cards.
+  const again = await scout(w.c, { now: noon, run: w.run, link: answer([], asked) as any, exec, kanbanFile: "/nonexistent" });
   expect(w.classified()).toBe(1);
+  expect(queue(w.c).items).toHaveLength(2);
   expect(again).toContain("nothing asked");
 });
 
-test("with the notch app closed nothing is lost; at night it waits", async () => {
+test("with the notch app closed the proposals wait in the queue; at night it waits", async () => {
   const w = world();
   const closed = { ask: async () => null, close() {} };
   expect(await scout(w.c, { now: noon, run: w.run, link: closed as any, kanbanFile: "/nonexistent" })).toContain("notch app not open");
-  const state = JSON.parse(readFileSync(join(w.c.home, "state", "kanban-scout.json"), "utf8"));
-  expect(Object.values(state).filter((v: any) => v.status === "pending")).toHaveLength(2);
+  expect(queue(w.c).items.filter((x: any) => x.status === "proposed")).toHaveLength(2);
   expect(await scout(w.c, { now: new Date("2026-11-08T23:30:00Z"), run: w.run, link: closed as any })).toContain("quiet hours");
 });
 

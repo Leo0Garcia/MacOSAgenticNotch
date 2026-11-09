@@ -114,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let r = await calendar.events(fromISO: iso.string(from: day), toISO: iso.string(from: day.addingTimeInterval(86400)))
             return (try? r.get()) ?? []
         }
+        store.queueAction = { [weak launcher] action, id in launcher?.queue(action, id: id) }
         dashboard = DashboardWindow(store: store)
         Snapshots.warmUp(env: env)
         startServer()

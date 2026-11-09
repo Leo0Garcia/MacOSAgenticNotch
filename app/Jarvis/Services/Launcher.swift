@@ -243,6 +243,17 @@ final class Launcher: LauncherRunning {
         try? p.run()
     }
 
+    /// Leo's queue actions from the dashboard: `run.sh queue <action> <id>`. An
+    /// approval also wakes the launcher's worker, which runs the item quietly.
+    func queue(_ action: QueueItem.Action, id: String) {
+        guard id.range(of: "^[a-z0-9]+$", options: .regularExpression) != nil,
+              let p = try? process(["queue", action.rawValue, id]) else { return }
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        p.terminationHandler = { AppLog.write("queue \(action.rawValue) \(id) exited \($0.terminationStatus)") }
+        try? p.run()
+    }
+
     /// Reminder "In 10 minutes": straight to the launcher's scheduler (DESIGN 8.3), no model run.
     func snooze(text: String, minutes: Int) {
         let at = ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(minutes) * 60))
