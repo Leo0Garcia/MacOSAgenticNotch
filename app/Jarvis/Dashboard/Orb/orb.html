@@ -2,7 +2,7 @@
 <!-- The dashboard's Nebula orb (Leo's pick from the orb lab, 2026-11-08):
      16,000 particles in four counter-rotating shells and a loose dust cloud,
      drifting through layered simplex-noise flow around a breathing core, with
-     faint orbit arcs and one orbiting light (with a fading trail) per running
+     one orbiting light (with a fading trail) per running
      agent, amber when it waits on Leo. A bloom pass gives the glow.
      Local only: three.min.js r128 and three.bloom.js (its post-processing
      examples) sit beside this file and the policy below allows no network.
@@ -169,44 +169,20 @@ canvas { display: block; width: 100%; height: 100%; }
   });
   scene.add(new THREE.Points(g, mat));
 
-  // The core: a breathing glow with a white-hot centre and a faint rim at the outer shell.
+  // The core: a breathing glow with a white-hot centre.
   const CORE = 4.2;
-  const coreU = { uColor: { value: new THREE.Color() }, uCore: { value: 0.25 }, uGain: { value: 1 }, uRim: { value: 0.05 }, uRimR: { value: 1.27 } };
+  const coreU = { uColor: { value: new THREE.Color() }, uCore: { value: 0.25 }, uGain: { value: 1 } };
   const core = new THREE.Mesh(new THREE.PlaneGeometry(CORE, CORE), new THREE.ShaderMaterial({
     uniforms: coreU,
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-    fragmentShader: `uniform vec3 uColor; uniform float uCore, uGain, uRim, uRimR; varying vec2 vUv;
+    fragmentShader: `uniform vec3 uColor; uniform float uCore, uGain; varying vec2 vUv;
       void main(){ float r = length(vUv - 0.5)*${CORE.toFixed(1)};
         float k = r/uCore;
         vec3 c = uColor*(0.07*exp(-r*r*1.3) + 0.16*exp(-k*k*0.1) + 0.45*exp(-k*k)) + vec3(1.0)*0.7*exp(-k*k*16.0);
-        c += uColor*uRim*exp(-pow((r - uRimR)/0.035, 2.0));
         gl_FragColor = vec4(c*uGain*(1.0 - smoothstep(1.6, 2.1, r)), 1.0); }`,
     transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
   }));
   scene.add(core);
-
-  // Orbit arcs: thin tilted rings, broken into travelling dashes, brighter when working.
-  const RINGS = [[1.45, 0.42, 0.3, 3, 0.05], [1.6, -0.55, 1.4, 2, -0.035], [1.75, 0.2, 2.4, 5, 0.025]];
-  const ringU = { uTime: { value: 0 }, uGain: { value: 0.1 }, uColor: { value: new THREE.Color() } };
-  const ringMat = new THREE.ShaderMaterial({
-    uniforms: ringU,
-    vertexShader: NOISE + `attribute vec3 aRing; uniform float uTime; varying float vA;
-      void main(){ vec4 mv = modelViewMatrix*vec4(position, 1.0); gl_Position = projectionMatrix*mv;
-        float u = fract(aRing.x*aRing.y + uTime*aRing.z);
-        vA = smoothstep(0.0, 0.08, u)*(1.0 - smoothstep(0.55, 0.7, u))*mix(0.2, 1.0, nearness(mv.z)); }`,
-    fragmentShader: `uniform vec3 uColor; uniform float uGain; varying float vA; void main(){ gl_FragColor = vec4(uColor*vA*uGain, 1.0); }`,
-    transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
-  });
-  for (const [r, tilt, yaw, dashes, sp] of RINGS) {
-    const S = 360, rp = new Float32Array(S * 3), ra = new Float32Array(S * 3);
-    for (let i = 0; i < S; i++) {
-      const a = i / S * Math.PI * 2; rp[i*3] = Math.cos(a) * r; rp[i*3+2] = Math.sin(a) * r;
-      ra[i*3] = i / S; ra[i*3+1] = dashes; ra[i*3+2] = sp;
-    }
-    const rg = new THREE.BufferGeometry();
-    rg.setAttribute('position', new THREE.BufferAttribute(rp, 3)); rg.setAttribute('aRing', new THREE.BufferAttribute(ra, 3));
-    const line = new THREE.LineLoop(rg, ringMat); line.rotation.set(tilt, yaw, 0, 'YXZ'); scene.add(line);
-  }
 
   // Agent lights: one per running agent on its own tilted orbit, each with a fading trail.
   const MAX = 16, TRAIL = 72, STEP = 0.007, AN = MAX * (TRAIL + 1);
@@ -289,10 +265,6 @@ canvas { display: block; width: 100%; height: 100%; }
     coreU.uColor.value.copy(live.color).lerp(live.color2, 0.3);
     coreU.uCore.value = 0.2 * (1 + 0.08 * breath + 0.35 * live.energy + 0.2 * live.swell + 0.1 * alarm);
     coreU.uGain.value = 0.75 + 0.15 * breath + 0.35 * live.busy + 0.3 * live.swell + 0.2 * alarm;
-    coreU.uRim.value = 0.06 + 0.12 * live.busy + 0.1 * live.swell;
-    coreU.uRimR.value = 1.27 * (1 + 0.1 * U.uSwell.value);
-    ringU.uTime.value = t; ringU.uColor.value.copy(live.color).lerp(WHITE, 0.3);
-    ringU.uGain.value = 0.07 + 0.3 * live.busy + 0.1 * live.alert;
     bloom.strength = 0.6 * live.glow + 0.2 * live.swell;
     updateAgents(dt, clock);
     composer.render();
