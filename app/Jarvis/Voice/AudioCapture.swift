@@ -67,8 +67,12 @@ final class AudioCapture {
     /// Everything heard while listening for the wake word; WakeListener drains it.
     let stream = SampleBuffer()
     private let flags = CaptureFlags()
-    private let engine = AVAudioEngine()
+    // A fresh engine for every start: one kept across sleep, a screen lock or a
+    // mic change can start fine yet deliver no audio (Leo, 2026-11-09: the
+    // shortcut "stops working" after a while; the hotkey still fired).
+    private var engine = AVAudioEngine()
     private var running = false
+    private var configObserver: NSObjectProtocol?
 
     var isRunning: Bool { running }
     var isStreaming: Bool { flags.streaming }
@@ -117,6 +121,7 @@ final class AudioCapture {
         default: break
         }
         level.set(0)
+        engine = AVAudioEngine()
         let input = engine.inputNode
         let inFormat = input.outputFormat(forBus: 0)
         guard inFormat.sampleRate > 0, inFormat.channelCount > 0 else { throw AudioCaptureError.noInput }
@@ -130,6 +135,18 @@ final class AudioCapture {
         engine.prepare()
         try engine.start()
         running = true
+        // The mic changed (sleep, a headset, AirPods): this engine has stopped.
+        // Start a new one if the wake word or a capture still needs the mic.
+        if let old = configObserver { NotificationCenter.default.removeObserver(old) }
+        configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                AppLog.write("audio input changed: restarting the mic")
+                self.engine.inputNode.removeTap(onBus: 0)
+                self.running = false
+                if self.flags.streaming || self.flags.capturing { try? self.ensureEngine() }
+            }
+        }
     }
 
     private func stopEngine() {
