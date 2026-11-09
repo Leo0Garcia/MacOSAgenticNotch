@@ -59,6 +59,8 @@ export interface RunOptions {
   pickUp?: ActiveRun;
   /** Skip the checker (its own retry, tests). */
   noCheck?: boolean;
+  /** Check a background run too (approved queue tasks). */
+  check?: boolean;
 }
 
 export interface RunOutcome {
@@ -69,6 +71,8 @@ export interface RunOutcome {
   reply?: string;
   denials?: Denial[];
   error?: string;
+  /** The run's own verdict: false when what was asked isn't finished (tasks.ts). */
+  resolved?: boolean;
 }
 
 const FOLLOWUP = /^\s*(?:jarvis[,:]?\s+)?(?:and\s+also|and\s+then|also)\b[,:]?\s*/i;
@@ -342,7 +346,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   // The checker: did the work actually get done? One retry if not (Leo, 2026-11-08).
   let retried: RunOutcome | null = null;
   let checkProblem: string | undefined;
-  if (!opts.noCheck && !opts.background && worthChecking(timeline.steps, res, c.env)) {
+  if (!opts.noCheck && (!opts.background || opts.check) && worthChecking(timeline.steps, res, c.env)) {
     emit({ event: "status", text: "Checking the result" });
     timeline.step("Checking the result", undefined, "check");
     const v = await checkResult(c, opts.checkRunner ?? homeRunner(c), request, res.reply, [...toolLog.values()]).catch(() => null);
@@ -401,7 +405,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   }
   await finish();
   updateDetail(c, rowId, details());
-  return { exitCode: status === "error" ? 1 : 0, sessionId, keep, summary: res.summary, reply: res.reply, denials: res.denials };
+  return { exitCode: status === "error" ? 1 : 0, sessionId, keep, summary: res.summary, reply: res.reply, denials: res.denials, resolved: retried ? retried.resolved : res.resolved };
 }
 
 /** Appends to the bridge's action log; a failure is logged, never fatal. Returns the row id. */

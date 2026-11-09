@@ -67,6 +67,56 @@ struct OpenTask: Decodable, Equatable, Sendable {
     }
 }
 
+/// One item in Jarvis's approval queue (~/Jarvis/state/queue.json, launcher/src/queue.ts).
+/// The app only reads it; changes go through `run.sh queue <action> <id>`.
+struct QueueItem: Decodable, Identifiable, Equatable, Sendable {
+    var id: String
+    var source: String
+    var title: String
+    var request: String
+    var why: String
+    var status: String
+    var sessionId: String?
+    var summary: String?
+    var needsYou: Bool?
+    var createdAt: String
+    var updatedAt: String
+
+    enum Action: String, Sendable { case approve, decline, dismiss, retry }
+
+    /// What the panel shows, in the order it shows them: what to approve first, finished last.
+    enum Phase: Int, Comparable, Sendable {
+        case proposed, running, approved, needsYou, failed, done
+        static func < (a: Phase, b: Phase) -> Bool { a.rawValue < b.rawValue }
+    }
+
+    var phase: Phase {
+        switch status {
+        case "proposed": .proposed
+        case "running": .running
+        case "approved": .approved
+        case "failed": .failed
+        default: needsYou == true ? .needsYou : .done
+        }
+    }
+
+    var actions: [Action] {
+        switch phase {
+        case .proposed: [.approve, .decline]
+        case .running, .approved: []
+        case .failed: [.retry, .dismiss]
+        case .needsYou, .done: [.dismiss]
+        }
+    }
+
+    nonisolated static func read(file: URL) -> [QueueItem] {
+        struct Q: Decodable { var items: [QueueItem] }
+        guard let d = try? Data(contentsOf: file), let q = try? JSONDecoder().decode(Q.self, from: d) else { return [] }
+        // Stable within a phase: oldest first, as the worker takes them.
+        return q.items.enumerated().sorted { ($0.element.phase, $0.offset) < ($1.element.phase, $1.offset) }.map(\.element)
+    }
+}
+
 struct Stage: Equatable, Sendable {
     var text: String
     var at: Date
