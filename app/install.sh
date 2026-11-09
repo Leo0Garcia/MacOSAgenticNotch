@@ -22,7 +22,8 @@ rm -rf "$home/Jarvis.app.new"
 cp -R "$app" "$home/Jarvis.app.new"
 rm -rf "$home/Jarvis.app"
 mv "$home/Jarvis.app.new" "$home/Jarvis.app"
-open "$home/Jarvis.app"
+# Updates restart it in the background (notch only); opening Jarvis shows its window.
+open -g "$home/Jarvis.app" --args --background
 # Daily agents: Moodle deadline check 08:30, sign-in check 08:00, wrap-up prompt 00:00.
 sh "$here/../launcher/run.sh" schedules install || echo "note: couldn't install the daily schedules"
 echo "installed $home/Jarvis.app"
