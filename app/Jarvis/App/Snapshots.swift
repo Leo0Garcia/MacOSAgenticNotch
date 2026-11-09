@@ -71,6 +71,7 @@ enum Snapshots {
         let store = dashboardStore(level: level)
         // Its own defaults, so the tab shown is the one asked for, not the last one used.
         let defaults = UserDefaults(suiteName: "jarvis-snapshots")!
+        defaults.set("Later|Amra", forKey: "KanbanCollapsedGroups") // one folded group in the Kanban snapshot
         for (name, ambient, tab) in [("dashboard", false, DashTab.dashboard), ("dashboard-ambient", true, .dashboard), ("dashboard-kanban", false, .kanban)] {
             store.ambient = ambient
             defaults.set(tab.rawValue, forKey: "DashboardTab")
@@ -124,6 +125,14 @@ enum Snapshots {
         paths.vault = home.appendingPathComponent("vault")
         try? fm.createDirectory(at: paths.vault, withIntermediateDirectories: true)
         try? Data(kanbanSample().utf8).write(to: paths.kanbanFile)
+        // Lecture notes for the toolbar's progress bars: written ones are 1300+ bytes.
+        for (module, written, total) in [("COMP1001", 16, 18), ("COMP1002", 5, 9), ("COMP1004", 2, 8)] {
+            let dir = paths.vault.appendingPathComponent("Uni/\(module)/Lectures")
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            for n in 1...total {
+                try? Data(repeating: 0x61, count: n <= written ? 2000 : 200).write(to: dir.appendingPathComponent("\(module) - Lecture \(n).md"))
+            }
+        }
         let store = DashboardStore(model: m, paths: paths, micLevel: level, voiceLevel: AudioLevel())
         store.refresh()
         store.kanban.load()
@@ -140,20 +149,24 @@ enum Snapshots {
         ---
 
         kanban-plugin: board
+        last-sync: \(ISO8601DateFormatter().string(from: Date().addingTimeInterval(-2 * 3600)))
+        last-sync-note: 2 new from Moodle
 
         ---
 
         ## Overdue
 
         - [ ] Do [[COMP1001 - Tutorial 5|COMP1001 Tutorial 5]] #comp1001 @{\(day(-8))} %%src:tutorial:COMP1001 - Tutorial 5|%%
-        - [ ] Do COMP1002 Exercise Sheet 5 (Trees) + Progress Test Five #comp1002 @{\(day(-8))}
-        - [ ] Call the client about the menu changes #freelance @{\(day(-3))} %%likely:call held, quote sent after%%
+        - [ ] Do COMP1002 Exercise Sheet 5 (Trees) + Progress Test Five #comp1002 @{\(day(-8))} %%src:moodle:51|https://moodle.example.ac.uk/mod/quiz/view.php?id=51%%
+        - [ ] Call the client about the menu changes #amra @{\(day(-3))} %%src:slack:D1|https://example.slack.com/archives/D1%% %%likely:call held, quote sent after%%
 
 
         ## This week
 
         - [ ] Do [[COMP1001 - Tutorial 7|COMP1001 Tutorial 7]] #comp1001 @{\(day(0))}
-        - [ ] Do the COMP1001 quiz (Grammars) #comp1001 @{\(day(5))}
+        - [ ] Do the COMP1001 quiz (Grammars) #comp1001 @{\(day(5))} %%src:handin:q3%%
+        - [ ] Do the COMP1002 lab sheet #comp1002 @{\(day(2))}
+        - [ ] Send the CV to the careers fair stand #careers @{\(day(1))} %%src:trackr:7%%
         - [ ] [[COMP1001 - Lecture 17|Write notes: COMP1001 Lecture 17]] #comp1001
         - [ ] [[COMP1001 - Lecture 18|Write notes: COMP1001 Lecture 18]] #comp1001
 
@@ -162,8 +175,8 @@ enum Snapshots {
 
         - [ ] Do the group project deliverable D2 #comp1003
         - [ ] Do the COMP1002 coursework @{\(day(30))} #comp1002
-        - [ ] Build the bakery's new product page once the quote is approved #freelance @{\(day(21))}
-        - [ ] Invoice the clinic once the redesign is live #freelance
+        - [ ] Build the bakery's new product page once the quote is approved #amra @{\(day(21))}
+        - [ ] Invoice the clinic once the redesign is live #amra
         - [ ] Buy chalk
 
 
@@ -171,7 +184,7 @@ enum Snapshots {
 
         - [ ] [[COMP1004 - Coursework|Do the COMP1004 coursework]] #comp1004
         - [ ] Clinic site redesign
-        \tmost pages done, service pages left #freelance
+        \tmost pages done, service pages left #chrononight
         - [ ] Internship applications: 40 sent, 9 new openings #careers
 
 
