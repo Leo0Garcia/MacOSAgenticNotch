@@ -57,12 +57,18 @@ struct DashboardView: View {
             if store.ambient { ambient } else { normal }
         }
         .foregroundStyle(Dash.text)
+        // The traffic-light row: the content is drawn under it, so it needs our own
+        // drag and double-click, like any Mac app's title bar (Leo, 2026-11-09).
+        .overlay(alignment: .top) {
+            TitleBarArea().frame(height: 6).ignoresSafeArea(edges: .top)
+        }
         // One web view for both layouts, so switching doesn't reload the orb.
         .backgroundPreferenceValue(OrbSlot.self) { slot in
             GeometryReader { g in
                 Dash.bg
                 let r = store.ambient || slot == nil ? CGRect(origin: .zero, size: g.size) : g[slot!]
                 OrbView(store: store)
+                    .allowsHitTesting(false) // nothing to click, and it sits under the title bar
                     .frame(width: r.width, height: r.height)
                     .position(x: r.midX, y: r.midY)
                     .animation(.easeInOut(duration: 0.35), value: store.ambient)
