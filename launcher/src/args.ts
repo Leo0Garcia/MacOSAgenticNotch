@@ -9,6 +9,11 @@ export const RESULT_SCHEMA = {
     keep: { type: "boolean", description: "true if Leo will come back to this (research, a brief, code changes); false for questions, lookups and one-shot actions" },
     summary: { type: "string", description: "one line saying what was done, for the notch log" },
     say: { type: "string", description: "what you'd say to Leo out loud, naturally (\"You're welcome.\"), if your text reply didn't already say it" },
+    resolved: {
+      type: "boolean",
+      description: "true when what Leo asked for is completely finished (or was just a question you answered); false when it's waiting on him (an answer, a login, a decision) or there is more work to come, so it stays open on his dashboard",
+    },
+    continues: { type: "string", description: "the id of the open task (from <open-tasks>) this request carries on, if any" },
   },
   required: ["keep", "summary"],
   additionalProperties: false,

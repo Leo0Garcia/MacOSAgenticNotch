@@ -19,6 +19,7 @@ import { homeRunner, parseInstant, runInstant } from "./instant";
 import { isSecret, looksSecret, type RunDetails, Timeline, toolInput } from "./details";
 import { toolStatus } from "./status";
 import { checkResult, retryPrompt, worthChecking } from "./checker";
+import { recordTask } from "./tasks";
 import { appendOutcome, noteCorrection, taskType, usedName } from "./outcomes";
 import { DEFAULT_OPENER, type Denial, initProblem, RunMonitor } from "./stream";
 
@@ -359,6 +360,9 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   }
 
   const status = res.isError && !res.reply ? "error" : res.denials.length ? "needs-you" : "done";
+  // A checker retry records the task itself, with its own (later) verdict.
+  if (!opts.background && !res.limited && !retried)
+    recordTask(c, { sessionId, request, summary: res.summary, resolved: res.resolved, continues: res.continues, waiting: status === "needs-you" });
   const endedAt = now();
   saveLastRun(c, { sessionId, keep, endedAt, request, reply: res.reply });
   appendOutcome(c, {

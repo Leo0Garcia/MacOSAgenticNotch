@@ -93,8 +93,21 @@ private func write(_ text: String, _ url: URL) throws {
         #expect(AgentFilter.all.matches(w) && AgentFilter.all.matches(q))
         #expect(AgentFilter.working.matches(w) && !AgentFilter.working.matches(q))
         #expect(AgentFilter.waiting.matches(q) && !AgentFilter.waiting.matches(w))
-        #expect(!AgentFilter.queued.matches(w) && !AgentFilter.queued.matches(q))
-        #expect(AgentFilter.allCases.map(\.label) == ["All", "Working", "Waiting", "Queued"])
+        #expect(!AgentFilter.paused.matches(w) && !AgentFilter.paused.matches(q))
+        #expect(AgentFilter.allCases.map(\.label) == ["All", "Working", "Waiting", "Paused"])
+    }
+
+    @Test func openTasksKeepATileUntilDoneUnlessOneOfTheirRunsIsGoing() throws {
+        let home = try tempDir()
+        let file = home.appendingPathComponent("tasks.json")
+        try write(#"[{"id":"t1","title":"Apply to Oracle","latest":"Needs your visa answer","status":"waiting","sessions":["t1"],"startedAt":"2026-11-09T14:00:00.000Z","updatedAt":"2026-11-09T14:05:00.000Z"},{"id":"t2","title":"Draft the essay","latest":"Outline done","status":"paused","sessions":["t2","b"],"startedAt":"2026-11-09T13:00:00.000Z","updatedAt":"2026-11-09T13:30:00.000Z"}]"#, file)
+        let open = OpenTask.read(file: file)
+        // "b" (a run of t2) is going: its own tile shows instead of t2's.
+        let cards = Agents.cards(active: active, current: nil, currentRunning: false, needsYou: false, now: now, open: open)
+        #expect(cards.compactMap(\.taskId) == ["t1"])
+        #expect(cards.last?.status == .waiting && cards.last?.stage == "Needs your visa answer")
+        OpenTask.remove("t1", file: file)
+        #expect(OpenTask.read(file: file).map(\.id) == ["t2"])
     }
 
     @Test func stagesKeepChangesOnly() {

@@ -23,7 +23,7 @@ enum Dash {
         switch s {
         case .working: Color(hex: Appearance.shared.palette.working[0])
         case .waiting: amber
-        case .queued: muted
+        case .paused: muted
         }
     }
 
@@ -168,9 +168,9 @@ struct DashboardView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
                 // shortcut: shows the six newest; add scrolling if Leo runs more at once.
                 ForEach(shown.prefix(6)) { c in
-                    AgentCardView(card: c, now: store.now, selected: selected == c.id) {
+                    AgentCardView(card: c, now: store.now, selected: selected == c.id, pick: {
                         selected = selected == c.id ? nil : c.id
-                    }
+                    }, dismiss: c.taskId.map { id in { store.dismissTask(id) } })
                 }
             }
             if shown.count > 6 {
@@ -337,18 +337,25 @@ struct AgentCardView: View {
     var now: Date
     var selected: Bool
     var pick: () -> Void
+    var dismiss: (() -> Void)? = nil
 
     var body: some View {
         Button(action: pick) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 7) {
                     Circle().fill(Dash.color(card.status)).frame(width: 8, height: 8)
-                    Text(card.status == .waiting ? "Waiting on you" : card.status.rawValue.capitalized)
+                    Text(card.status == .waiting ? "Waiting on you" : card.status == .paused ? "Not finished" : card.status.rawValue.capitalized)
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(card.status == .waiting ? Dash.amber : Dash.muted)
                     Spacer()
                     Text(Agents.elapsed(now.timeIntervalSince(card.startedAt)))
                         .font(.system(size: 11.5).monospacedDigit()).foregroundStyle(Dash.muted)
+                    if let dismiss {
+                        Button(action: dismiss) { Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)) }
+                            .buttonStyle(.plain).foregroundStyle(Dash.muted)
+                            .help("It's done; remove this tile")
+                            .accessibilityLabel("Dismiss \(card.request)")
+                    }
                 }
                 Text(card.request).font(.system(size: 14, weight: .medium)).lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)

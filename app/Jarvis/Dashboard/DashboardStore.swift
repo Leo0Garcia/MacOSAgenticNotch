@@ -57,7 +57,8 @@ final class DashboardStore {
     func refresh() {
         now = Date()
         let active = ActiveRuns.read(dir: paths.home.appendingPathComponent("state/active"))
-        cards = Agents.cards(active: active, current: model.run, currentRunning: model.runActive, needsYou: model.panel.isNeedsYou, now: now)
+        cards = Agents.cards(active: active, current: model.run, currentRunning: model.runActive, needsYou: model.panel.isNeedsYou, now: now,
+                             open: OpenTask.read(file: tasksFile))
         stages = Dictionary(cards.map { ($0.id, Agents.record($0.stage, into: stages[$0.id] ?? [], at: now)) }, uniquingKeysWith: { a, _ in a })
         if ticks % 5 == 0 {
             // Recent is work an agent did: Claude runs only, not instant replies or reminders.
@@ -84,7 +85,15 @@ final class DashboardStore {
     /// The orb's state, read about 20 times a second while the window shows.
     func orbState() -> OrbState {
         OrbState.make(kind: model.kind, speaking: model.speaking, runActive: model.runActive,
-                      mic: micLevel.current, voice: voiceLevel.current, cards: cards, palette: Appearance.shared.palette)
+                      mic: micLevel.current, voice: voiceLevel.current, cards: cards.filter { $0.taskId == nil }, palette: Appearance.shared.palette)
+    }
+
+    private var tasksFile: URL { paths.home.appendingPathComponent("state/tasks.json") }
+
+    /// Leo closed an open task's tile himself.
+    func dismissTask(_ id: String) {
+        OpenTask.remove(id, file: tasksFile)
+        refresh()
     }
 
     /// A finished request with this session, for "Show the log".

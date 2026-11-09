@@ -33,7 +33,38 @@ enum ActiveRuns {
 }
 
 enum AgentStatus: String, Sendable {
-    case working, waiting, queued
+    case working, waiting, paused
+}
+
+/// A task Jarvis hasn't finished (~/Jarvis/state/tasks.json, launcher/src/tasks.ts):
+/// it keeps its tile until a run says it's done, or Leo dismisses it.
+struct OpenTask: Decodable, Equatable, Sendable {
+    var id: String
+    var title: String
+    var latest: String
+    var status: String
+    var sessions: [String]
+    var startedAt: String
+    var updatedAt: String
+
+    nonisolated static func read(file: URL) -> [OpenTask] {
+        guard let d = try? Data(contentsOf: file) else { return [] }
+        return (try? JSONDecoder().decode([OpenTask].self, from: d)) ?? []
+    }
+
+    /// Leo dismissed its tile.
+    nonisolated static func remove(_ id: String, file: URL) {
+        let rest = read(file: file).filter { $0.id != id }
+        guard let data = try? JSONEncoder().encode(rest.map(Encoded.init)) else { return }
+        try? data.write(to: file, options: .atomic)
+    }
+
+    private struct Encoded: Encodable {
+        var id, title, latest, status: String
+        var sessions: [String]
+        var startedAt, updatedAt: String
+        init(_ t: OpenTask) { (id, title, latest, status, sessions, startedAt, updatedAt) = (t.id, t.title, t.latest, t.status, t.sessions, t.startedAt, t.updatedAt) }
+    }
 }
 
 struct Stage: Equatable, Sendable {
@@ -51,10 +82,12 @@ struct AgentCard: Identifiable, Equatable, Sendable {
     /// The app's own run (the notch's current request).
     var isCurrent = false
     var sessionId: String?
+    /// Set for an open task's tile, which Leo can dismiss.
+    var taskId: String?
 }
 
 enum AgentFilter: String, CaseIterable, Identifiable, Sendable {
-    case all, working, waiting, queued
+    case all, working, waiting, paused
     var id: String { rawValue }
     var label: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 
@@ -63,7 +96,7 @@ enum AgentFilter: String, CaseIterable, Identifiable, Sendable {
         case .all: true
         case .working: c.status == .working
         case .waiting: c.status == .waiting
-        case .queued: c.status == .queued
+        case .paused: c.status == .paused
         }
     }
 }
@@ -72,7 +105,7 @@ enum Agents {
     /// The launcher's runs plus the app's own current one, newest first. The
     /// app's run also writes an active file once it has a session id; the two
     /// are one card.
-    static func cards(active: [ActiveRun], current: RunState?, currentRunning: Bool, needsYou: Bool, now: Date) -> [AgentCard] {
+    static func cards(active: [ActiveRun], current: RunState?, currentRunning: Bool, needsYou: Bool, now: Date, open: [OpenTask] = []) -> [AgentCard] {
         var cards = active.map {
             AgentCard(id: $0.sessionId, request: $0.request, stage: $0.doing ?? "Working on it",
                       startedAt: Date(timeIntervalSince1970: $0.startedAt / 1000), status: .working, sessionId: $0.sessionId)
@@ -93,6 +126,15 @@ enum Agents {
         // own run, else the newest; upgrade when ask frames carry the session id.
         if needsYou, let i = cards.firstIndex(where: \.isCurrent) ?? cards.indices.last {
             cards[i].status = .waiting
+        }
+        // Open tasks stay as tiles between runs; while one of their runs is going, that run's tile shows instead.
+        let running = Set(cards.compactMap(\.sessionId))
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        for t in open where running.isDisjoint(with: t.sessions) && !running.contains(t.id) {
+            cards.insert(AgentCard(id: "task-\(t.id)", request: t.title, stage: t.latest,
+                                   startedAt: iso.date(from: t.startedAt) ?? now, status: t.status == "waiting" ? .waiting : .paused,
+                                   sessionId: t.sessions.last, taskId: t.id), at: 0)
         }
         return cards.reversed()
     }
