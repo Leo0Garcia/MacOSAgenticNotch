@@ -27,6 +27,7 @@ final class DashboardStore {
     @ObservationIgnored let paths: Paths
     @ObservationIgnored let micLevel: AudioLevel
     @ObservationIgnored let voiceLevel: AudioLevel
+    @ObservationIgnored private(set) lazy var kanban = KanbanFeed(url: paths.kanbanFile)
     @ObservationIgnored var calendarToday: () async -> [NotchProtocol.CalendarEvent] = { [] }
     /// `run.sh queue <action> <id>`; the launcher owns queue.json.
     @ObservationIgnored var queueAction: (QueueItem.Action, String) -> Void = { _, _ in }

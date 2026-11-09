@@ -251,7 +251,7 @@ private struct MonoBox: View {
 }
 
 /// ImageRenderer draws nothing inside a ScrollView, so snapshots get the content laid out plainly.
-private struct Scrolling<Content: View>: View {
+struct Scrolling<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
