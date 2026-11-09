@@ -15,6 +15,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * Searches every project folder, since the folder name is derived from the
  * working directory. Only ever removes entries named exactly after the id.
  */
+export function hasTranscript(c: Config, sessionId: string): boolean {
+  const root = join(c.claudeConfigDir, "projects");
+  return existsSync(root) && readdirSync(root).some((d) => existsSync(join(root, d, `${sessionId}.jsonl`)));
+}
+
 export function deleteTranscript(c: Config, sessionId: string): string[] {
   if (!UUID.test(sessionId)) throw new Error(`not a session id: ${sessionId}`);
   const root = join(c.claudeConfigDir, "projects");
@@ -51,6 +56,8 @@ export interface FinalizeInput {
   runLog: string;
   request: string;
   summary: string;
+  /** An unfinished task's session: kept so the next request can carry on in it (tasks.ts). */
+  keepTranscript?: boolean;
 }
 
 /**
@@ -72,7 +79,7 @@ export async function finalize(c: Config, f: FinalizeInput): Promise<void> {
     log(c, "librarian skipped", { sessionId: f.sessionId, librarian: existsSync(p.librarianCli), runLog: existsSync(f.runLog) });
   }
   if (!f.keep) {
-    const removed = deleteTranscript(c, f.sessionId);
+    const removed = f.keepTranscript ? [] : deleteTranscript(c, f.sessionId);
     deleteRunFile(c, f.runLog);
     log(c, "deleted ephemeral run", { sessionId: f.sessionId, removed: removed.length });
   }

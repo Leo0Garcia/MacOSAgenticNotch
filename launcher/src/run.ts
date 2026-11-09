@@ -10,16 +10,16 @@ import { Speaker } from "../../bridge/src/speech";
 import type { Runner } from "../../bridge/src/system";
 import { claudeArgs, mcpConfig, modelFor, needsSmartModel, type RunPlan, savedRunName } from "./args";
 import { childEnv, type Config, paths } from "./config";
-import { deleteRunFile, deleteTranscript, finalize, type FinalizeInput } from "./finalize";
+import { deleteRunFile, deleteTranscript, finalize, hasTranscript, type FinalizeInput } from "./finalize";
 import { buildSystemPrompt, checkClaudeVersion, linkSkills } from "./setup";
-import { type ActiveRun, clearActiveRun, ensureDirs, type LastRun, log, recentRun, saveActiveRun, saveLastRun, writeFileAtomic } from "./store";
+import { activeRuns, type ActiveRun, clearActiveRun, ensureDirs, type LastRun, log, recentRun, saveActiveRun, saveLastRun, writeFileAtomic } from "./store";
 import { withContext } from "./context";
 import { lightsConfig, parseLights, quickCandidate, smallTalk, statusSentence } from "./fast";
 import { homeRunner, parseInstant, runInstant } from "./instant";
 import { isSecret, looksSecret, type RunDetails, Timeline, toolInput } from "./details";
 import { toolStatus } from "./status";
 import { checkResult, retryPrompt, worthChecking } from "./checker";
-import { recordTask } from "./tasks";
+import { recordTask, routedPrompt, routeTask } from "./tasks";
 import { appendOutcome, noteCorrection, taskType, usedName } from "./outcomes";
 import { DEFAULT_OPENER, type Denial, initProblem, RunMonitor } from "./stream";
 
@@ -78,16 +78,28 @@ export interface RunOutcome {
 const FOLLOWUP = /^\s*(?:jarvis[,:]?\s+)?(?:and\s+also|and\s+then|also)\b[,:]?\s*/i;
 
 /** Works out the claude invocation, including "and also…" follow-ups (DESIGN 4.4). */
-export function planRun(c: Config, request: string, now = Date.now()): RunPlan & { runLog: string; resumed: boolean } {
+export function planRun(c: Config, request: string, now = Date.now(), route = true): RunPlan & { runLog: string; resumed: boolean } {
   const p = paths(c);
   const last: LastRun | undefined = FOLLOWUP.test(request) ? recentRun(c, now) : undefined;
   if (last?.keep) {
     // Follow-up to a saved run: resume it. Its own log stays untouched.
     return { prompt: request, resume: last.sessionId, runLog: `${p.runs}/${last.sessionId}.followup-${now}.jsonl`, resumed: true };
   }
+  // A request soon after an open task's run carries on in that agent's session.
+  const task = route ? openTaskFor(c, now) : undefined;
+  if (task) {
+    const sid = task.sessions.at(-1)!;
+    return { prompt: routedPrompt(request, task), resume: sid, runLog: `${p.runs}/${sid}.followup-${now}.jsonl`, resumed: false };
+  }
   const sessionId = randomUUID();
   // The last exchange (and any run still going) reaches Claude through the activity block.
   return { prompt: withContext(c, request, now), sessionId, name: savedRunName(request), runLog: p.runLog(sessionId), resumed: false };
+}
+
+/** The open task to carry on, when its session's transcript is still there to resume. */
+function openTaskFor(c: Config, now: number) {
+  const t = routeTask(c, activeRuns(c).map((r) => r.sessionId), now);
+  return t && hasTranscript(c, t.sessions.at(-1)!) ? t : undefined;
 }
 
 export async function run(c: Config, request: string, opts: RunOptions = {}): Promise<RunOutcome> {
@@ -162,7 +174,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     if (fast) return fast;
     plan = opts.resume
       ? { prompt: request, resume: opts.resume, runLog: `${p.runs}/${opts.resume}.resume-${now()}.jsonl`, resumed: false }
-      : planRun(c, request, now());
+      : planRun(c, request, now(), !opts.background);
     // A follow-up stays on the model its session started with.
     if (!plan.resume) plan.model = opts.model ?? modelFor(c, request);
   }
@@ -187,7 +199,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   if (warm) {
     emit({ event: "ready", sessionId });
     const req = ((await warm()) ?? "").trim();
-    const fallBack = !req || (FOLLOWUP.test(req) && recentRun(c, now())) || savedRunName(req) || (!c.model && needsSmartModel(req));
+    const fallBack = !req || (FOLLOWUP.test(req) && recentRun(c, now())) || openTaskFor(c, now()) || savedRunName(req) || (!c.model && needsSmartModel(req));
     if (fallBack) {
       // Nothing to do, or a run this warm start can't be: a follow-up resumes
       // another session, a saved intent needs its name at start, and a bigger
@@ -365,8 +377,11 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
 
   const status = res.isError && !res.reply ? "error" : res.denials.length ? "needs-you" : "done";
   // A checker retry records the task itself, with its own (later) verdict.
-  if (!opts.background && !res.limited && !retried)
-    recordTask(c, { sessionId, request, summary: res.summary, resolved: res.resolved, continues: res.continues, waiting: status === "needs-you" });
+  if (!opts.background && !res.limited && !retried) {
+    const closed = recordTask(c, { sessionId, request, summary: res.summary, resolved: res.resolved, continues: res.continues, waiting: status === "needs-you", keep });
+    // A finished task's earlier, unsaved sessions go now; this one goes in finalize.
+    for (const s of closed?.sessions ?? []) if (s !== sessionId && !closed!.kept?.includes(s)) deleteTranscript(c, s);
+  }
   const endedAt = now();
   saveLastRun(c, { sessionId, keep, endedAt, request, reply: res.reply });
   appendOutcome(c, {
@@ -399,7 +414,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   notch(status === "error" ? { event: "failed", text: res.problem } : { event: "done", keep, summary: res.summary }, sessionId);
 
   try {
-    await (opts.finalize ?? ((f) => finalize(c, f)))({ sessionId, keep, runLog: plan.runLog, request, summary: res.summary });
+    await (opts.finalize ?? ((f) => finalize(c, f)))({ sessionId, keep, runLog: plan.runLog, request, summary: res.summary, ...((retried ? retried.resolved : res.resolved) === false && !opts.background ? { keepTranscript: true } : {}) });
   } catch (e) {
     log(c, "finalize failed", { sessionId, error: String(e) });
   }
