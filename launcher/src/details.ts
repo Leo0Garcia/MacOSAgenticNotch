@@ -2,6 +2,10 @@
 // "I can click into a request and see all the details"). Stored as JSON in the
 // request's action row (`detail`), which the notch's Recent list opens.
 
+import { decide } from "../../guard/src/decide";
+import { contextFromEnv } from "../../guard/src/context";
+import { loadBlocklist } from "../../guard/src/domains";
+
 export interface DetailStep {
   /** What Jarvis was doing, as the notch said it ("Reading your calendar"). */
   label: string;
@@ -11,6 +15,17 @@ export interface DetailStep {
   /** How long it took, when it has an end. */
   ms?: number;
   error?: boolean;
+  /** The raw tool name, a short readable input and the start of the output. */
+  tool?: string;
+  input?: string;
+  output?: string;
+}
+
+/** One line of the conversation: Leo, Jarvis's text (all of it, not just what was spoken), or the checker. */
+export interface ChatLine {
+  who: "leo" | "jarvis" | "checker";
+  text: string;
+  atMs: number;
 }
 
 export interface RunDetails {
@@ -28,14 +43,62 @@ export interface RunDetails {
   /** Where the time went, in order. Each is a slice of totalMs. */
   breakdown: { label: string; ms: number }[];
   steps: DetailStep[];
+  /** Absent on rows written before 2026-11-09; the app then builds it from request and reply. */
+  chat?: ChatLine[];
   turns?: number;
   costUsd?: number;
   problem?: string;
 }
 
+export const INPUT_CHARS = 300;
+export const OUTPUT_CHARS = 600;
+/** Keeps actions.sqlite small: the oldest outputs, then inputs, go first. */
+export const MAX_DETAIL_BYTES = 40_000;
+
+const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+
+/** The part of a tool's input worth reading: the command, the path, the query. */
+export function toolInput(input: Record<string, unknown>): string {
+  for (const k of ["command", "file_path", "path", "query", "url", "pattern", "skill", "prompt"]) {
+    if (typeof input[k] === "string") return clip(input[k] as string, INPUT_CHARS);
+  }
+  return clip(JSON.stringify(input), INPUT_CHARS);
+}
+
+const SECRET_TEXT = /\bsecurity\s+find-(?:generic|internet)-password\b|-----BEGIN [A-Z ]*PRIVATE KEY|\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[abpr]-[A-Za-z0-9-]{10,})|\bBearer\s+[A-Za-z0-9._~+\/-]{20,}/;
+
+/** Text that looks like a key, a token or a Keychain read. */
+export const looksSecret = (text: string) => SECRET_TEXT.test(text);
+
+/**
+ * A tool call whose input and output shouldn't be stored: anything the guard
+ * flags as touching credentials, and any Keychain read (even Jarvis's own).
+ */
+export function isSecret(tool: string, input: Record<string, unknown>, env: Record<string, string | undefined> = process.env): boolean {
+  if (looksSecret(JSON.stringify(input))) return true;
+  try {
+    const d = decide({ tool_name: tool, tool_input: input }, contextFromEnv(env), loadBlocklist());
+    return Boolean(d && /credential|keychain/i.test(d.reason));
+  } catch {
+    return true;
+  }
+}
+
+/** Drops the oldest step outputs, then inputs, until the JSON fits. */
+export function capDetails(d: RunDetails, max = MAX_DETAIL_BYTES): RunDetails {
+  for (const key of ["output", "input"] as const) {
+    for (const s of d.steps) {
+      if (JSON.stringify(d).length <= max) return d;
+      delete s[key];
+    }
+  }
+  return d;
+}
+
 /** Collects timestamps through a run and turns them into RunDetails. */
 export class Timeline {
   readonly steps: DetailStep[] = [];
+  readonly chat: ChatLine[] = [];
   private open = new Map<string, DetailStep>();
   private marks = new Map<string, number>();
 
@@ -62,18 +125,25 @@ export class Timeline {
     return this.marks.get(name);
   }
 
-  step(label: string, detail?: string, id?: string): void {
-    const s: DetailStep = { label, atMs: this.at(), ...(detail ? { detail } : {}) };
+  /** A line of the conversation; empty text is skipped. */
+  say(who: ChatLine["who"], text: string, atMs = this.at()): void {
+    const t = text.trim();
+    if (t) this.chat.push({ who, text: t, atMs });
+  }
+
+  step(label: string, detail?: string, id?: string, extra: Pick<DetailStep, "tool" | "input"> = {}): void {
+    const s: DetailStep = { label, atMs: this.at(), ...(detail ? { detail } : {}), ...extra };
     this.steps.push(s);
     if (id) this.open.set(id, s);
   }
 
-  stepDone(id: string, error = false): void {
+  stepDone(id: string, error = false, output?: string): void {
     const s = this.open.get(id);
     if (!s) return;
     this.open.delete(id);
     s.ms = this.at() - s.atMs;
     if (error) s.error = true;
+    if (output?.trim()) s.output = clip(output.trim(), OUTPUT_CHARS);
   }
 
   /**
@@ -95,6 +165,11 @@ export class Timeline {
       breakdown.push({ label: "Working", ms: result });
     }
     if (total > result) breakdown.push({ label: "Speaking", ms: total - result });
-    return { v: 1, ...base, startedAt: new Date(this.startedAt).toISOString(), totalMs: total, breakdown, steps: this.steps };
+    // Runs with no streamed text (the fast path, a usage limit) still show their reply.
+    const said = this.chat.some((l) => l.who === "jarvis") || !base.reply.trim() ? [] : [{ who: "jarvis" as const, text: base.reply.trim(), atMs: result }];
+    const chat: ChatLine[] = [{ who: "leo" as const, text: base.request, atMs: 0 }, ...this.chat, ...said].sort((a, b) => a.atMs - b.atMs);
+    // Copies, so trimming one finish() doesn't strip the next.
+    const steps = this.steps.map((s) => ({ ...s }));
+    return capDetails({ v: 1, ...base, startedAt: new Date(this.startedAt).toISOString(), totalMs: total, breakdown, steps, chat });
   }
 }

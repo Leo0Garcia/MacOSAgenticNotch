@@ -16,7 +16,7 @@ import { type ActiveRun, clearActiveRun, ensureDirs, type LastRun, log, recentRu
 import { withContext } from "./context";
 import { lightsConfig, parseLights, quickCandidate, smallTalk, statusSentence } from "./fast";
 import { homeRunner, parseInstant, runInstant } from "./instant";
-import { type RunDetails, Timeline } from "./details";
+import { isSecret, looksSecret, type RunDetails, Timeline, toolInput } from "./details";
 import { toolStatus } from "./status";
 import { checkResult, retryPrompt, worthChecking } from "./checker";
 import { appendOutcome, noteCorrection, taskType, usedName } from "./outcomes";
@@ -233,6 +233,15 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   const toolLog = new Map<string, string>();
   /** What the run used, for its task type. */
   const used: string[] = [];
+  /** Jarvis's text since the last tool call, for the details chat. */
+  let said = "";
+  let saidAt = 0;
+  const flushSaid = () => {
+    timeline.say("jarvis", said, saidAt);
+    said = "";
+  };
+  /** Tool calls whose input or output isn't stored (credentials, Keychain). */
+  const secret = new Set<string>();
   const monitor = new RunMonitor({
     onSentence: (s, kind) => {
       if (kind === "opener") markActive(s);
@@ -241,16 +250,23 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
       speak(s, kind);
     },
     onFirstText: () => timeline.mark("firstText"),
+    onText: (t) => {
+      if (!said.trim()) saidAt = Math.max(0, now() - timeline.startedAt);
+      said += t;
+    },
     onToolDone: (id, isError, output) => {
-      timeline.stepDone(id, isError);
+      timeline.stepDone(id, isError, secret.has(id) || looksSecret(output) ? undefined : output);
       const t = id && toolLog.get(id);
       if (t) toolLog.set(id, `${t} → ${isError ? "error: " : ""}${output.replace(/\s+/g, " ").slice(0, 300)}`);
     },
     onTool: (name, input, id) => {
+      flushSaid();
       if (id && name !== "StructuredOutput") toolLog.set(id, `${name} ${JSON.stringify(input).slice(0, 200)}`);
       used.push(usedName(name, input));
       const st = toolStatus(name, input);
-      if (name !== "StructuredOutput") timeline.step(st?.text ?? name, st?.detail, id);
+      const hide = isSecret(name, input, c.env);
+      if (hide && id) secret.add(id);
+      if (name !== "StructuredOutput") timeline.step(st?.text ?? name, st?.detail, id, { tool: name, ...(hide ? {} : { input: toolInput(input) }) });
       if (!st) return;
       markActive(st.text);
       emit({ event: "status", text: st.text, ...(st.detail ? { detail: st.detail } : {}) });
@@ -283,6 +299,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     }
   }
   if (!initFailure && buf) monitor.line(buf);
+  flushSaid();
   await logFile.end();
   const exitCode = await proc.exited;
   timeline.mark("result");
@@ -317,6 +334,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     // summary is a log line ("Acknowledged Leo's thanks"), so only a last resort.
     const line = res.say ?? res.summary;
     speak(line);
+    timeline.say("jarvis", line);
     res.reply = res.reply ? `${res.reply}\n${line}` : line;
   } else if (!res.reply && res.isError) speak("Something went wrong with that run. It's in the log.");
 
@@ -328,6 +346,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     timeline.step("Checking the result", undefined, "check");
     const v = await checkResult(c, opts.checkRunner ?? homeRunner(c), request, res.reply, [...toolLog.values()]).catch(() => null);
     timeline.stepDone("check", v?.ok === false);
+    if (v) timeline.say("checker", v.ok ? "Checked: looks right" : v.problem!);
     if (v && !v.ok) {
       log(c, "checker found a problem", { sessionId, problem: v.problem });
       checkProblem = v.problem;
@@ -335,6 +354,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
       await speaker.idle();
       retried = await run(c, retryPrompt(v.problem!), { ...opts, pickUp: undefined, resume: sessionId, noCheck: true, finalize: async () => {} });
       if (retried.reply) res.reply = `${res.reply}\n${retried.reply}`.trim();
+      timeline.say("jarvis", retried.reply ?? "");
     }
   }
 

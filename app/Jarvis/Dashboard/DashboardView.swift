@@ -69,9 +69,22 @@ struct DashboardView: View {
             }
             .ignoresSafeArea()
         }
-        .sheet(item: $details) { d in
-            DetailsSheetView(sheet: d, store: store) { details = nil }
+        // An overlay, not a sheet, so a click outside it closes it (Esc does too).
+        .overlay {
+            if let d = details {
+                ZStack {
+                    Color.black.opacity(0.6).ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture { details = nil }
+                        .accessibilityLabel("Close the details")
+                        .accessibilityAddTraits(.isButton)
+                    DetailsSheetView(sheet: d, store: store) { details = nil }
+                        .padding(EdgeInsets(top: 44, leading: 40, bottom: 32, trailing: 40))
+                }
+                .transition(.opacity)
+            }
         }
+        .animation(.easeOut(duration: 0.15), value: details?.id)
         .environment(\.colorScheme, .dark)
     }
 
@@ -525,7 +538,7 @@ struct DetailsSheet: Identifiable {
     var id: String { card?.id ?? items.map { String($0.id) }.joined(separator: ",") }
 }
 
-/// "Show the log" and Recent: RunDetailsView for finished requests; for one
+/// "Show the log" and Recent: RunLogView for finished requests; for one
 /// still running, the stages seen so far with their times.
 struct DetailsSheetView: View {
     var sheet: DetailsSheet
@@ -534,34 +547,43 @@ struct DetailsSheetView: View {
 
     var body: some View {
         let items = sheet.items.isEmpty ? (store.finished(sessionId: sheet.card?.sessionId) ?? []) : sheet.items
-        VStack(alignment: .leading, spacing: 12) {
+        Group {
             if !items.isEmpty {
-                RunDetailsView(items: items, back: close) { item in
+                RunLogView(items: items, close: close) { item in
                     if let id = item.sessionId { store.model.launcher?.open(sessionId: id) }
                 }
+                .frame(maxWidth: 1240, maxHeight: 820)
             } else if let card = sheet.card {
-                HStack {
-                    Button("‹ Back", action: close).buttonStyle(.plain).foregroundStyle(Dash.muted)
-                    Spacer()
-                    Text("Running for \(Agents.elapsed(store.now.timeIntervalSince(card.startedAt)))")
-                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(Dash.muted)
-                }
-                Text(card.request).font(.system(size: 16, weight: .medium))
-                ForEach(Array(store.stages(for: card).enumerated()), id: \.offset) { _, s in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(s.at.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits)))
-                            .font(.system(size: 12).monospacedDigit()).foregroundStyle(Dash.muted)
-                        Text(s.text).font(.system(size: 13))
-                    }
-                }
-                Text("The full details, with where the time went, show here once it finishes.")
-                    .font(.system(size: 12)).foregroundStyle(Dash.muted)
+                running(card).frame(width: 560)
             }
         }
-        .padding(22)
-        .frame(width: 520, alignment: .topLeading)
-        .background(Color.black)
-        .foregroundStyle(.white)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Dash.panel))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Dash.line))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
+        .foregroundStyle(Dash.text)
         .environment(\.colorScheme, .dark)
+    }
+
+    private func running(_ card: AgentCard) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Running for \(Agents.elapsed(store.now.timeIntervalSince(card.startedAt)))")
+                    .font(.system(size: 12).monospacedDigit()).foregroundStyle(Dash.muted)
+                Spacer()
+                CloseButton(close: close)
+            }
+            Text(card.request).font(.system(size: 16, weight: .medium))
+            ForEach(Array(store.stages(for: card).enumerated()), id: \.offset) { _, s in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(s.at.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits)))
+                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(Dash.muted)
+                    Text(s.text).font(.system(size: 13))
+                }
+            }
+            Text("The full details, with the conversation and every tool call, show here once it finishes.")
+                .font(.system(size: 12)).foregroundStyle(Dash.muted)
+        }
+        .padding(22)
     }
 }

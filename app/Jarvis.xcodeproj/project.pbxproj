@@ -32,6 +32,7 @@
 		7FD318C30BD7A3CB92FC9B74 /* SystemNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF33F34C3080DF1EB6C1F9A /* SystemNotifier.swift */; };
 		8629EADDDD97D81D270A5DE9 /* DashboardData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 781C1DF31255D38AAFBDD632 /* DashboardData.swift */; };
 		87681E7347A2C171AAC5FD95 /* ActionsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24AFAF6BBE8E74A4E6FAEE22 /* ActionsStore.swift */; };
+		8837709608C3D000459114FD /* RunLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EAFB1C96204BB947A570D37 /* RunLogView.swift */; };
 		8D068F5CD261B90D6FE49225 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 386DF619897905B59E1F4A01 /* SettingsView.swift */; };
 		8D7AF99A5FAA74DC8222DF5C /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B753851A0C543247EFAA86 /* Theme.swift */; };
 		94B4D57620B5FA23897C1290 /* ComputerContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = B39173ECFE82B9FEE63664D7 /* ComputerContext.swift */; };
@@ -65,6 +66,7 @@
 
 /* Begin PBXFileReference section */
 		0DF730C9F89F0B4290CAA7FA /* AudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapture.swift; sourceTree = "<group>"; };
+		0EAFB1C96204BB947A570D37 /* RunLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogView.swift; sourceTree = "<group>"; };
 		10091DCC5C1AD71F38B67CAE /* DemoDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoDriver.swift; sourceTree = "<group>"; };
 		1F0D16F2437E4CFBBB842AD2 /* JarvisTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JarvisTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		24AFAF6BBE8E74A4E6FAEE22 /* ActionsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionsStore.swift; sourceTree = "<group>"; };
@@ -171,6 +173,7 @@
 				75D0EB65612938958070A0D7 /* DashboardView.swift */,
 				95B844128D060BA2F4B3B6BB /* DashboardWindow.swift */,
 				7D4F614D9026A311CF7C9872 /* OrbView.swift */,
+				0EAFB1C96204BB947A570D37 /* RunLogView.swift */,
 				F2FB243C43409FABACAE3AB2 /* Orb */,
 			);
 			path = Dashboard;
@@ -409,6 +412,7 @@
 				BC6DD9FDDC1B10EA768DA460 /* OrbView.swift in Sources */,
 				1F3A51E135A1D16A3298B49D /* Paths.swift in Sources */,
 				A063CA4C2907713C17B97020 /* QuickReplies.swift in Sources */,
+				8837709608C3D000459114FD /* RunLogView.swift in Sources */,
 				D69E45C4400DEE5DBF937B33 /* Scheduler.swift in Sources */,
 				8D068F5CD261B90D6FE49225 /* SettingsView.swift in Sources */,
 				F458E80ADF7A0F0724BAC9EF /* Snapshots.swift in Sources */,

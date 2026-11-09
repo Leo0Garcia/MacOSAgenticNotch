@@ -385,3 +385,28 @@ import SwiftUI
         #expect(groups.map { $0.map(\.id) } == [[4], [3], [1, 2]])
     }
 }
+
+@Suite struct RunDetailsDecodingTests {
+    private let old = #"{"v":1,"request":"lights off","reply":"Done.","route":"lights","outcome":"done","saved":false,"startedAt":"2026-11-08T10:00:00.000Z","totalMs":1200,"breakdown":[{"label":"Working","ms":400},{"label":"Speaking","ms":800}],"steps":[{"label":"Homebridge: off","atMs":0,"ms":400}]}"#
+
+    @Test func oldRowsDecodeAndBuildTheirChatFromRequestAndReply() throws {
+        let d = try #require(RunDetails.parse(old))
+        #expect(d.chat == nil)
+        #expect(d.steps[0].input == nil)
+        #expect(d.lines.map(\.who) == ["leo", "jarvis"])
+        #expect(d.lines[1].text == "Done.")
+        #expect(d.lines[1].atMs == 400) // when the answer came, before speaking
+    }
+
+    @Test func newRowsCarryTheChatAndEachToolCallsInputAndOutput() throws {
+        let new = #"{"v":1,"request":"q","reply":"a","route":"claude","outcome":"done","saved":false,"startedAt":"2026-11-09T10:00:00.000Z","totalMs":5000,"breakdown":[],"steps":[{"label":"Running a command","atMs":100,"ms":900,"tool":"Bash","input":"ls","output":"a.txt"}],"chat":[{"who":"leo","text":"q","atMs":0},{"who":"jarvis","text":"Looking.","atMs":50},{"who":"jarvis","text":"a","atMs":3000},{"who":"checker","text":"Checked: looks right","atMs":4000}]}"#
+        let d = try #require(RunDetails.parse(new))
+        #expect(d.steps[0].tool == "Bash" && d.steps[0].input == "ls" && d.steps[0].output == "a.txt")
+        #expect(d.lines.map(\.who) == ["leo", "jarvis", "jarvis", "checker"])
+    }
+
+    @Test func noReplyMeansJustLeo() throws {
+        let d = try #require(RunDetails.parse(old.replacingOccurrences(of: #""reply":"Done.""#, with: #""reply":"""#)))
+        #expect(d.lines.map(\.who) == ["leo"])
+    }
+}
