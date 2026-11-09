@@ -113,7 +113,9 @@ export function lightsConfig(repo: string): LightsConfig | null {
 /** "Thanks" and friends: answered instantly, like a person would. */
 export function smallTalk(request: string): string | null {
   const r = request.toLowerCase().replace(/[^a-z' ]+/g, " ").replace(/\s+/g, " ").trim().replace(/^jarvis /, "").replace(/ jarvis$/, "");
-  if (/^(thanks|thank you|thank you very much|thanks a lot|cheers|ta|nice one|great thanks|perfect thanks|that's great thanks|brilliant thanks)$/.test(r)) return "You're welcome.";
+  // "thanks", "great, thank you mate", "perfect cheers jarvis", "thank you so much"…
+  const thanks = /^(?:(?:great|perfect|brilliant|awesome|amazing|lovely|cool|nice|nice one|ok|okay|that's great|that's perfect|sound|legend)\s+)?(?:thanks|thank you|cheers|ta|nice one)(?:\s+(?:a lot|so much|very much|loads|mate|man|bro|buddy|pal|again|for that))*$/;
+  if (thanks.test(r)) return "You're welcome.";
   if (/^(good morning|morning)$/.test(r)) return "Good morning.";
   if (/^(good night|night)$/.test(r)) return "Good night.";
   return null;
