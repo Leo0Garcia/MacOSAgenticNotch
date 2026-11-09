@@ -29,6 +29,7 @@
 		7474AC611E9BF7039CB83D5A /* FlowText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E8CE23C76139818D8F09644 /* FlowText.swift */; };
 		75F6C7FC09162F02910BA943 /* VoiceSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10AA7980DDF3540B7DB4F4F /* VoiceSettings.swift */; };
 		7C4F20BB1C3DF362AB54A500 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAA2D9A96890795C2F02A32B /* TestSupport.swift */; };
+		7DB52E6D289DD5B57D27EADE /* three.bloom.js in Resources */ = {isa = PBXBuildFile; fileRef = 58758BF9076FF95E131EAD2B /* three.bloom.js */; };
 		7FD318C30BD7A3CB92FC9B74 /* SystemNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF33F34C3080DF1EB6C1F9A /* SystemNotifier.swift */; };
 		8629EADDDD97D81D270A5DE9 /* DashboardData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 781C1DF31255D38AAFBDD632 /* DashboardData.swift */; };
 		87681E7347A2C171AAC5FD95 /* ActionsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24AFAF6BBE8E74A4E6FAEE22 /* ActionsStore.swift */; };
@@ -79,6 +80,7 @@
 		53425C9A136675D37536EFA7 /* Transcriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcriber.swift; sourceTree = "<group>"; };
 		534EBA96B76F272C1C979589 /* orb.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = orb.html; sourceTree = "<group>"; };
 		53C21FA14451953CCB7700F3 /* ServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServicesTests.swift; sourceTree = "<group>"; };
+		58758BF9076FF95E131EAD2B /* three.bloom.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = three.bloom.js; sourceTree = "<group>"; };
 		5AA085A4901CE3801C9A88F1 /* NotchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchController.swift; sourceTree = "<group>"; };
 		5E85DCABB29F13DBE2800822 /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		701F7E02FB205441533705D3 /* Snapshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshots.swift; sourceTree = "<group>"; };
@@ -251,6 +253,7 @@
 			isa = PBXGroup;
 			children = (
 				534EBA96B76F272C1C979589 /* orb.html */,
+				58758BF9076FF95E131EAD2B /* three.bloom.js */,
 				CE6B252CCAEA0C5F9B71318F /* three.min.js */,
 			);
 			path = Orb;
@@ -377,6 +380,7 @@
 			files = (
 				F07A554D87CE7006EC29E85C /* AppIcon.icns in Resources */,
 				45DB5F74196139D8EB04F7FB /* orb.html in Resources */,
+				7DB52E6D289DD5B57D27EADE /* three.bloom.js in Resources */,
 				53F3884F80D77F5DC21453C3 /* three.min.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
