@@ -333,11 +333,17 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   }
 
   const res = monitor.finish(exitCode);
-  for (const d of res.denials) {
+  // A no-harm block the run got past (it finished the task another allowed way,
+  // e.g. with the paths written out) is logged, not shown as "Needs you"
+  // (Leo, 2026-11-09: "it keeps getting stuck on this"). Hard limits always show.
+  const recovered = !res.isError && res.resolved !== false;
+  res.denials = res.denials.filter((d) => {
+    if (d.rule) action(c, { kind: "guard", summary: d.reason ?? `guard:${d.rule}`, detail: d.tool, sessionId });
+    if (recovered && d.rule === "no-harm") return false;
     emit({ event: "denied", tool: d.tool, rule: d.rule, reason: d.reason });
     notch({ event: "denied", rule: d.rule, text: d.reason }, sessionId);
-    if (d.rule) action(c, { kind: "guard", summary: d.reason ?? `guard:${d.rule}`, detail: d.tool, sessionId });
-  }
+    return true;
+  });
   // A follow-up to a saved run never deletes it.
   const keep = plan.resumed ? true : res.keep;
   if (res.problem) log(c, "run result problem", { sessionId, problem: res.problem, exitCode, stderr: stderr.slice(-2000) });

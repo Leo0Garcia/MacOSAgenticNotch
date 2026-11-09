@@ -78,6 +78,7 @@ export function result(o: { structured?: unknown; denials?: Ev[]; subtype?: stri
 
 export const jsonl = (events: (Ev | Ev[])[]) => events.flat().map((e) => JSON.stringify(e)).join("\n") + "\n";
 
+export const GUARD_CP = 'PreToolUse:Bash hook error: guard:no-harm: cp destination "$B" can\'t be checked against the allowlist. Safe alternative: work on a copy inside ~/Jarvis.';
 export const GUARD_BANK =
   "guard:no-money: www.barclays.co.uk is a banking, payment, trading or shopping-checkout site (blocked-domains.txt line 17). Safe alternative: I can look it up read-only, summarise it, or set a reminder for you to do it yourself.";
 
@@ -107,6 +108,19 @@ export const runs = {
       result({
         structured: { keep: false, summary: "Refused to open a banking site" },
         denials: [{ tool_name: "mcp__claude-in-chrome__navigate", tool_use_id: "toolu_nav", tool_input: { url: "https://www.barclays.co.uk" } }],
+      }),
+    ]),
+  guardRecovered: () =>
+    jsonl([
+      init(),
+      toolUse("toolu_cp", "Bash", { command: 'B=/x; [ -e "$B" ] && B=/y; cp a "$B"' }),
+      { type: "system", subtype: "permission_denied", tool_name: "Bash", tool_use_id: "toolu_cp", session_id: SID },
+      toolResult("toolu_cp", GUARD_CP, true),
+      text(["Done, the notes are in."]),
+      structured(false, "Wrote the notes"),
+      result({
+        structured: { keep: false, summary: "Wrote the notes", resolved: true },
+        denials: [{ tool_name: "Bash", tool_use_id: "toolu_cp", tool_input: { command: "cp" } }],
       }),
     ]),
   notAuto: () => jsonl([init({ permissionMode: "default" }), text(["This should never be read."]), result({ structured: { keep: true, summary: "x" } })]),

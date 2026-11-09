@@ -216,6 +216,13 @@ test("no structured_output: kept, so nothing is lost", async () => {
   expect(readFileSync(join(jarvis, "logs", "launcher.log"), "utf8")).toContain("no valid structured_output");
 });
 
+test("a no-harm block the run got past is logged, not shown as needs-you", async () => {
+  const { out, events } = await go("write the lecture notes", runs.guardRecovered());
+  expect(events.some((e) => e.event === "denied")).toBe(false);
+  expect(events.at(-1)).toMatchObject({ event: "state", state: "done" });
+  expect(actions(out.sessionId!).some((a: { kind: string }) => a.kind === "guard")).toBe(true);
+});
+
 test("guard denial: reported as an event and the run needs Leo", async () => {
   const { out, events } = await go("pay my credit card", runs.guardDenied());
   expect(events).toContainEqual({ event: "denied", tool: "mcp__claude-in-chrome__navigate", rule: "no-money", reason: GUARD_BANK });
