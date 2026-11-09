@@ -148,7 +148,7 @@ canvas { display: block; width: 100%; height: 100%; }
         float amp = 0.04 + 0.09*uEnergy;
         // Listening: concentric ripples spreading out from the middle of the orb as seen.
         float ring = sin(acos(clamp(dir.z, -1.0, 1.0))*7.0 - uRipple) * uRippleAmp;
-        float rad = r0*(1.0 + n*amp + 0.16*uSwell + 0.09*ring);
+        float rad = r0*(1.0 + n*amp + 0.09*uSwell + 0.06*ring);
         vec3 w = dir*rad + f*amp*(0.9 + 0.4*uBusy);
         vec4 mv = modelViewMatrix*vec4(w, 1.0); gl_Position = projectionMatrix*mv;
         float near = nearness(mv.z);
@@ -245,28 +245,28 @@ canvas { display: block; width: 100%; height: 100%; }
     live.busy = ease(live.busy, busy, 0.04);
     live.speed = ease(live.speed, target.speed + busy * 0.45, 0.04);
     live.glow = ease(live.glow, target.glow + busy * 0.25, 0.04);
-    // Leo's voice drives it hard (Leo, 2026-11-09): room noise gated out, a quick
-    // attack and slower release, and a punch on each syllable's onset.
+    // Leo's voice moves it gently (Leo, 2026-11-09: the stronger version was "way
+    // over the top"): room noise gated out, a soft lift on each word.
     const raw = voice ? Math.min(1, want.level || 0) : 0;
     const lv = want.state === 'listening' ? Math.max(0, (raw - 0.18) / 0.82) : raw;
-    live.level = ease(live.level, lv, lv > live.level ? 0.55 : 0.18);
+    live.level = ease(live.level, lv, lv > live.level ? 0.3 : 0.1);
     live.slow = ease(live.slow, lv, 0.06);
-    live.punch = ease(live.punch, Math.min(1, Math.max(0, lv - live.slow) * 2.5), 0.5);
+    live.punch = ease(live.punch, Math.min(1, Math.max(0, lv - live.slow) * 1.2), 0.25);
     let e = target.energy + busy * 0.3;
     if (want.state === 'speaking' && live.level < 0.03) e = 0.35 + 0.4 * Math.abs(Math.sin(now * 0.009) * Math.sin(now * 0.0031 + 1.3));
-    else if (voice) e = 0.35 + 0.85 * live.level + 0.3 * live.punch;
-    live.energy = ease(live.energy, Math.min(1.3, e), voice ? 0.35 : 0.05);
-    live.swell = ease(live.swell, voice ? live.level + 0.5 * live.punch : 0, voice ? 0.4 : 0.06);
+    else if (voice) e = 0.35 + 0.5 * live.level + 0.1 * live.punch;
+    live.energy = ease(live.energy, Math.min(1.1, e), voice ? 0.15 : 0.05);
+    live.swell = ease(live.swell, voice ? 0.7 * live.level + 0.2 * live.punch : 0, voice ? 0.18 : 0.06);
     live.alert = ease(live.alert, want.state === 'needs' ? 1 : 0, 0.05);
     live.color.lerp(tc.set(want.colors[0] || '#63E6BE'), 0.05); live.color2.lerp(tc2.set(want.colors[1] || '#5AC8FA'), 0.05);
 
     const m = reduce ? 0.25 : 1;
     t += dt * live.speed * m; clock += dt * m;
-    ripple += dt * (2.5 + 12 * live.level + 8 * live.punch) * m;
+    ripple += dt * (2.5 + 6 * live.level + 2 * live.punch) * m;
     for (let i = 0; i < 5; i++) ang[i] += dt * live.speed * SPIN[i] * m;
     U.uTime.value = t; U.uClock.value = clock; U.uEnergy.value = live.energy; U.uBusy.value = live.busy;
     U.uSwell.value = reduce ? live.swell * 0.5 : live.swell; U.uRipple.value = ripple;
-    U.uRippleAmp.value = reduce ? 0 : (want.state === 'listening' ? live.level + live.punch : 0) * 0.9 + U.uRippleAmp.value * 0.4;
+    U.uRippleAmp.value = reduce ? 0 : (want.state === 'listening' ? live.level : 0) * 0.45 + U.uRippleAmp.value * 0.4;
     U.uColor.value.copy(live.color); U.uColor2.value.copy(live.color2);
 
     // The core breathes slowly; needs-you adds a slower, deeper amber pulse.
