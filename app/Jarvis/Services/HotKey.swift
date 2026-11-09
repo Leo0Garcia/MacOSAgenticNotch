@@ -36,6 +36,7 @@ final class HotKeyCenter {
 
     private struct Entry {
         var ref: EventHotKeyRef?
+        var combo: Combo
         var onPress: () -> Void
         var onRelease: () -> Void
     }
@@ -77,8 +78,25 @@ final class HotKeyCenter {
             AppLog.write("hotkey \(combo.label) unavailable (status \(status))")
             return nil
         }
-        entries[id] = Entry(ref: ref, onPress: onPress, onRelease: onRelease)
+        entries[id] = Entry(ref: ref, combo: combo, onPress: onPress, onRelease: onRelease)
         return id
+    }
+
+    /// Registers every hotkey again under the same ids. Called after the app switches
+    /// between window mode and background mode, which can leave Carbon hotkeys dead.
+    func reregisterAll() {
+        for (id, e) in entries {
+            if let old = e.ref { UnregisterEventHotKey(old) }
+            var ref: EventHotKeyRef?
+            let combo = e.combo
+            guard RegisterEventHotKey(combo.keyCode, combo.modifiers, EventHotKeyID(signature: Self.signature, id: id),
+                                      GetApplicationEventTarget(), 0, &ref) == noErr, let ref else {
+                AppLog.write("hotkey \(combo.label) couldn't be registered again")
+                entries[id] = nil
+                continue
+            }
+            entries[id]?.ref = ref
+        }
     }
 
     func unregister(_ id: UInt32) {
@@ -87,6 +105,8 @@ final class HotKeyCenter {
 
     private func fire(id: UInt32, pressed: Bool) {
         guard let e = entries[id] else { return }
+        // Rare events, and the only trace when Leo says a shortcut "didn't work".
+        AppLog.write("hotkey \(e.combo.label) \(pressed ? "down" : "up")")
         pressed ? e.onPress() : e.onRelease()
     }
 }

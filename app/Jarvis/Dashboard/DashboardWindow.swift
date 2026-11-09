@@ -10,6 +10,8 @@ import SwiftUI
 final class DashboardWindow: NSObject, NSWindowDelegate {
     let store: DashboardStore
     var hotkeyLabel = "⌥ Space"
+    /// After switching between window mode and background mode (the hotkeys are re-registered).
+    var activationPolicyChanged: (() -> Void)?
     private var window: NSWindow?
     private var escMonitor: Any?
 
@@ -23,7 +25,10 @@ final class DashboardWindow: NSObject, NSWindowDelegate {
     func show() {
         if window == nil { make() }
         // With its window open Jarvis is a normal app: Dock icon, its own menu bar.
-        NSApp.setActivationPolicy(.regular)
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+            activationPolicyChanged?()
+        }
         NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
     }
@@ -73,6 +78,7 @@ final class DashboardWindow: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         // Closed: back to the background, just the notch and the menu bar item.
         NSApp.setActivationPolicy(.accessory)
+        activationPolicyChanged?()
         store.setVisible(false)
         store.model.dashboardShowing = false
         store.ambient = false

@@ -9,6 +9,7 @@
 
 import AppKit
 import AVFoundation
+import Carbon.HIToolbox
 import SwiftUI
 
 @MainActor
@@ -117,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Snapshots.warmUp(env: env)
         startServer()
         registerHotkeys()
+        watchSecureInput()
 
         let args = CommandLine.arguments
         if args.contains("--demo") || args.contains("--demo-working") {
@@ -256,6 +258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppLog.write("⌥⇧ Space is taken by another app, so the type box is off")
         }
         dashboard?.hotkeyLabel = env.hotkeyLabel
+        dashboard?.activationPolicyChanged = { [weak hk] in hk?.reregisterAll() }
         if hk.register(.optionShiftJ, onPress: { [weak self] in self?.dashboard?.toggle() }) == nil {
             AppLog.write("⌥⇧J is taken by another app, so the dashboard opens from the menu bar only")
         }
@@ -263,6 +266,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppLog.write("⌥ Space is taken by another app")
             model.postNotification?("Jarvis", "⌥ Space is already used by another app, so push-to-talk is off.")
         }
+    }
+
+    /// While an app holds secure keyboard entry (a password field, a terminal's
+    /// "Secure Keyboard Entry"), macOS delivers no global shortcuts at all. Leo
+    /// hears why once per app per day instead of ⌥ Space silently doing nothing.
+    private var secureSince: Date?
+    private var secureWarned: Set<String> = []
+
+    private func watchSecureInput() {
+        Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkSecureInput() }
+        }
+    }
+
+    private func checkSecureInput() {
+        guard IsSecureEventInputEnabled() else {
+            if secureSince != nil { AppLog.write("secure keyboard entry off: shortcuts work again") }
+            secureSince = nil
+            return
+        }
+        let since = secureSince ?? Date()
+        if secureSince == nil {
+            secureSince = since
+            AppLog.write("secure keyboard entry on (\(Self.secureInputOwner())): global shortcuts are blocked")
+        }
+        let owner = Self.secureInputOwner()
+        let key = "\(owner) \(Date().formatted(.dateTime.year().month().day()))"
+        guard Date().timeIntervalSince(since) > 60, !secureWarned.contains(key) else { return }
+        secureWarned.insert(key)
+        notify(title: "Jarvis can't hear ⌥ Space", body: "\(owner) has secure keyboard entry on, which blocks shortcuts. Turn it off there, or close the password field.")
+    }
+
+    /// The app holding secure input, from the window server's session info.
+    static func secureInputOwner() -> String {
+        guard let info = CGSessionCopyCurrentDictionary() as? [String: Any], let pid = info["kCGSSessionSecureInputPID"] as? Int32,
+              let app = NSRunningApplication(processIdentifier: pid) else { return "another app" }
+        return app.localizedName ?? "another app"
     }
 
     private func pushToTalkDown() {
@@ -274,6 +314,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             model.hotkeyDown() // shows the listening panel with the problem text
             return
+        }
+        if model.panel == .listening || model.dashboardShowing {
+            AppLog.write("push-to-talk while panel=\(model.panel.kind) dashboardShowing=\(model.dashboardShowing)")
         }
         model.hotkeyDown()
     }
