@@ -13,6 +13,7 @@ import {
   isGuardProtected,
   looksLikePath,
   resolvePath,
+  SUBST,
 } from "./paths";
 import { deny, type Denial } from "./rules";
 import { ParseError, parseShell, programName, unwrap, type SimpleCommand } from "./shell";
@@ -60,6 +61,45 @@ const DELETE_CMDS = new Set(["rm", "unlink", "rmdir", "trash"]);
 
 interface State {
   cwd: string | null;
+  /** Variables the command itself set to a plain value earlier on (`D=/path; cp x "$D/y"`). */
+  vars?: Map<string, string>;
+  /** The whole command, to check a variable isn't set any other way. */
+  text?: string;
+}
+
+const ASSIGN = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
+
+/** `NAME=value` words (also after `export`/`local`/`readonly`): remembered when the value is plain, forgotten otherwise. */
+function noteAssignments(words: string[], st: State): boolean {
+  const rest = ["export", "local", "readonly", "declare"].includes(words[0]!) ? words.slice(1) : words;
+  if (rest.length === 0 || !rest.every((w) => ASSIGN.test(w))) return false;
+  st.vars ??= new Map();
+  for (const w of rest) {
+    const [, name, value] = ASSIGN.exec(w)!;
+    const v = expandVars(value!, st);
+    if (v.includes("$") || v.includes(SUBST) || v.includes("`") || !setOnce(name!, st.text ?? "")) st.vars.delete(name!);
+    else st.vars.set(name!, v);
+  }
+  return true;
+}
+
+/**
+ * Only a variable set plainly at the very start of the command, once, is
+ * trusted: there it can't sit in a subshell, pipeline or loop, and nothing
+ * later (`for`, `read`, `((…))`, a second assignment) may change it unseen.
+ */
+function setOnce(name: string, text: string): boolean {
+  const lead = new Set<string>();
+  const re = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(?:"[^"$`\\]*"|'[^']*'|[^\s;&|$`()<>"'\\]*)\s*(?:;|&&|\n)/;
+  for (let rest = text, m = re.exec(rest); m; rest = rest.slice(m[0].length), m = re.exec(rest)) lead.add(m[1]!);
+  if (!lead.has(name)) return false;
+  if ((text.match(new RegExp(`(^|[^A-Za-z0-9_$])${name}\\+?=`, "g")) ?? []).length !== 1) return false;
+  return !new RegExp(`\\b(for|select|read|getopts|mapfile|readarray|printf|let|typeset|declare|unset|eval|source)\\b[^;&|\\n]*\\b${name}\\b|\\(\\([^)]*\\b${name}\\b`).test(text);
+}
+
+function expandVars(word: string, st: State): string {
+  if (!st.vars?.size) return word;
+  return word.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (m, a, b) => st.vars!.get(a ?? b) ?? m);
 }
 
 export function checkBash(command: string, cwd: string | null, env: ShellEnv): Denial | null {
@@ -77,7 +117,7 @@ export function checkBash(command: string, cwd: string | null, env: ShellEnv): D
     if (e instanceof ParseError) return deny("no-harm", e.message);
     throw e;
   }
-  const st: State = { cwd };
+  const st: State = { cwd, text: command };
   for (const c of cmds) {
     const r = checkSimple(c, st, env);
     if (r) return r;
@@ -86,7 +126,7 @@ export function checkBash(command: string, cwd: string | null, env: ShellEnv): D
 }
 
 function res(word: string, st: State, env: ShellEnv): string | null {
-  return resolvePath(word, st.cwd, env.ctx);
+  return resolvePath(expandVars(word, st), st.cwd, env.ctx);
 }
 
 function args(words: string[]): { flags: string[]; operands: string[] } {
@@ -192,6 +232,7 @@ function checkSimple(raw: SimpleCommand, st: State, env: ShellEnv): Denial | nul
 
   const original = raw.words;
   if (original.length === 0) return null;
+  noteAssignments(original, st);
   const first = programName(original[0]!);
   if (ESCALATE.has(first)) return deny("no-harm", `Jarvis never runs commands as root (${first})`);
 

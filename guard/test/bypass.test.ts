@@ -101,3 +101,8 @@ test("Write and Edit can't touch the guard or its settings", () => {
   }
   expect(run(w, { tool_name: "Write", tool_input: { file_path: "$REPO/skills/kanban/SKILL.md", content: "x" }, cwd: "$REPO" })).toBeNull();
 });
+
+test("commands after shell keywords are checked too", () => {
+  for (const c of ["if true; then rm -rf ~/Documents; fi", "for D in a; do rm -rf ~/Documents; done", "while true; do rm -rf ~/Documents; done", "until false; do rm -rf ~/Documents; done", "if ! rm -rf ~/Documents; then echo; fi", "true || { rm -rf ~/Documents; }"])
+    expect([c, bash(c)?.rule]).toEqual([c, "no-harm"]);
+});
