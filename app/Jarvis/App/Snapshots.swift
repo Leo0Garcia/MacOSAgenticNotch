@@ -69,11 +69,15 @@ enum Snapshots {
             write(pill(m, env), to: dir.appendingPathComponent("\(name)-pill.png"))
         }
         let store = dashboardStore(level: level)
-        for ambient in [false, true] {
+        // Its own defaults, so the tab shown is the one asked for, not the last one used.
+        let defaults = UserDefaults(suiteName: "jarvis-snapshots")!
+        for (name, ambient, tab) in [("dashboard", false, DashTab.dashboard), ("dashboard-ambient", true, .dashboard), ("dashboard-kanban", false, .kanban)] {
             store.ambient = ambient
-            write(DashboardView(store: store, hotkeyLabel: "⌥ Space") {}.frame(width: 1320, height: 840),
-                  to: dir.appendingPathComponent(ambient ? "dashboard-ambient.png" : "dashboard.png"))
+            defaults.set(tab.rawValue, forKey: "DashboardTab")
+            write(DashboardView(store: store, hotkeyLabel: "⌥ Space") {}.defaultAppStorage(defaults).frame(width: 1320, height: 840),
+                  to: dir.appendingPathComponent("\(name).png"))
         }
+        defaults.removePersistentDomain(forName: "jarvis-snapshots")
         store.ambient = false
         for (name, items) in [("dashboard-details", [runLogSample()]), ("dashboard-details-conversation", conversationSample())] {
             write(ZStack {
@@ -104,12 +108,77 @@ enum Snapshots {
         m.launcher = NoLauncher()
         m.submit("Apply to the Oracle internship")
         m.received(.ask(id: "q", question: "Oracle asks about visa sponsorship. Do you need it?", options: ["No", "Yes"], timeoutMs: 60000, sessionId: nil), from: 1)
-        let store = DashboardStore(model: m, paths: Paths(home: home, repo: home), micLevel: level, voiceLevel: AudioLevel())
+        var paths = Paths(home: home, repo: home)
+        paths.vault = home.appendingPathComponent("vault")
+        try? fm.createDirectory(at: paths.vault, withIntermediateDirectories: true)
+        try? Data(kanbanSample().utf8).write(to: paths.kanbanFile)
+        let store = DashboardStore(model: m, paths: paths, micLevel: level, voiceLevel: AudioLevel())
         store.refresh()
+        store.kanban.load()
         let day = Calendar.current.startOfDay(for: Date())
         store.events = [TodayEvent(title: "COMP2311 lecture", start: day.addingTimeInterval(9 * 3600), end: day.addingTimeInterval(23.9 * 3600), allDay: false, location: "B32"),
                         TodayEvent(title: "COMP2321 lab", start: day.addingTimeInterval(14 * 3600), end: day.addingTimeInterval(23.95 * 3600), allDay: false, location: nil)]
         return store
+    }
+
+    /// A board shaped like Leo's (made-up cards), with due dates around today.
+    private static func kanbanSample() -> String {
+        func day(_ n: Int) -> String { Date().addingTimeInterval(Double(n) * 86400).formatted(.iso8601.year().month().day()) }
+        return """
+        ---
+
+        kanban-plugin: board
+
+        ---
+
+        ## Overdue
+
+        - [ ] Do [[COMP1001 - Tutorial 5|COMP1001 Tutorial 5]] #comp1001 @{\(day(-8))} %%src:tutorial:COMP1001 - Tutorial 5|%%
+        - [ ] Do COMP1002 Exercise Sheet 5 (Trees) + Progress Test Five #comp1002 @{\(day(-8))}
+        - [ ] Call the client about the menu changes #freelance @{\(day(-3))} %%likely:call held, quote sent after%%
+
+
+        ## This week
+
+        - [ ] Do [[COMP1001 - Tutorial 7|COMP1001 Tutorial 7]] #comp1001 @{\(day(0))}
+        - [ ] Do the COMP1001 quiz (Grammars) #comp1001 @{\(day(5))}
+        - [ ] [[COMP1001 - Lecture 17|Write notes: COMP1001 Lecture 17]] #comp1001
+        - [ ] [[COMP1001 - Lecture 18|Write notes: COMP1001 Lecture 18]] #comp1001
+
+
+        ## Later
+
+        - [ ] Do the group project deliverable D2 #comp1003
+        - [ ] Do the COMP1002 coursework @{\(day(30))} #comp1002
+        - [ ] Build the bakery's new product page once the quote is approved #freelance @{\(day(21))}
+        - [ ] Invoice the clinic once the redesign is live #freelance
+        - [ ] Buy chalk
+
+
+        ## In progress
+
+        - [ ] [[COMP1004 - Coursework|Do the COMP1004 coursework]] #comp1004
+        - [ ] Clinic site redesign
+        \tmost pages done, service pages left #freelance
+        - [ ] Internship applications: 40 sent, 9 new openings #careers
+
+
+        ## Completed
+
+        **Complete**
+        - [x] [[COMP1001 - Lecture 16|Write notes: COMP1001 Lecture 16]] #comp1001
+        - [x] Chase the bakery about the quote #freelance
+        - [x] Do the washing
+
+
+
+
+        %% kanban:settings
+        ```
+        {"kanban-plugin":"board","list-collapse":[false,false,false,false,false]}
+        ```
+        %%
+        """
     }
 
     /// A Kanban request with a failed first try, a checker note and the full chat.

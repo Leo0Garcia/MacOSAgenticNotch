@@ -46,6 +46,7 @@ struct DashboardView: View {
     var hotkeyLabel: String
     var toggleAmbient: () -> Void
     @AppStorage("DashboardShowRecent") private var showRecent = true
+    @AppStorage("DashboardTab") private var tab = DashTab.dashboard
     @State private var filter: AgentFilter = .all
     @State private var selected: String?
     @State private var details: DetailsSheet?
@@ -54,7 +55,7 @@ struct DashboardView: View {
 
     var body: some View {
         ZStack {
-            if store.ambient { ambient } else { normal }
+            if store.ambient { ambient } else if tab == .kanban { kanban } else { normal }
         }
         .foregroundStyle(Dash.text)
         // The traffic-light row: the content is drawn under it, so it needs our own
@@ -67,11 +68,11 @@ struct DashboardView: View {
             GeometryReader { g in
                 Dash.bg
                 let r = store.ambient || slot == nil ? CGRect(origin: .zero, size: g.size) : g[slot!]
-                OrbView(store: store)
+                if store.ambient || tab == .dashboard { OrbView(store: store)
                     .allowsHitTesting(false) // nothing to click, and it sits under the title bar
                     .frame(width: r.width, height: r.height)
                     .position(x: r.midX, y: r.midY)
-                    .animation(.easeInOut(duration: 0.35), value: store.ambient)
+                    .animation(.easeInOut(duration: 0.35), value: store.ambient) }
             }
             .ignoresSafeArea()
         }
@@ -115,13 +116,24 @@ struct DashboardView: View {
         .overlay(alignment: .top) { TitleBarArea().frame(height: 34) }
     }
 
+    private var kanban: some View {
+        VStack(spacing: 14) {
+            header
+            KanbanTab(feed: store.kanban, vault: store.paths.vault, active: store.onScreen, now: store.now)
+            TalkBar(model: model, hotkeyLabel: hotkeyLabel, large: false)
+        }
+        .padding(EdgeInsets(top: 34, leading: 18, bottom: 16, trailing: 18))
+        .overlay(alignment: .top) { TitleBarArea().frame(height: 34) }
+    }
+
     private var header: some View {
         HStack(spacing: 12) {
             Text("Jarvis").font(.system(size: 20, weight: .semibold))
+            DashTabSwitch(tab: $tab)
             Text(store.now.formatted(.dateTime.weekday(.wide).day().month(.wide)) + " · " + Dash.time(store.now))
                 .font(.system(size: 13)).foregroundStyle(Dash.muted)
             Spacer()
-            if !showRecent {
+            if !showRecent && tab == .dashboard {
                 Button("Show recent") { showRecent = true }.buttonStyle(DashButtonStyle())
             }
             Button(action: toggleAmbient) { Text("Ambient ⤢") }

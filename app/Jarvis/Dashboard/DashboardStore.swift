@@ -26,6 +26,7 @@ final class DashboardStore {
     @ObservationIgnored let paths: Paths
     @ObservationIgnored let micLevel: AudioLevel
     @ObservationIgnored let voiceLevel: AudioLevel
+    @ObservationIgnored private(set) lazy var kanban = KanbanFeed(url: paths.kanbanFile)
     @ObservationIgnored var calendarToday: () async -> [NotchProtocol.CalendarEvent] = { [] }
     @ObservationIgnored private var poll: Task<Void, Never>?
     @ObservationIgnored private var ticks = 0

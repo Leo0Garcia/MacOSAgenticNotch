@@ -6,6 +6,8 @@ import Foundation
 struct Paths: Sendable {
     var home: URL
     var repo: URL
+    /// Leo's Obsidian vault, as skills/lib/env.ts: JARVIS_MASTER_VAULT or the default.
+    var vault = URL(fileURLWithPath: "/Users/leogarcia/Documents/Obsidian Master Vault", isDirectory: true)
 
     static func current(env: [String: String] = ProcessInfo.processInfo.environment, bundle: Bundle = .main) -> Paths {
         let userHome = URL(fileURLWithPath: env["HOME"] ?? NSHomeDirectory(), isDirectory: true)
@@ -13,13 +15,16 @@ struct Paths: Sendable {
             ?? userHome.appendingPathComponent("Jarvis", isDirectory: true)
         let repoPath = env["JARVIS_REPO"] ?? (bundle.object(forInfoDictionaryKey: "JarvisRepo") as? String) ?? ""
         let repo = URL(fileURLWithPath: repoPath, isDirectory: true).standardizedFileURL
-        return Paths(home: home, repo: repo)
+        var paths = Paths(home: home, repo: repo)
+        if let v = env["JARVIS_MASTER_VAULT"] { paths.vault = URL(fileURLWithPath: v, isDirectory: true) }
+        return paths
     }
 
     var notchFile: URL { home.appendingPathComponent("notch.json") }
     var models: URL { home.appendingPathComponent("models", isDirectory: true) }
     var logs: URL { home.appendingPathComponent("logs", isDirectory: true) }
     var appLog: URL { logs.appendingPathComponent("app.log") }
+    var kanbanFile: URL { vault.appendingPathComponent("Kanban.md") }
     var launcherScript: URL { repo.appendingPathComponent("launcher/run.sh") }
 }
 
