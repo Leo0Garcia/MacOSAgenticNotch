@@ -36,6 +36,7 @@ targets:
       path: Jarvis/Info.plist
       properties:
         CFBundleDisplayName: Jarvis
+        CFBundleIconFile: AppIcon
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         LSUIElement: true

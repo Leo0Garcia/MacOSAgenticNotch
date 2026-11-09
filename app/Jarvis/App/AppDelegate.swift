@@ -124,6 +124,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if args.contains("--demo-working") { demo?.startWorking() } else { demo?.start() }
             return
         }
+        // A full Mac app (Leo, 2026-11-09): opening Jarvis opens its window;
+        // closing the window leaves the notch running in the background.
+        if !args.contains("--background") { showDashboard() }
         voice.prepare()
         startSpeechServer()
         Task { await self.model.resumeInterrupted() }
@@ -166,6 +169,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showDashboard() { dashboard?.show() }
+    func toggleAmbient() {
+        dashboard?.show()
+        dashboard?.toggleAmbient()
+    }
+
+    /// Opening Jarvis again (Dock, Finder, Spotlight) while it runs in the background brings the window back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showDashboard()
+        return false
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()

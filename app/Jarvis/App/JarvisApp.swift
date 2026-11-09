@@ -1,5 +1,6 @@
-// Jarvis notch app: an agent app (no Dock icon) with a small menu bar item
-// for status and Quit. The notch itself is driven by AppDelegate.
+// Jarvis: a normal Mac app while its dashboard window is open (Dock icon,
+// menus), and a background app with the notch and a menu bar item when it's
+// closed. The notch itself is driven by AppDelegate.
 
 import SwiftUI
 
@@ -14,6 +15,16 @@ struct JarvisApp: App {
         Settings {
             SettingsView(voice: delegate.voiceSettings, model: delegate.model, socket: delegate.speechSocket)
         }
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("Dashboard") { delegate.showDashboard() }
+                    .keyboardShortcut("j", modifiers: [.option, .shift])
+            }
+            CommandGroup(after: .sidebar) {
+                Button("Ambient Mode") { delegate.toggleAmbient() }
+                    .keyboardShortcut("f", modifiers: [.control, .command])
+            }
+        }
     }
 }
 
@@ -25,7 +36,7 @@ private struct MenuContent: View {
         Text("Hold ⌥ Space and talk")
         Text(speechStatus)
         Divider()
-        Button("Dashboard", action: openDashboard)
+        Button("Open Jarvis", action: openDashboard)
         SettingsLink { Text("Settings…") }
             .keyboardShortcut(",")
         Button("Quit Jarvis") { NSApp.terminate(nil) }

@@ -49,6 +49,7 @@
 		DF6EC4DD8D8A029748F382AE /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8F0993EA9183644A00101A8E /* WhisperKit */; };
 		E31E8FF84FDC1487E74BB67C /* CalendarService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA201F15CBAE07957922C904 /* CalendarService.swift */; };
 		EE159A7E6418AAD0BDD57172 /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF730C9F89F0B4290CAA7FA /* AudioCapture.swift */; };
+		F07A554D87CE7006EC29E85C /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = B87B18D548EA09DB17897212 /* AppIcon.icns */; };
 		F458E80ADF7A0F0724BAC9EF /* Snapshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 701F7E02FB205441533705D3 /* Snapshots.swift */; };
 		FD1BD447C82FB4C545F41946 /* Launcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB30A56BEBAB614A9399B2D7 /* Launcher.swift */; };
 		FFB56E9C35EF4921949558AC /* Appearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848AFC8CDE50CE91E877D410 /* Appearance.swift */; };
@@ -94,6 +95,7 @@
 		AB30A56BEBAB614A9399B2D7 /* Launcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Launcher.swift; sourceTree = "<group>"; };
 		B39173ECFE82B9FEE63664D7 /* ComputerContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerContext.swift; sourceTree = "<group>"; };
 		B79EFB225668B41BBF2569D7 /* TypeBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypeBox.swift; sourceTree = "<group>"; };
+		B87B18D548EA09DB17897212 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		B8FB67B0B69C7DB9CC6A85C1 /* QuickReplies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickReplies.swift; sourceTree = "<group>"; };
 		CE6B252CCAEA0C5F9B71318F /* three.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = three.min.js; sourceTree = "<group>"; };
 		D758DDA5F42A49B6CB275DED /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -196,6 +198,14 @@
 			path = Services;
 			sourceTree = "<group>";
 		};
+		BA25FDB5D10D2581164C3674 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B87B18D548EA09DB17897212 /* AppIcon.icns */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		BC0DCAC9B7584481D8C65021 = {
 			isa = PBXGroup;
 			children = (
@@ -266,6 +276,7 @@
 				7AAAEAC7CFE605EDDAE5F8B0 /* Dashboard */,
 				E3CD928FDA3DD4AD97C93121 /* Model */,
 				3D58A7603DC1B3DEB859800E /* Notch */,
+				BA25FDB5D10D2581164C3674 /* Resources */,
 				A186AF3A5D7731D0FD3A0A63 /* Services */,
 				562D5088798827372CD6647B /* Settings */,
 				F96B9C85D619BA1AC493B774 /* Views */,
@@ -364,6 +375,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F07A554D87CE7006EC29E85C /* AppIcon.icns in Resources */,
 				45DB5F74196139D8EB04F7FB /* orb.html in Resources */,
 				53F3884F80D77F5DC21453C3 /* three.min.js in Resources */,
 			);

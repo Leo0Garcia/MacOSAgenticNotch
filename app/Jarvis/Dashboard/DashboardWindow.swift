@@ -22,6 +22,8 @@ final class DashboardWindow: NSObject, NSWindowDelegate {
 
     func show() {
         if window == nil { make() }
+        // With its window open Jarvis is a normal app: Dock icon, its own menu bar.
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
     }
@@ -69,6 +71,8 @@ final class DashboardWindow: NSObject, NSWindowDelegate {
     func windowDidExitFullScreen(_ notification: Notification) { store.ambient = false }
 
     func windowWillClose(_ notification: Notification) {
+        // Closed: back to the background, just the notch and the menu bar item.
+        NSApp.setActivationPolicy(.accessory)
         store.setVisible(false)
         store.model.dashboardShowing = false
         store.ambient = false
