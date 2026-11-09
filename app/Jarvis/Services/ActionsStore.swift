@@ -16,6 +16,7 @@ struct ActionItem: Equatable, Identifiable, Sendable {
 }
 
 /// RunDetails v1, written by the launcher into the action row's `detail`.
+/// Rows from before 2026-11-09 have no chat and no tool input or output.
 struct RunDetails: Decodable, Equatable, Sendable {
     struct Step: Decodable, Equatable, Sendable {
         var label: String
@@ -23,6 +24,15 @@ struct RunDetails: Decodable, Equatable, Sendable {
         var atMs: Double
         var ms: Double?
         var error: Bool?
+        var tool: String? = nil
+        var input: String? = nil
+        var output: String? = nil
+    }
+    struct ChatLine: Decodable, Equatable, Sendable {
+        /// "leo", "jarvis" or "checker".
+        var who: String
+        var text: String
+        var atMs: Double
     }
     struct Slice: Decodable, Equatable, Sendable {
         var label: String
@@ -42,6 +52,14 @@ struct RunDetails: Decodable, Equatable, Sendable {
     var turns: Int?
     var costUsd: Double?
     var problem: String?
+    var chat: [ChatLine]? = nil
+
+    /// The conversation; older rows get it from the request and the reply.
+    var lines: [ChatLine] {
+        if let chat { return chat }
+        let answeredAt = totalMs - (breakdown.first { $0.label == "Speaking" }?.ms ?? 0)
+        return [ChatLine(who: "leo", text: request, atMs: 0)] + (reply.isEmpty ? [] : [ChatLine(who: "jarvis", text: reply, atMs: answeredAt)])
+    }
 
     var started: Date? {
         let f = ISO8601DateFormatter()

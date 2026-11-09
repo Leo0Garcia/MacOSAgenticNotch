@@ -74,6 +74,16 @@ enum Snapshots {
             write(DashboardView(store: store, hotkeyLabel: "⌥ Space") {}.frame(width: 1320, height: 840),
                   to: dir.appendingPathComponent(ambient ? "dashboard-ambient.png" : "dashboard.png"))
         }
+        store.ambient = false
+        for (name, items) in [("dashboard-details", [runLogSample()]), ("dashboard-details-conversation", conversationSample())] {
+            write(ZStack {
+                Dash.bg
+                Color.black.opacity(0.6)
+                DetailsSheetView(sheet: DetailsSheet(items: items), store: store) {}
+                    .padding(EdgeInsets(top: 44, leading: 40, bottom: 32, trailing: 40))
+            }
+            .frame(width: 1320, height: 840), to: dir.appendingPathComponent("\(name).png"))
+        }
     }
 
     /// The dashboard with two launcher runs, the app's own run waiting on a
@@ -100,6 +110,43 @@ enum Snapshots {
         store.events = [TodayEvent(title: "COMP2311 lecture", start: day.addingTimeInterval(9 * 3600), end: day.addingTimeInterval(23.9 * 3600), allDay: false, location: "B32"),
                         TodayEvent(title: "COMP2321 lab", start: day.addingTimeInterval(14 * 3600), end: day.addingTimeInterval(23.95 * 3600), allDay: false, location: nil)]
         return store
+    }
+
+    /// A Kanban request with a failed first try, a checker note and the full chat.
+    private static func runLogSample() -> ActionItem {
+        typealias S = RunDetails.Step
+        let d = RunDetails(v: 1, request: "Add buy chalk to my Kanban and tell me what's due this week", reply: "", route: "claude", model: "claude-sonnet-4-5", outcome: "done", saved: true,
+                           startedAt: "2026-11-09T10:42:05.000Z", totalMs: 21_400,
+                           breakdown: [.init(label: "Starting Claude", ms: 1900), .init(label: "Thinking", ms: 9300), .init(label: "Tools", ms: 5200), .init(label: "Speaking", ms: 5000)],
+                           steps: [S(label: "Using the kanban skill", detail: "kanban", atMs: 2600, ms: 150, error: nil, tool: "Skill", input: "kanban", output: "Launching skill: kanban"),
+                                   S(label: "Running a command", detail: "Add the card", atMs: 3400, ms: 1900, error: true, tool: "Bash", input: "bun ~/Documents/Jarvis/skills/kanban/kanban.ts add 'Buy chalk' --column 'Not Started'",
+                                     output: "error: no column named 'Not Started' on the board.\nColumns: In-progress, Not started, Done"),
+                                   S(label: "Running a command", detail: "Add the card", atMs: 6100, ms: 1400, error: nil, tool: "Bash", input: "bun ~/Documents/Jarvis/skills/kanban/kanban.ts add 'Buy chalk' --column 'Not started'",
+                                     output: "Added \"Buy chalk\" to Not started (card 41)."),
+                                   S(label: "Running a command", detail: "List this week's due cards", atMs: 8300, ms: 1600, error: nil, tool: "Bash", input: "bun ~/Documents/Jarvis/skills/kanban/kanban.ts due --days 7",
+                                     output: "COMP2312 Coursework 2 · due Wed 12 Nov\nLiterature review papers · due Fri 14 Nov"),
+                                   S(label: "Checking the result", detail: nil, atMs: 16_000, ms: 2400, error: nil)],
+                           turns: 6, costUsd: 0.034, problem: nil,
+                           chat: [.init(who: "leo", text: "Add buy chalk to my Kanban and tell me what's due this week", atMs: 0),
+                                  .init(who: "jarvis", text: "On it, adding the card first.", atMs: 2300),
+                                  .init(who: "jarvis", text: "The column is called \"Not started\", lower case. Trying again.", atMs: 5600),
+                                  .init(who: "jarvis", text: "Done: \"Buy chalk\" is in Not started. Two things are due this week: COMP2312 Coursework 2 on Wednesday and the literature review papers on Friday.", atMs: 11_900),
+                                  .init(who: "checker", text: "Checked: looks right", atMs: 18_400)])
+        return ActionItem(id: 12, date: Date(), sessionId: "s", kind: "run", summary: "Added a Kanban card", saved: true, details: d)
+    }
+
+    /// Two follow-ups saved before chat was recorded, so their chat comes from request and reply.
+    private static func conversationSample() -> [ActionItem] {
+        func d(_ q: String, _ a: String, _ start: String, _ ms: Double, _ steps: [RunDetails.Step]) -> RunDetails {
+            RunDetails(v: 1, request: q, reply: a, route: "warm", model: "claude-sonnet-4-5", outcome: "done", saved: false, startedAt: start, totalMs: ms,
+                       breakdown: [.init(label: "Thinking", ms: ms * 0.5), .init(label: "Tools", ms: ms * 0.2), .init(label: "Speaking", ms: ms * 0.3)], steps: steps, turns: 2, costUsd: 0.01, problem: nil)
+        }
+        let iso = ISO8601DateFormatter()
+        return [ActionItem(id: 1, date: iso.date(from: "2026-11-09T18:07:30Z")!, sessionId: nil, kind: "run", summary: "Described the screen", saved: false,
+                           details: d("What am I watching?", "You're watching The Mentalist on Netflix, season one.", "2026-11-09T18:07:20Z", 8200,
+                                      [.init(label: "Looking at the screen", detail: "Dia", atMs: 1800, ms: 2100, error: nil)])),
+                ActionItem(id: 2, date: iso.date(from: "2026-11-09T18:08:40Z")!, sessionId: nil, kind: "run", summary: "Shared thoughts", saved: false,
+                           details: d("What do you think of it?", "I really like it. Patrick Jane is a great lead: smug and charming, but his grief keeps him grounded.", "2026-11-09T18:08:20Z", 11300, []))]
     }
 
     private static func cases(env: NotchEnvironment) -> [(String, AppModel)] {

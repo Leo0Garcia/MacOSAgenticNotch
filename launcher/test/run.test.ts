@@ -119,6 +119,46 @@ test("each run's row carries its details: request, reply, steps and where the ti
   expect(d.breakdown.reduce((n: number, b: { ms: number }) => n + b.ms, 0)).toBe(d.totalMs);
 });
 
+test("the details keep the chat in order and each tool call's input and output, clipped, without secrets", async () => {
+  let t = 1_000_000;
+  const tick = () => (t += 100);
+  const long = "x".repeat(1000);
+  const fixture = jsonl([
+    init(),
+    text(["Let me look."]),
+    toolUse("t1", "Bash", { command: `echo ${long}` }),
+    toolResult("t1", long),
+    toolUse("t2", "Bash", { command: "security find-generic-password -s jarvis/hue -w" }),
+    toolResult("t2", "hunter2"),
+    toolUse("t3", "Read", { file_path: "~/.ssh/id_rsa" }),
+    toolResult("t3", "PRIVATE"),
+    toolUse("t4", "WebFetch", { url: "https://example.com/" }),
+    toolResult("t4", "token sk-ant-api03-abcdefghijklmnopqrstuvwxyz"),
+    text(["All done, ", "it's in Documents."]),
+    ...structured(false, "Listed Documents"),
+    result({ structured: { keep: false, summary: "Listed Documents" } }),
+  ]);
+  const { out } = await go("what's in my documents", fixture, {}, tick);
+  const d = JSON.parse((actions(out.sessionId!)[0] as { detail: string }).detail);
+  expect(d.chat.map((l: { who: string; text: string }) => [l.who, l.text])).toEqual([
+    ["leo", "what's in my documents"],
+    ["jarvis", "Let me look."],
+    ["jarvis", "All done, it's in Documents."],
+  ]);
+  expect(d.chat[1].atMs).toBeLessThan(d.chat[2].atMs);
+  const [echo, keychain, key, fetched] = d.steps;
+  expect(echo.tool).toBe("Bash");
+  expect(echo.input).toStartWith("echo xxx");
+  expect(echo.input.length).toBe(300);
+  expect(echo.output.length).toBe(600);
+  expect(keychain).toMatchObject({ tool: "Bash" });
+  expect(keychain.input ?? keychain.output).toBeUndefined();
+  expect(key.input ?? key.output).toBeUndefined();
+  expect(fetched).toMatchObject({ tool: "WebFetch", input: "https://example.com/" });
+  expect(fetched.output).toBeUndefined();
+  expect(JSON.stringify(d)).not.toContain("hunter2");
+});
+
 test("'and also' within 2 minutes of a saved run resumes it and can't discard it", async () => {
   let t = Date.parse("2026-10-11T14:00:00Z");
   const first = await go("start a research session on heat pumps", runs.research(), {}, () => t);
@@ -361,4 +401,14 @@ test("the checker: a run that did something is checked, and retried once (resume
   expect(events.filter((e) => e.event === "done")).toHaveLength(1); // only the retry reports done
   expect(finals).toHaveLength(1); // finalized once, by the outer run
   expect(events.some((e) => e.event === "status" && e.text === "Checking the result")).toBe(true);
+  // The outer row's chat: the answer, the checker's problem, then the retry's answer.
+  const db = new Database(join(jarvis, "actions.sqlite"));
+  const row = db.query("SELECT detail FROM actions WHERE session_id = ? ORDER BY id DESC LIMIT 1").get(out.sessionId!) as { detail: string };
+  db.close();
+  expect(JSON.parse(row.detail).chat.map((l: { who: string; text: string }) => `${l.who}: ${l.text}`)).toEqual([
+    "leo: add buy chalk to my kanban board please",
+    "jarvis: Added buy chalk to your Kanban.",
+    "checker: The card went into Done, not Not Started.",
+    "jarvis: Added buy chalk to your Kanban.",
+  ]);
 });

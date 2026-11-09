@@ -66,6 +66,8 @@ export interface MonitorHooks {
   onTool?: (name: string, input: Record<string, unknown>, id?: string) => void;
   /** That tool call's result came back. */
   onToolDone?: (id: string, isError: boolean, output: string) => void;
+  /** Text Jarvis wrote in the main conversation, as it arrives (narration and answer alike). */
+  onText?: (text: string) => void;
   /** The first streamed text of the run. */
   onFirstText?: () => void;
 }
@@ -221,6 +223,7 @@ export class RunMonitor {
 
   private addText(text: string, flush: boolean): void {
     this.replyParts.push(text);
+    this.hooks.onText?.(text);
     if (text.trim()) this.spokeSinceTool = true;
     this.held.push(...this.splitter.push(text));
     if (flush) this.held.push(...this.splitter.flush());
