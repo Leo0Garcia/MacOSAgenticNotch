@@ -64,7 +64,7 @@ struct OrbView: NSViewRepresentable {
             web?.evaluateJavaScript("jarvis.pause(\(!visible))")
             if visible, timer == nil {
                 push()
-                timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
+                timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
                     MainActor.assumeIsolated { self?.push() }
                 }
             } else if !visible {
