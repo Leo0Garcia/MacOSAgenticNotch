@@ -87,7 +87,7 @@ final class DashboardStore {
         events = (timetable + calendar).sorted { $0.start < $1.start }
     }
 
-    /// The orb's state, read about 20 times a second while the window shows.
+    /// The orb's state, read about 30 times a second while the window shows.
     func orbState() -> OrbState {
         OrbState.make(kind: model.kind, speaking: model.speaking, runActive: model.runActive,
                       mic: micLevel.current, voice: voiceLevel.current, cards: cards.filter { $0.taskId == nil }, palette: Appearance.shared.palette)

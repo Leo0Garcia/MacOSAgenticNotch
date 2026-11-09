@@ -146,7 +146,7 @@ final class AudioCapture {
         let conv = UncheckedBox(converter)
         let smoothed = Mutex<Float>(0)
         return { pcm, _ in
-            // RMS of the first channel for the bars, smoothed 0.25 per buffer.
+            // RMS of the first channel for the bars and orb: quick attack, slower release.
             if let ch = pcm.floatChannelData?[0] {
                 let n = Int(pcm.frameLength)
                 var sum: Float = 0
@@ -155,7 +155,7 @@ final class AudioCapture {
                 // Speech RMS is roughly 0.01–0.2; map to 0…1 on a log-ish curve.
                 let target = min(1, max(0, (20 * log10(max(rms, 1e-5)) + 55) / 40))
                 let v = smoothed.withLock { s -> Float in
-                    s += (target - s) * 0.25
+                    s += (target - s) * (target > s ? 0.6 : 0.2)
                     return s
                 }
                 level.set(v)
