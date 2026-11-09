@@ -60,7 +60,8 @@ final class DashboardStore {
         cards = Agents.cards(active: active, current: model.run, currentRunning: model.runActive, needsYou: model.panel.isNeedsYou, now: now)
         stages = Dictionary(cards.map { ($0.id, Agents.record($0.stage, into: stages[$0.id] ?? [], at: now)) }, uniquingKeysWith: { a, _ in a })
         if ticks % 5 == 0 {
-            recent = AppModel.conversations(ActionsStore.newest(30, file: paths.home.appendingPathComponent("actions.sqlite")))
+            // Recent is work an agent did: Claude runs only, not instant replies or reminders.
+            recent = AppModel.conversations(ActionsStore.newest(60, file: paths.home.appendingPathComponent("actions.sqlite")).filter { $0.kind == "run" && $0.sessionId != nil })
             deadlines = Today.deadlines(file: paths.home.appendingPathComponent("state/deadlines.json"), now: now)
             reminders = Today.reminders(dir: paths.home.appendingPathComponent("reminders"), now: now)
         }
