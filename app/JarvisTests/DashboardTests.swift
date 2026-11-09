@@ -59,9 +59,12 @@ private func write(_ text: String, _ url: URL) throws {
     @Test func theAppsOwnRunIsACardUntilItsFileAppears() {
         var run = RunState(request: "What's the weather", startedAt: ProcessInfo.processInfo.systemUptime - 5)
         run.status = "Checking the forecast"
+        // No session yet (or an instant reply like "thanks"): no tile.
+        #expect(Agents.cards(active: active, current: run, currentRunning: true, needsYou: false, now: now).count == 2)
+        run.sessionId = "z"
         var cards = Agents.cards(active: active, current: run, currentRunning: true, needsYou: false, now: now)
         #expect(cards.count == 3)
-        #expect(cards[0].isCurrent && cards[0].id == "current" && cards[0].stage == "Checking the forecast")
+        #expect(cards[0].isCurrent && cards[0].id == "z" && cards[0].stage == "Checking the forecast")
         #expect(abs(cards[0].startedAt.timeIntervalSince(now) + 5) < 1)
 
         run.sessionId = "a"
@@ -75,9 +78,10 @@ private func write(_ text: String, _ url: URL) throws {
     }
 
     @Test func aQuestionMarksTheCurrentRunElseTheNewest() {
-        let run = RunState(request: "Apply to Oracle", startedAt: 0)
+        var run = RunState(request: "Apply to Oracle", startedAt: 0)
+        run.sessionId = "z"
         var cards = Agents.cards(active: active, current: run, currentRunning: true, needsYou: true, now: now)
-        #expect(cards.filter { $0.status == .waiting }.map(\.id) == ["current"])
+        #expect(cards.filter { $0.status == .waiting }.map(\.id) == ["z"])
         cards = Agents.cards(active: active, current: nil, currentRunning: false, needsYou: true, now: now)
         #expect(cards.filter { $0.status == .waiting }.map(\.id) == ["b"])
         #expect(Agents.cards(active: [], current: nil, currentRunning: false, needsYou: true, now: now).isEmpty)
@@ -184,7 +188,7 @@ private func write(_ text: String, _ url: URL) throws {
         let home = try tempDir()
         try write("{\"sessionId\":\"s1\",\"pid\":\(getpid()),\"request\":\"Make flashcards\",\"startedAt\":1000,\"doing\":\"Reading the slides\"}",
                   home.appendingPathComponent("state/active/s1.json"))
-        let (m, _, _, _) = makeModel()
+        let (m, _, l, _) = makeModel()
         let store = DashboardStore(model: m, paths: Paths(home: home, repo: home), micLevel: AudioLevel(), voiceLevel: AudioLevel())
         store.refresh()
         #expect(store.cards.map(\.id) == ["s1"])
@@ -192,6 +196,7 @@ private func write(_ text: String, _ url: URL) throws {
         #expect(store.stages(for: store.cards[0]).map(\.text) == ["Reading the slides"])
 
         m.submit("What's the weather")
+        l.emit(.state("working", sessionId: "s2"))
         store.refresh()
         #expect(store.cards.count == 2 && store.cards[0].isCurrent)
         m.received(.ask(id: "q", question: "Which day?", options: ["Today", "Tomorrow"], timeoutMs: 60000, sessionId: nil), from: 1)

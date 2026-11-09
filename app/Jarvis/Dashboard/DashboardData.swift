@@ -77,7 +77,9 @@ enum Agents {
             AgentCard(id: $0.sessionId, request: $0.request, stage: $0.doing ?? "Working on it",
                       startedAt: Date(timeIntervalSince1970: $0.startedAt / 1000), status: .working, sessionId: $0.sessionId)
         }
-        if let run = current, currentRunning, !run.request.isEmpty {
+        // Only a request that started an agent (a Claude run, so it has a session) gets a
+        // tile; "thanks", the lights and other instant replies don't (Leo, 2026-11-09).
+        if let run = current, currentRunning, !run.request.isEmpty, run.sessionId != nil {
             if let sid = run.sessionId, let i = cards.firstIndex(where: { $0.id == sid }) {
                 cards[i].isCurrent = true
             } else {

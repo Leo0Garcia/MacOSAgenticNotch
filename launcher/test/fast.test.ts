@@ -47,3 +47,9 @@ test("only short, impersonal, timeless asks try Apple's on-device model first", 
   for (const r of ["how are you doing", "what's the capital of Peru", "tell me a joke", "Jarvis, what does photosynthesis mean"]) expect(quickCandidate(r)).toBe(true);
   for (const r of ["what's on my calendar", "add milk to the kanban", "what's the weather", "what time is it", "summarise this", "hi", "open Spotify"]) expect(quickCandidate(r)).toBe(false);
 });
+
+test("thanks in its everyday forms is small talk", () => {
+  const { smallTalk } = require("../src/fast");
+  for (const r of ["Great, thank you mate.", "thanks mate", "perfect, cheers", "thank you so much", "cheers jarvis", "Thanks a lot mate"]) expect(smallTalk(r)).toBe("You're welcome.");
+  for (const r of ["thanks, now add milk to my kanban", "thank you for the notes, can you make flashcards"]) expect(smallTalk(r)).toBeNull();
+});
