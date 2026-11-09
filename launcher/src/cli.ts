@@ -10,10 +10,14 @@
 //   moodle-watch install | login-needed
 //   morning-check       08:00: is Claude still signed in? Also the Kanban's start-of-day snapshot
 //   wrapup-prompt       00:00: asks in the notch whether Leo wants his wrap-up
-//   kanban-scout        new Kanban cards Jarvis could do: asks in the notch, runs on a yes
+//   kanban-scout        new Kanban cards Jarvis could do: proposes them to the queue
+//   queue find          08:15: the daily task finder (background, read only), proposals to the queue
+//   queue propose       proposals JSON on stdin [{source, title, request, why}] -> state/queue.json
+//   queue approve|decline|dismiss|retry <id>   Leo's actions (the app calls these)
+//   queue work          runs approved items one at a time (launchd, and kicked on each approval)
 //   brain first-pass    builds the linked second brain in ~/Jarvis-Memory (background, 20-40 min)
 //   brain tidy          03:30: merges duplicates, fixes and adds links, refreshes the MOCs
-//   schedules install   installs the Moodle watch, morning check, midnight prompt, scout and brain tidy agents
+//   schedules install   installs the Moodle watch, morning check, midnight prompt, scout, task finder, queue worker and brain tidy agents
 //   warm                start claude now, print {"event":"ready"}, then read the
 //                       request as one line on stdin (the notch app keeps one ready)
 //
@@ -29,6 +33,8 @@ import { installMorningCheck, installWrapupPrompt, morningCheck, wrapupPrompt } 
 import { run } from "./run";
 import { claimInterrupted, resumeRun, takeClaimed } from "./resume";
 import { installScout, scout } from "./scout";
+import { findTasks, installFinder } from "./finder";
+import { act, installWorker, propose, startWorker, work } from "./queue";
 
 function usage(): never {
   process.stderr.write('usage: run.sh run "<request>" | open <session-id>\n');
@@ -96,6 +102,21 @@ export async function main(argv: string[]): Promise<number> {
     case "wrapup-prompt":
       console.log(`${new Date().toISOString()} ${await wrapupPrompt(c)}`);
       return 0;
+    case "queue": {
+      const [sub, id] = args;
+      if (sub === "find") console.log(`${new Date().toISOString()} ${await findTasks(c)}`);
+      else if (sub === "work") console.log(`${new Date().toISOString()} ${await work(c)}`);
+      else if (sub === "propose") console.log(`${propose(c, JSON.parse(await Bun.stdin.text())).length} added to the queue`);
+      else if ((sub === "approve" || sub === "decline" || sub === "dismiss" || sub === "retry") && id) {
+        const item = act(c, sub, id);
+        if (!item) {
+          process.stderr.write(`can't ${sub} ${id}\n`);
+          return 1;
+        }
+        if (sub === "approve" || sub === "retry") console.log(await startWorker(c));
+      } else usage();
+      return 0;
+    }
     case "brain": {
       if (args[0] !== "first-pass" && args[0] !== "tidy") usage();
       console.log(`${new Date().toISOString()} ${await runBrain(c, args[0])}`);
@@ -108,7 +129,9 @@ export async function main(argv: string[]): Promise<number> {
       installWrapupPrompt(c);
       installScout(c, join(masterVault(c), "Kanban.md"));
       installTidy(c);
-      console.log("Installed: Moodle check 08:30, sign-in check 08:00, wrap-up prompt 00:00, Kanban scout (on board changes), brain tidy 03:30");
+      installFinder(c);
+      installWorker(c);
+      console.log("Installed: Moodle check 08:30, sign-in check 08:00, wrap-up prompt 00:00, Kanban scout (on board changes), task finder 08:15, queue worker (every 30 min), brain tidy 03:30");
       return 0;
     }
     case "open": {

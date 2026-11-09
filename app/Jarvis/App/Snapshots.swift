@@ -99,6 +99,18 @@ enum Snapshots {
         put("state/active/a.json", #"{"sessionId":"a","pid":\#(getpid()),"request":"Notes for COMP2311 lecture 12","startedAt":\#(ms - 340_000),"doing":"Reading the lecture 12 slides"}"#)
         put("state/active/b.json", #"{"sessionId":"b","pid":\#(getpid()),"request":"Fix the Amra Skincare footer","startedAt":\#(ms - 95_000),"doing":"Editing the footer"}"#)
         put("state/deadlines.json", #"{"deadlines":[{"title":"Coursework 2","course":"COMP2312","due":"\#(iso.string(from: Date().addingTimeInterval(3 * 86400)))"}]}"#)
+        let t = iso.string(from: Date())
+        func item(_ id: String, _ source: String, _ title: String, _ why: String, _ status: String, _ extra: String = "") -> String {
+            #"{"id":"\#(id)","source":"\#(source)","title":"\#(title)","request":"\#(title)","why":"\#(why)","status":"\#(status)","createdAt":"\#(t)","updatedAt":"\#(t)"\#(extra)}"#
+        }
+        put("state/queue.json", #"{"closed":[],"items":["# + [
+            item("q1", "university", "Write the COMP2311 Lecture 17 notes from the slides", "Lecture was on Tuesday and the note is empty", "proposed"),
+            item("q2", "email", "Draft a reply to Sue about the Amra launch date", "She asked on Friday; a draft only, for you to send", "proposed"),
+            item("q3", "university", "Notes for COMP2311 lecture 12", "", "running", #","sessionId":"a""#),
+            item("q4", "university", "Make flashcards for COMP2312 Lecture 9", "", "approved"),
+            item("q5", "freelance", "Audit the Chrononight booking page", "", "done", #","sessionId":"s","summary":"Audited the public pages; the members area needs you to sign in to Wix first.","needsYou":true"#),
+            item("q6", "kanban", "Plan the week around Coursework 2", "", "done", #","sessionId":"s","summary":"Planned the week; Coursework 2 blocks are in your calendar notes.""#),
+        ].joined(separator: ",") + "]}")
         put("reminders/r.json", #"{"id":"r","text":"Call Sue","at":"\#(iso.string(from: Date().addingTimeInterval(3600)))"}"#)
         let m = AppModel(scheduler: ManualScheduler())
         m.launcher = NoLauncher()

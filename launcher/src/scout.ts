@@ -1,22 +1,22 @@
 // Kanban scout (Leo, 2026-11-08): when the board changes, Jarvis looks at new
-// cards, picks the ones it could do, and asks in the notch ("Do it" / "Not
-// now"). Nothing runs without a yes; a yes sends the request to the app like
-// any other, so guard and the hard limits apply as usual. Cards that hit a
-// hard limit are offered as the safe version (a draft, a reminder, a summary).
+// cards, picks the ones it could do, and adds them to the approval queue
+// (queue.ts), offering the first two in the notch ("Approve" / "Not now").
+// Nothing runs without an approval; approved items run as quiet background
+// runs under guard. Cards that hit a hard limit are proposed as the safe
+// version (a draft, a reminder, a summary).
 
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { NotchLink } from "../../bridge/src/notch";
+import type { NotchLink } from "../../bridge/src/notch";
 import type { Runner } from "../../bridge/src/system";
 import { type Config, paths } from "./config";
 import { dailyPlist, installDaily, londonHour } from "./daily";
 import { homeRunner, readBoard } from "./instant";
 import type { Exec } from "./reminders/scheduler";
+import { offer, propose } from "./queue";
 import { log, writeFileAtomic } from "./store";
 
 export const SCOUT_LABEL = "com.jarvis.kanban-scout";
-/** At most this many questions per look, so a rebuilt board doesn't flood the notch. */
-const MAX_ASKS = 2;
 
 export interface Verdict {
   doable: "yes" | "safe" | "no";
@@ -24,7 +24,8 @@ export interface Verdict {
   request: string;
   /** Short phrase for the notch: "write the notes from the slides". */
   offer: string;
-  status: "pending" | "approved" | "declined" | "skip";
+  /** pending: not yet in the approval queue (queue.ts). */
+  status: "pending" | "queued" | "skip";
   at: string;
 }
 
@@ -101,7 +102,7 @@ type Ask = Pick<NotchLink, "ask" | "close">;
 /** One look at the board. Returns a log line. */
 export async function scout(
   c: Config,
-  opts: { now?: Date; run?: Runner; link?: Ask; kanbanFile?: string; settleMs?: number } = {},
+  opts: { now?: Date; run?: Runner; link?: Ask; exec?: Exec; kanbanFile?: string; settleMs?: number } = {},
 ): Promise<string> {
   const now = opts.now ?? new Date();
   const h = londonHour(now);
@@ -130,40 +131,19 @@ export async function scout(
       seen[cardText(card)] = { doable, request: v?.request ?? "", offer: v?.offer ?? "", status: doable === "no" || !v?.request ? "skip" : "pending", at: now.toISOString() };
     }
   }
-  // Ask about cards still on the board, in board order.
+  // Cards still on the board, in board order, go to the queue; the notch offers the first two.
   const pending = board.todo.map(cardText).filter((k) => seen[k]?.status === "pending");
-  let asked = 0;
-  const outcomes: string[] = [];
-  let link: Ask | null = null;
-  try {
-    for (const key of pending) {
-      if (asked >= MAX_ASKS) break;
-      const v = seen[key]!;
-      link ??= opts.link ?? new NotchLink({ home: c.home, client: "launcher", sessionId: null, connectTimeoutMs: 1000 });
-      const question = v.doable === "safe" ? `From your Kanban: “${key}”. That one's yours to do, but I could ${v.offer}.` : `From your Kanban: “${key}”. I could ${v.offer}.`;
-      const a = await link.ask({ type: "ask", id: `scout-${now.getTime()}-${asked}`, question, options: ["Do it", "Not now"], timeout_ms: 10 * 60 * 1000, session_id: null });
-      if (a === null) {
-        outcomes.push("notch app not open");
-        break; // still pending: asked next time
-      }
-      asked++;
-      if (a !== "timeout" && /^do it\b|^(?:y|yes|yeah|sure|ok|okay|go ahead)\b/i.test(a.text.trim())) {
-        v.status = "approved";
-        const r = await run(["open", `jarvis://ask?q=${encodeURIComponent(v.request)}`]);
-        outcomes.push(r.code === 0 ? `approved: ${key}` : `approved but couldn't start: ${key}`);
-        break; // one task at a time; the rest wait for the next look
-      }
-      v.status = "declined";
-      outcomes.push(`${a === "timeout" ? "no answer" : "not now"}: ${key}`);
-    }
-  } finally {
-    link?.close();
-  }
+  const added = propose(c, pending.map((key) => {
+    const v = seen[key]!;
+    v.status = "queued";
+    return { source: "kanban", title: v.offer.charAt(0).toUpperCase() + v.offer.slice(1), request: v.request, why: v.doable === "safe" ? `From your Kanban: “${key}”, which is yours to do.` : `From your Kanban: “${key}”.` };
+  }), now.getTime());
+  const outcomes = await offer(c, added, { link: opts.link, exec: opts.exec, now });
   // Forget cards that left the board, so the file stays small.
   const live = new Set(board.todo.map(cardText));
   writeFileAtomic(file(c), JSON.stringify(Object.fromEntries(Object.entries(seen).filter(([k]) => live.has(k))), null, 2));
-  log(c, "kanban scout", { fresh: fresh.length, pending: pending.length, outcomes });
-  return `${fresh.length} new card(s); ${pending.length} Jarvis could do; ${outcomes.join("; ") || "nothing asked"}`;
+  log(c, "kanban scout", { fresh: fresh.length, queued: added.length, outcomes });
+  return `${fresh.length} new card(s); ${added.length} added to the queue; ${outcomes.join("; ") || "nothing asked"}`;
 }
 
 /**

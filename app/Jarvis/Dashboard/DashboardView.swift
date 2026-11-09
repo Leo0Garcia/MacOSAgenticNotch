@@ -1,6 +1,6 @@
 // The dashboard window (Leo, 2026-11-08, phase 1): the Nebula orb in the
-// middle with a card per running agent under it, Today on the left, Needs you
-// and Recent on the right, a talk bar at the bottom. Ambient mode is the same
+// middle with a card per running agent under it, Today on the left, Needs you,
+// the approval queue and Recent on the right, a talk bar at the bottom. Ambient mode is the same
 // window full screen: the orb fills it and only Needs you stays bright.
 // It never speaks; stages stay on screen.
 
@@ -104,10 +104,13 @@ struct DashboardView: View {
                 center
                 VStack(spacing: 14) {
                     NeedsYouPanel(model: model, large: false)
-                    if showRecent { recentPanel }
+                    // The queue takes the column's spare height; Recent keeps a short list under it.
+                    QueuePanel(store: store) { card in details = DetailsSheet(card: card) }
+                        .layoutPriority(1)
+                    if showRecent { recentPanel.frame(maxHeight: 200) }
                     Spacer(minLength: 0)
                 }
-                .frame(width: 300)
+                .frame(width: 320)
             }
             TalkBar(model: model, hotkeyLabel: hotkeyLabel, large: false)
         }
@@ -405,6 +408,122 @@ struct PipelineStrip: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Jarvis's approval queue: proposals to approve or decline, what's running
+/// with its live stage, and finished items until Leo dismisses them. A click
+/// on an item with a run opens its log.
+struct QueuePanel: View {
+    let store: DashboardStore
+    var open: (AgentCard) -> Void
+
+    var body: some View {
+        let toApprove = store.queue.filter { $0.phase == .proposed }.count
+        DashPanel {
+            HStack {
+                Text("Queue").font(Dash.title).foregroundStyle(Dash.muted)
+                Spacer()
+                if toApprove > 0 {
+                    Text("\(toApprove) to approve").font(.system(size: 11.5, weight: .medium)).foregroundStyle(Dash.amber)
+                }
+            }
+            if store.queue.isEmpty {
+                Text("Nothing queued. Jarvis looks for tasks each morning and when your Kanban changes.")
+                    .font(.system(size: 13)).foregroundStyle(Dash.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            // Offscreen snapshots can't draw a ScrollView.
+            if store.queue.isEmpty {
+            } else if OffscreenRender.active {
+                rows.frame(minHeight: 0, maxHeight: .infinity, alignment: .top).clipped()
+            } else {
+                ScrollView { rows }
+            }
+        }
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(store.queue) { item in
+                QueueRow(item: item, stage: store.stage(for: item), now: store.now, act: { store.act($0, item) },
+                         open: store.card(for: item).map { card in { open(card) } })
+            }
+        }
+    }
+}
+
+struct QueueRow: View {
+    var item: QueueItem
+    var stage: String?
+    var now: Date
+    var act: (QueueItem.Action) -> Void
+    var open: (() -> Void)?
+
+    private var label: (String, Color) {
+        switch item.phase {
+        case .proposed: ("To approve · \(item.source.capitalized)", Dash.amber)
+        case .running: ("Running", Dash.color(.working))
+        case .approved: ("Up next", Dash.muted)
+        case .needsYou: ("Needs you", Dash.amber)
+        case .failed: ("Didn't finish", Color(hex: 0xFF7A6B))
+        case .done: ("Complete", Color(hex: 0x6FD39A))
+        }
+    }
+
+    private var detail: String? {
+        switch item.phase {
+        case .proposed: item.why
+        case .running: stage ?? "Starting"
+        case .approved: nil
+        default: item.summary
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Circle().fill(label.1).frame(width: 7, height: 7)
+                Text(label.0).font(.system(size: 11.5, weight: .medium)).foregroundStyle(label.1)
+                Spacer()
+                if open != nil {
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Dash.muted)
+                        .accessibilityHidden(true)
+                }
+            }
+            Text(item.title).font(.system(size: 13.5, weight: .medium)).lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let detail, !detail.isEmpty {
+                Text(detail).font(.system(size: 12)).foregroundStyle(Dash.muted).lineLimit(item.phase == .running ? 1 : 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !item.actions.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(item.actions, id: \.self) { a in
+                        Button(Self.name(a)) { act(a) }
+                            .buttonStyle(DashButtonStyle(small: true, primary: a == .approve || a == .retry))
+                            .accessibilityLabel("\(Self.name(a)) \(item.title)")
+                    }
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Dash.card))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(item.phase == .needsYou ? Dash.amberLine : Dash.line))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture { open?() }
+        .accessibilityElement(children: .contain)
+        .accessibilityHint(open == nil ? "" : "Opens its log")
+    }
+
+    static func name(_ a: QueueItem.Action) -> String {
+        switch a {
+        case .approve: "Approve"
+        case .decline: "Decline"
+        case .dismiss: "Dismiss"
+        case .retry: "Retry"
         }
     }
 }
