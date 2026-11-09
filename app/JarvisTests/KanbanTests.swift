@@ -8,6 +8,7 @@ private let fixture = """
 
 kanban-plugin: board
 last-sync: 2026-11-09T07:17:52+00:00
+last-sync-note: "3 new cards"
 
 ---
 
@@ -89,11 +90,126 @@ across lines%% after
         #expect(board.lanes[0].cards[0].due == c.date(from: DateComponents(year: 2026, month: 11, day: 1)))
         #expect(board.lanes[2].cards[0].due == nil)
         #expect(Kanban.make("x @{2026-13-40}", done: false).due == nil)
-        let now = c.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 15))!
-        let day = { c.date(from: DateComponents(year: 2026, month: 11, day: $0))! }
-        #expect(Kanban.due(day(8), now: now) == .overdue)
-        #expect(Kanban.due(day(9), now: now) == .today)
-        #expect(Kanban.due(day(10), now: now) == .later)
+    }
+
+    @Test func relDue() {
+        let c = Calendar.current
+        let now = c.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 23))!
+        func rel(_ d: Int) -> (String, Kanban.DueState) {
+            let r = Kanban.relDue(c.date(from: DateComponents(year: 2026, month: 11, day: d))!, now: now)
+            return (r.label, r.state)
+        }
+        #expect(rel(6) == ("3d late", .late))
+        #expect(rel(8) == ("1d late", .late))
+        #expect(rel(9) == ("today", .soon))
+        #expect(rel(10) == ("tomorrow", .soon))
+        #expect(rel(11) == ("2d", .soon))
+        #expect(rel(14) == ("5d", .ok))
+    }
+
+    @Test func frontmatterSync() {
+        #expect(board.lastSync == "2026-11-09T07:17:52+00:00")
+        #expect(board.lastSyncNote == "3 new cards")
+        #expect(Kanban.parse("## A").lastSync == nil)
+    }
+
+    @Test func fmtSync() {
+        let c = Calendar.current
+        let now = c.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 20))!
+        let iso = ISO8601DateFormatter()
+        func at(_ day: Int, _ h: Int) -> String { iso.string(from: c.date(from: DateComponents(year: 2026, month: 11, day: day, hour: h, minute: 5))!) }
+        #expect(Kanban.fmtSync(at(9, 7), now: now) == "today 07:05")
+        #expect(Kanban.fmtSync(at(8, 22), now: now) == "yesterday 22:05")
+        #expect(Kanban.fmtSync(at(3, 9), now: now) == "2026-11-03 09:05")
+        #expect(Kanban.fmtSync("whenever", now: now) == "whenever")
+    }
+
+    @Test func hiddenMetadata() {
+        let tut = board.lanes[0].cards[0]
+        #expect(tut.src == "tutorial")
+        #expect(tut.srcURL == nil)
+        #expect(tut.likely == nil)
+        let talk = board.lanes[0].cards[1]
+        #expect(talk.src == "slack")
+        #expect(talk.srcURL?.absoluteString == "https://x.slack.com/a")
+        #expect(talk.likely == "held 5 Nov")
+        #expect(Kanban.make("a %%likely:%%", done: false).likely == "Looks done")
+        #expect(Kanban.make("a %%likely:sent%% %%nolikely%%", done: false).likely == nil)
+        #expect(Kanban.make("a %%src:Moodle:12|https://m.example/x%%", done: false).src == "moodle")
+        for bad in ["file:///etc/hosts", "javascript:alert(1)", "obsidian://open?x", "not a url"] {
+            #expect(Kanban.make("a %%src:slack:1|\(bad)%%", done: false).srcURL == nil)
+        }
+    }
+
+    @Test func groups() {
+        #expect(Kanban.groupOf("Do COMP9999 Tutorial 5") == "COMP9999")
+        #expect(Kanban.groupOf("notes #comp1001") == "COMP1001")
+        #expect(Kanban.groupOf("comp 1002 sheet") == "COMP1002")
+        #expect(Kanban.groupOf("x.COMP1003") == "COMP1003")
+        #expect(Kanban.groupOf("COMP12345") == "Life")
+        #expect(Kanban.groupOf("Fix footer #amra") == "Amra")
+        #expect(Kanban.groupOf("Booking page #Chrononight") == "Amra")
+        #expect(Kanban.groupOf("Invoice #work") == "Amra")
+        #expect(Kanban.groupOf("Invoice #workshop") == "Life")
+        #expect(Kanban.groupOf("Apply #internships") == "Careers")
+        #expect(Kanban.groupOf("Apply #career") == "Careers")
+        #expect(Kanban.groupOf("Buy chalk") == "Life")
+        #expect(Kanban.groupOf("email#amra") == "Life") // a tag needs a space before it
+        #expect(board.lanes[0].cards.map(\.group) == ["COMP9999", "Life"])
+        let order = ["Life", "COMP2311", "Careers", "Amra", "COMP1001"].sorted { Kanban.groupRank($0) < Kanban.groupRank($1) }
+        #expect(order == ["COMP1001", "COMP2311", "Amra", "Careers", "Life"])
+        #expect(Kanban.groups(board) == ["COMP9999", "Life"])
+        #expect(Kanban.groupName("Amra") == "Amra work")
+    }
+
+    @Test func colours() {
+        #expect(Kanban.colourFor("2311") == 0x8B5CF6)
+        #expect(Kanban.colourFor("1001") == 0xE0673A) // hashed into the palette like the plugin
+        #expect(Kanban.colourFor("1002") == 0x3B9C5A)
+        #expect(Kanban.groupColour("COMP2312") == 0x378ADD)
+        #expect(Kanban.groupColour("Careers") == 0x2563EB)
+        #expect(Kanban.groupColour("Other") == 0x888888)
+    }
+
+    @Test func laneKinds() {
+        #expect(Kanban.laneKind("Completed") == .complete)
+        #expect(Kanban.laneKind(" Overdue ") == .overdue)
+        #expect(Kanban.laneKind("Due this week") == .week)
+        #expect(Kanban.laneKind("not started") == .later)
+        #expect(Kanban.laneKind("In-progress") == .progress)
+        #expect(Kanban.laneKind("Ideas") == .other)
+    }
+
+    @Test func sectionsGroupAndSortByDue() {
+        let cards = [
+            "Buy milk", "Shop #amra @{2026-11-20}", "COMP2000 late @{2026-11-12}", "Apply #careers",
+            "COMP1000 undated", "COMP2000 soon @{2026-11-10}", "Shop2 #amra @{2026-11-02}", "COMP1000 dated @{2026-11-30}",
+        ].map { Kanban.make($0, done: false) }
+        let s = Kanban.sections(cards)
+        #expect(s.map(\.group) == ["COMP1000", "COMP2000", "Amra", "Careers", "Life"])
+        #expect(s.map { $0.cards.map(\.text) } == [["COMP1000 dated", "COMP1000 undated"], ["COMP2000 soon", "COMP2000 late"],
+                                                   ["Shop2", "Shop"], ["Apply"], ["Buy milk"]])
+    }
+
+    @Test func notesProgress() throws {
+        let fm = FileManager.default
+        let vault = fm.temporaryDirectory.appendingPathComponent("jarvis-notes-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: vault) }
+        func put(_ path: String, bytes: Int) throws {
+            let u = vault.appendingPathComponent(path)
+            try fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(repeating: 0x61, count: bytes).write(to: u)
+        }
+        try put("Uni/COMP1001/Lectures/COMP1001 - Lecture 1.md", bytes: 1300)
+        try put("Uni/COMP1001/Lectures/COMP1001 - Lecture 2.md", bytes: 1299)
+        try put("Uni/COMP1001/Lectures/COMP1001 - week 3.md", bytes: 5000)
+        try put("Uni/COMP1002/Lectures/Trees - Lecture 4.md", bytes: 2000)
+        try put("Uni/COMP1002/Lectures/Lecture 5.md", bytes: 2000)         // no " - Lecture "
+        try put("Uni/COMP1002/Tutorials/COMP1002 - Lecture 6.md", bytes: 2000) // not under Lectures
+        try put("Lectures/COMP1003 - Lecture 1.md", bytes: 2000)          // Lectures at the top has no "/" before it
+        try put("Uni/Life/Lectures/Cooking - Lecture 1.md", bytes: 2000)  // no module code
+        try put("Uni/COMP1002/Lectures/COMP1002 - Lecture 7.pdf", bytes: 2000)
+        #expect(Kanban.notesProgress(vault: vault) == ["COMP1001": NotesProgress(done: 2, total: 3), "COMP1002": NotesProgress(done: 1, total: 1)])
     }
 
     @Test func hiddenNotesAreDropped() {
