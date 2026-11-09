@@ -585,3 +585,17 @@ import Testing
         _ = l
     }
 }
+
+@MainActor
+@Suite struct NotchWithDashboardTests {
+    @Test func withTheDashboardOpenTheNotchOnlyShowsQuickActions() {
+        let (m, _, _, _) = makeModel()
+        m.dashboardShowing = true
+        m.submit("weather")
+        #expect(m.size != .hidden && m.notchSize == .hidden) // the conversation is on the dashboard
+        m.received(.ask(id: "q", question: "Approve?", options: ["Yes", "No"], timeoutMs: 60000, sessionId: nil), from: 1)
+        #expect(m.notchSize == m.size && m.notchSize != .hidden) // approvals still pop up in the notch
+        m.dashboardShowing = false
+        #expect(m.notchSize == m.size)
+    }
+}

@@ -129,10 +129,11 @@ final class NotchController {
         withObservationTracking {
             _ = model.size
             _ = model.dashboardShowing
+            _ = model.panel
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
-                self.apply(self.model.dashboardShowing ? .hidden : self.model.size)
+                self.apply(self.model.notchSize)
                 self.observe()
             }
         }
