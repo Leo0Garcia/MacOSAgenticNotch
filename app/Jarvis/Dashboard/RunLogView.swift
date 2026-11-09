@@ -147,7 +147,7 @@ private struct ChatBubble: View {
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(RoundedRectangle(cornerRadius: 14).fill(leading ? Dash.card : Color.white.opacity(0.11)))
+                .background(RoundedRectangle(cornerRadius: 14).fill(leading ? Dash.inset : Color.white.opacity(0.11)))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(leading ? Dash.line : .clear))
             Text(offsetText(line.atMs)).font(.system(size: 11).monospacedDigit()).foregroundStyle(Dash.muted.opacity(0.8))
         }
@@ -218,7 +218,7 @@ private struct ToolCallRow: View {
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(open || hover ? Dash.card : Dash.card.opacity(0.5)))
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(open || hover ? 0.07 : 0.035)))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(open ? Dash.line : .clear))
         .onHover { hover = $0 }
         .animation(.easeOut(duration: 0.15), value: open)

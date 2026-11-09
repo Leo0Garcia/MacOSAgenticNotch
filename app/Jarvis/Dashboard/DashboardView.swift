@@ -18,10 +18,15 @@ enum Dash {
     static let amberBg = Color(hex: 0x1A160D)
     static let amberLine = Color(hex: 0x5C4718)
     static let title = Font.system(size: 12, weight: .semibold)
+    /// Fill for a card sitting on a glass panel (glass on glass reads muddy).
+    static let inset = Color.white.opacity(0.05)
+
+    /// The palette's lead colour (Settings › Appearance), for glass tints.
+    @MainActor static var accent: Color { Color(hex: Appearance.shared.palette.working[0]) }
 
     @MainActor static func color(_ s: AgentStatus) -> Color {
         switch s {
-        case .working: Color(hex: Appearance.shared.palette.working[0])
+        case .working: accent
         case .waiting: amber
         case .paused: muted
         }
@@ -163,9 +168,13 @@ struct DashboardView: View {
             HStack(spacing: 6) {
                 Text("Running now").font(Dash.title).foregroundStyle(Dash.muted)
                 Spacer()
-                ForEach(AgentFilter.allCases) { f in
-                    Button(f.label) { filter = f }
-                        .buttonStyle(DashButtonStyle(selected: filter == f, small: true))
+                GlassEffectContainer {
+                    HStack(spacing: 6) {
+                        ForEach(AgentFilter.allCases) { f in
+                            Button(f.label) { filter = f }
+                                .buttonStyle(DashButtonStyle(selected: filter == f, small: true))
+                        }
+                    }
                 }
             }
             cards
@@ -186,12 +195,14 @@ struct DashboardView: View {
                     .font(.system(size: 13)).foregroundStyle(Dash.muted)
                     .frame(maxWidth: .infinity, minHeight: 60)
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
-                // shortcut: shows the six newest; add scrolling if Leo runs more at once.
-                ForEach(shown.prefix(6)) { c in
-                    AgentCardView(card: c, now: store.now, selected: selected == c.id, pick: {
-                        selected = selected == c.id ? nil : c.id
-                    }, dismiss: c.taskId.map { id in { store.dismissTask(id) } })
+            GlassEffectContainer {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
+                    // shortcut: shows the six newest; add scrolling if Leo runs more at once.
+                    ForEach(shown.prefix(6)) { c in
+                        AgentCardView(card: c, now: store.now, selected: selected == c.id, pick: {
+                            selected = selected == c.id ? nil : c.id
+                        }, dismiss: c.taskId.map { id in { store.dismissTask(id) } })
+                    }
                 }
             }
             if shown.count > 6 {
@@ -328,8 +339,8 @@ struct DashPanel<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) { content }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 14).fill(highlighted ? Dash.amberBg : Dash.panel.opacity(0.92)))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(highlighted ? Dash.amberLine : Dash.line))
+            .liquidGlass(highlighted ? Dash.amber.opacity(0.18) : nil, in: .rect(cornerRadius: 14))
+            .overlay { if highlighted { RoundedRectangle(cornerRadius: 14).stroke(Dash.amberLine) } }
     }
 }
 
@@ -345,11 +356,16 @@ struct DashButtonStyle: ButtonStyle {
             .foregroundStyle(primary ? Dash.amberBg : selected ? Dash.text : Dash.muted)
             .padding(.horizontal, small ? 10 : 14)
             .frame(height: small ? 26 : 32)
-            .background(Capsule().fill(primary ? Dash.amber.opacity(configuration.isPressed ? 0.8 : 1)
-                                       : Color.white.opacity(selected || hover || configuration.isPressed ? 0.12 : 0.05)))
+            .liquidGlass(tint(pressed: configuration.isPressed), interactive: true, in: .capsule)
             .overlay(Capsule().stroke(selected ? Dash.text.opacity(0.35) : .clear))
             .contentShape(Capsule())
             .onHover { hover = $0 }
+    }
+
+    private func tint(pressed: Bool) -> Color? {
+        if primary { return Dash.amber.opacity(pressed ? 0.8 : 1) }
+        if selected { return Dash.accent.opacity(0.4) }
+        return hover || pressed ? .white.opacity(0.08) : nil
     }
 }
 
@@ -383,8 +399,8 @@ struct AgentCardView: View {
                 Text(card.stage).font(.system(size: 12.5)).foregroundStyle(Dash.muted).lineLimit(1)
             }
             .padding(12)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Dash.card))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? Dash.text.opacity(0.4) : card.status == .waiting ? Dash.amberLine : Dash.line))
+            .liquidGlass(selected ? Dash.accent.opacity(0.18) : nil, interactive: true, in: .rect(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? Dash.text.opacity(0.4) : card.status == .waiting ? Dash.amberLine : .clear))
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
@@ -522,7 +538,7 @@ struct QueueRow: View {
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Dash.card))
+        .background(RoundedRectangle(cornerRadius: 10).fill(Dash.inset))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(item.phase == .needsYou ? Dash.amberLine : Dash.line))
         .contentShape(RoundedRectangle(cornerRadius: 10))
         .onTapGesture { open?() }
@@ -662,8 +678,7 @@ struct TalkBar: View {
         }
         .padding(.horizontal, 18)
         .frame(height: large ? 60 : 48)
-        .background(Capsule().fill(Dash.panel))
-        .overlay(Capsule().stroke(Dash.line))
+        .liquidGlass(in: .capsule)
     }
 
     private func send() {
@@ -701,10 +716,8 @@ struct DetailsSheetView: View {
                 running(card).frame(width: 560)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 16).fill(Dash.panel))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Dash.line))
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
+        .liquidGlass(in: .rect(cornerRadius: 16))
         .foregroundStyle(Dash.text)
         .environment(\.colorScheme, .dark)
     }

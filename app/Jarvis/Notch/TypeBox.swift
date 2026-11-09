@@ -72,8 +72,8 @@ final class TypeBox {
                 .onSubmit { send(text) }
                 .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(RoundedRectangle(cornerRadius: 14).fill(Color.black))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.15)))
+                // Dark-tinted glass: it shows the desktop through, but reads with the black notch above.
+                .liquidGlass(.black.opacity(0.55), in: .rect(cornerRadius: 14))
                 .environment(\.colorScheme, .dark)
                 .accessibilityLabel("Type a request to Jarvis")
                 .onAppear { focused = true }
