@@ -481,8 +481,7 @@ private struct LaneView: View {
         .padding(12)
         .frame(width: open ? 264 : 180, alignment: .topLeading)
         .frame(maxHeight: open ? .infinity : nil, alignment: .top)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Dash.panel.opacity(0.92)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Dash.line))
+        .liquidGlass(in: .rect(cornerRadius: 14))
     }
 
     private func card(_ c: KanbanCard) -> some View {
@@ -558,7 +557,7 @@ private struct CardView: View {
             .padding(10)
             .padding(.leading, accent == nil ? 0 : 2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10).fill(hover && link != nil ? Dash.line : Dash.card))
+            .background(RoundedRectangle(cornerRadius: 10).fill(hover && link != nil ? Color.white.opacity(0.1) : Dash.inset))
             .overlay(alignment: .leading) {
                 if let accent { UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10).fill(accent).frame(width: 3) }
             }
