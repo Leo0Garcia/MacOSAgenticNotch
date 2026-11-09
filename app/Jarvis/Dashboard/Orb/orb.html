@@ -71,7 +71,7 @@ canvas { display: block; width: 100%; height: 100%; }
     idle:      { energy: 0.2,  speed: 0.35, glow: 0.85 },
     listening: { energy: 0.45, speed: 0.6,  glow: 1.0 },
     working:   { energy: 0.65, speed: 1.1,  glow: 1.15 },
-    speaking:  { energy: 0.5,  speed: 0.75, glow: 1.05 },
+    speaking:  { energy: 0.5,  speed: 0.75, glow: 0.85 },
     needs:     { energy: 0.5,  speed: 0.55, glow: 1.05 },
   };
   const live = { energy: 0.2, speed: 0.35, glow: 0.85, level: 0, busy: 0, swell: 0, alert: 0,
@@ -181,7 +181,7 @@ canvas { display: block; width: 100%; height: 100%; }
     fragmentShader: `uniform vec3 uColor; uniform float uCore, uGain; varying vec2 vUv;
       void main(){ float r = length(vUv - 0.5)*${CORE.toFixed(1)};
         float k = r/uCore;
-        vec3 c = uColor*(0.07*exp(-r*r*1.3) + 0.16*exp(-k*k*0.1) + 0.45*exp(-k*k)) + vec3(1.0)*0.7*exp(-k*k*16.0);
+        vec3 c = uColor*(0.07*exp(-r*r*1.3) + 0.16*exp(-k*k*0.1) + 0.45*exp(-k*k)) + vec3(1.0)*0.4*exp(-k*k*16.0);
         gl_FragColor = vec4(c*uGain*(1.0 - smoothstep(1.6, 2.1, r)), 1.0); }`,
     transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
   }));
@@ -266,9 +266,10 @@ canvas { display: block; width: 100%; height: 100%; }
     // The core breathes slowly; needs-you adds a slower, deeper amber pulse.
     const breath = 0.5 + 0.5 * Math.sin(clock * 0.9), alarm = live.alert * (0.5 + 0.5 * Math.sin(clock * 2.4));
     coreU.uColor.value.copy(live.color).lerp(live.color2, 0.3);
-    coreU.uCore.value = 0.2 * (1 + 0.08 * breath + 0.35 * live.energy + 0.2 * live.swell + 0.1 * alarm);
-    coreU.uGain.value = 0.75 + 0.15 * breath + 0.35 * live.busy + 0.3 * live.swell + 0.2 * alarm;
-    bloom.strength = 0.6 * live.glow + 0.2 * live.swell;
+    coreU.uCore.value = 0.2 * (1 + 0.08 * breath + 0.3 * live.energy + 0.1 * live.swell + 0.1 * alarm);
+    // Talking moves the particles more than the core, so the centre doesn't flare (Leo, 2026-11-09).
+    coreU.uGain.value = 0.7 + 0.12 * breath + 0.3 * live.busy + 0.1 * live.swell + 0.2 * alarm;
+    bloom.strength = 0.6 * live.glow + 0.08 * live.swell;
     updateAgents(dt, clock);
     composer.render();
     raf = requestAnimationFrame(frame);
