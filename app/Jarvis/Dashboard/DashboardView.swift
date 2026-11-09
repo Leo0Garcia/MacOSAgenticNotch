@@ -4,6 +4,7 @@
 // window full screen: the orb fills it and only Needs you stays bright.
 // It never speaks; stages stay on screen.
 
+import AppKit
 import SwiftUI
 
 enum Dash {
@@ -92,6 +93,7 @@ struct DashboardView: View {
             TalkBar(model: model, hotkeyLabel: hotkeyLabel, large: false)
         }
         .padding(EdgeInsets(top: 34, leading: 18, bottom: 16, trailing: 18))
+        .overlay(alignment: .top) { TitleBarArea().frame(height: 34) }
     }
 
     private var header: some View {
@@ -107,6 +109,7 @@ struct DashboardView: View {
                 .buttonStyle(DashButtonStyle())
                 .help("Full screen, readable from across the room (Esc to leave)")
         }
+        .background(TitleBarArea()) // the header's empty space acts as title bar too
     }
 
     private var center: some View {
@@ -233,6 +236,28 @@ struct DashboardView: View {
 }
 
 // MARK: - Pieces
+
+/// The title bar is drawn over by the content, so this stands in for it:
+/// drag to move the window, double-click to do what macOS is set to do
+/// (Fill/zoom by default, or minimise).
+struct TitleBarArea: View {
+    var body: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .gesture(WindowDragGesture())
+            .onTapGesture(count: 2) { Self.doubleClick(NSApp.keyWindow) }
+            .accessibilityHidden(true)
+    }
+
+    static func doubleClick(_ window: NSWindow?) {
+        // The user's choice in System Settings › Desktop & Dock › "Double-click a window's title bar to".
+        switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+        case "Minimize": window?.miniaturize(nil)
+        case "None": break
+        default: window?.zoom(nil)
+        }
+    }
+}
 
 /// The conversation as it happens, under the orb: what Leo is saying, what
 /// Jarvis is doing, then what it says. While the dashboard is on screen, this
