@@ -32,6 +32,9 @@ export const EARLY_CHARS = 140;
 export const DEFAULT_OPENER = "On it.";
 
 export interface RunResult {
+  /** Structured output: is what Leo asked for finished, and which open task it carries on. */
+  resolved?: boolean;
+  continues?: string;
   /** Claude couldn't run (usage limit, signed out, API error); `reply` says so plainly. */
   limited?: boolean;
   /** The structured output's `say`: the spoken line when the run wrote no text reply. */
@@ -271,7 +274,7 @@ export class RunMonitor {
     const so = r.structured_output;
     const isError = Boolean(r.is_error) || (r.subtype !== undefined && r.subtype !== "success");
     if (so && typeof so.keep === "boolean" && typeof so.summary === "string") {
-      return { ...base, keep: so.keep, summary: so.summary, isError, say: typeof so.say === "string" && so.say.trim() ? so.say.trim() : undefined };
+      return { ...base, keep: so.keep, summary: so.summary, isError, resolved: typeof so.resolved === "boolean" ? so.resolved : undefined, continues: typeof so.continues === "string" && so.continues ? so.continues : undefined, say: typeof so.say === "string" && so.say.trim() ? so.say.trim() : undefined };
     }
     // DESIGN 4.1: no valid structured_output means keep, so nothing is lost silently.
     return {

@@ -7,6 +7,7 @@ import { readFileSync, statSync } from "node:fs";
 import type { Config } from "./config";
 import { paths } from "./config";
 import { activeRuns, recentRun } from "./store";
+import { tasksBlock } from "./tasks";
 
 export interface ComputerContext {
   at?: string;
@@ -72,6 +73,6 @@ export function activityBlock(c: Config, now = Date.now(), self?: string): strin
 
 /** The prompt Claude gets: the context blocks, then Leo's words. */
 export function withContext(c: Config, prompt: string, now = Date.now(), self?: string): string {
-  const blocks = [contextBlock(readContext(c, now)), activityBlock(c, now, self)].filter(Boolean);
+  const blocks = [contextBlock(readContext(c, now)), activityBlock(c, now, self), tasksBlock(c, now)].filter(Boolean);
   return blocks.length ? `${blocks.join("\n\n")}\n\n${prompt}` : prompt;
 }
