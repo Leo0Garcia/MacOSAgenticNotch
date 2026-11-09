@@ -4,7 +4,7 @@ name: Jarvis
 options:
   bundleIdPrefix: com.jarvis
   deploymentTarget:
-    macOS: "15.0"
+    macOS: "26.0"
   createIntermediateGroups: true
 packages:
   DynamicNotchKit:
@@ -17,7 +17,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
@@ -44,7 +44,7 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.jarvis.notch
             CFBundleURLSchemes: [jarvis]
-        LSMinimumSystemVersion: "15.0"
+        LSMinimumSystemVersion: "26.0"
         NSMicrophoneUsageDescription: Jarvis listens only while you hold the push-to-talk hotkey, and transcribes on this Mac.
         # The calendar skill's EventKit helper runs under Jarvis, so macOS asks on Jarvis's behalf.
         NSCalendarsFullAccessUsageDescription: Jarvis reads your calendar to answer questions about your day, and adds events when you ask.
