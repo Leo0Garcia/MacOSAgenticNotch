@@ -175,6 +175,17 @@ final class AppModel {
     /// notch stays out of the way (Leo, 2026-11-08). The dashboard window sets it.
     var dashboardShowing = false
 
+    /// What the notch shows. With the dashboard on screen the conversation lives
+    /// there, and the notch only keeps the quick actions: questions and approvals,
+    /// access and blocked notices, reminders (Leo, 2026-11-09).
+    var notchSize: NotchSize {
+        guard dashboardShowing else { return size }
+        switch panel {
+        case .question, .access, .blocked, .reminder, .notice: return size
+        default: return .hidden
+        }
+    }
+
     /// What's being said right now, for whichever surface shows it: Leo's words
     /// while listening, the current step while working, Jarvis's words after.
     var liveLine: (who: String, text: String)? {
