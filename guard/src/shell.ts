@@ -293,10 +293,14 @@ const WRAPPERS = new Set(["command", "builtin", "exec", "nohup", "time", "noglob
  * Strip leading assignments and harmless wrappers (env, nice, timeout, ...)
  * so words[0] is the real program.
  */
+const KEYWORDS = new Set(["if", "then", "else", "elif", "do", "while", "until", "!", "time"]);
+
 export function unwrap(words: string[]): string[] {
   let w = [...words];
   for (let guard = 0; guard < 10; guard++) {
     while (w.length && ASSIGNMENT.test(w[0]!)) w.shift();
+    // Shell keywords run what follows them: `if true; then rm -rf ~/x; fi`.
+    while (w.length && KEYWORDS.has(w[0]!)) w.shift();
     if (w[0] === "{" ) w.shift();
     if (w[w.length - 1] === "}") w.pop();
     const p = w[0] ? programName(w[0]) : "";
