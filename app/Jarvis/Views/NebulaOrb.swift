@@ -239,7 +239,7 @@ final class NebulaNSView: NSView {
         CATransaction.begin()
         CATransaction.setAnimationDuration(1.0 / 15)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
-        let s = 1 + 0.22 * CGFloat(max(0, min(1, l)))
+        let s = 1 + 0.165 * CGFloat(max(0, min(1, l))) // 25% less than before (Leo, 2026-11-10)
         container.setAffineTransform(CGAffineTransform(scaleX: s, y: s))
         CATransaction.commit()
     }
