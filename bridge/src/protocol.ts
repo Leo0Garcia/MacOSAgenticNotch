@@ -104,6 +104,8 @@ export interface QuickAnswer {
   type: "quick_answer";
   id: string;
   text: string;
+  /** "ack": instead, one spoken line saying what Jarvis is starting on (Leo, 2026-11-10). */
+  mode?: "ack";
 }
 export type ClientMessage = Hello | SpeakStart | SpeakEnd | Notify | Ask | AskCancel | Reminder | LogRow | RunEvent | CalendarEvents | CalendarAdd | Play | QuickAnswer;
 

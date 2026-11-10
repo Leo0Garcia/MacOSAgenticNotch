@@ -17,6 +17,32 @@ enum QuickReplies {
     The answer is one or two short spoken sentences, British English, warm and a little dry. No lists or markdown.
     """
 
+    static let ackInstructions = """
+    You are Jarvis, Leo's assistant on his Mac, speaking out loud. Leo has just asked for something that you are \
+    now starting to work on with your tools; the result comes later. Say one short spoken sentence, at most 14 words, \
+    that shows you understood: name the task in a few words and say you're on it, for example "On it, writing up the \
+    Lecture 18 notes now." or "Sure, I'll check your calendar for tomorrow." Never answer the question, guess a result, \
+    or promise anything is done. British English, warm and a little dry. No lists or markdown.
+    """
+
+    /// The instant "on it" line while Claude starts (Leo, 2026-11-10: "when I say something I'd love an immediate response").
+    static func acknowledge(_ text: String) async -> String? {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            guard SystemLanguageModel.default.availability == .available else { return nil }
+            do {
+                let r = try await LanguageModelSession(instructions: ackInstructions).respond(to: text)
+                let a = r.content.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\"")))
+                return a.isEmpty || a.count > 140 ? nil : a
+            } catch {
+                AppLog.write("acknowledgement failed: \(error.localizedDescription)")
+                return nil
+            }
+        }
+        #endif
+        return nil
+    }
+
     static func answer(_ text: String) async -> String? {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {

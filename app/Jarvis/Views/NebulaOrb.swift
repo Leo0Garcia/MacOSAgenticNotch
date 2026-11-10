@@ -213,13 +213,8 @@ final class NebulaNSView: NSView {
 
         switch look.state {
         case "speaking":
-            // Pulses while Jarvis speaks: an uneven beat, like the voice bars.
-            let p = CAKeyframeAnimation(keyPath: "transform.scale")
-            p.values = [1, 1.08, 1.02, 1.1, 1, 1.06, 1.01, 1.09, 1]
-            p.duration = 2
-            p.repeatCount = .infinity
-            p.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            container.add(p, forKey: "pulse")
+            // A slow, smooth swell while Jarvis speaks (Leo, 2026-11-10: the uneven beat read as a heartbeat).
+            container.add(breathe(1.05, period: 2.4 / look.speed, begin: CACurrentMediaTime()), forKey: "pulse")
         case "needs":
             // Needs you: the core pulses on `attention` (1.2 s), like the rim.
             let a = CABasicAnimation(keyPath: "opacity")

@@ -419,3 +419,20 @@ test("the checker: a run that did something is checked, and retried once (resume
     "jarvis: Added buy chalk to your Kanban.",
   ]);
 });
+
+test("an instant on-device 'on it' line opens the run; Claude's own opener is then not said too", async () => {
+  const { FakeApp } = await import("../../bridge/test/helpers");
+  mkdirSync(jarvis, { recursive: true });
+  const app = new FakeApp(jarvis);
+  app.onQuick = (_t, mode) => (mode === "ack" ? "On it, checking the Southampton weather." : null);
+  try {
+    const { events } = await go("what's the weather in Southampton", runs.weather());
+    const openers = events.filter((e) => e.event === "speak" && e.opener);
+    expect(openers).toHaveLength(1);
+    // The stub claude takes longer to start than the fake app takes to answer.
+    expect(openers[0]).toMatchObject({ text: "On it, checking the Southampton weather." });
+  } finally {
+    app.stop();
+    rmSync(join(jarvis, "notch.json"), { force: true });
+  }
+});

@@ -49,6 +49,8 @@ enum NotchProtocol {
         case play(id: String, file: String)
         /// Can Apple's on-device model answer this (small talk, timeless facts)? Answered with `quickAnswerResult`.
         case quickAnswer(id: String, text: String)
+        /// One spoken line acknowledging a request Claude is about to work on; answered with `quickAnswerResult`.
+        case acknowledge(id: String, text: String)
         case unknown(type: String)
     }
 
@@ -151,6 +153,7 @@ enum NotchProtocol {
                 title: try str("title"), start: try str("start"), end: try str("end"), allDay: obj["allDay"] as? Bool ?? false,
                 location: optStr("location"), calendar: optStr("calendar"), repeat: optStr("repeat"), until: optStr("until")))
         case "quick_answer":
+            if optStr("mode") == "ack" { return .acknowledge(id: try str("id"), text: try str("text")) }
             return .quickAnswer(id: try str("id"), text: try str("text"))
         case "play":
             return .play(id: try str("id"), file: try str("file"))

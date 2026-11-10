@@ -386,6 +386,10 @@ extension AppDelegate: NotchServerDelegate {
             Task { server.send(.quickAnswerResult(id: id, answer: await QuickReplies.answer(text)), to: client) }
             return
         }
+        if case let .acknowledge(id, text) = message {
+            Task { server.send(.quickAnswerResult(id: id, answer: await QuickReplies.acknowledge(text)), to: client) }
+            return
+        }
         if case let .play(id, file) = message {
             speechPlayer.play(file) { server.send(.played(id: id), to: client) }
             return
