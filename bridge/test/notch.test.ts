@@ -127,6 +127,8 @@ test("asks the app for a quick on-device answer; null when it has none or isn't 
   try {
     expect(await link.quickAnswer("how are you")).toBe("Very well, thanks.");
     expect(await link.quickAnswer("what's on my calendar")).toBeNull();
+    app.onQuick = (text, mode) => (mode === "ack" ? `On it: ${text}.` : null);
+    expect(await link.quickAnswer("write my notes", 2500, "ack")).toBe("On it: write my notes.");
   } finally {
     link.close();
     app.stop();

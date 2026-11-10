@@ -21,7 +21,7 @@ import { toolStatus } from "./status";
 import { checkResult, retryPrompt, worthChecking } from "./checker";
 import { recordTask, routedPrompt, routeTask } from "./tasks";
 import { appendOutcome, noteCorrection, taskType, usedName } from "./outcomes";
-import { DEFAULT_OPENER, type Denial, initProblem, RunMonitor } from "./stream";
+import { type Denial, initProblem, RunMonitor } from "./stream";
 
 /** Lines the launcher prints on stdout, one JSON object each, for the notch app. */
 export type LauncherEvent =
@@ -245,6 +245,17 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   emit({ event: "state", state: "working", sessionId });
   notch({ event: "started", text: request }, sessionId);
   if (opts.pickUp) speak(`Picking up where I left off: ${request.replace(/[\s.?!]+$/, "").slice(0, 80)}.`, "opener");
+  // An instant "on it" line from the on-device model while Claude starts (Leo,
+  // 2026-11-10: "when I say something I'd love an immediate response").
+  // Whichever opener comes first is said; the other is dropped.
+  let opened = !!opts.pickUp;
+  if (link && !hushed && !opened && !opts.resume && c.env.JARVIS_ACK !== "0") {
+    void link.quickAnswer(request, 2500, "ack").then((a) => {
+      if (!a || opened || hushed) return;
+      opened = true;
+      speak(a, "opener");
+    });
+  }
   const logFile = Bun.file(plan.runLog).writer();
   /** Each tool call with its input and the start of its output, for the checker. */
   const toolLog = new Map<string, string>();
@@ -261,9 +272,12 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   const secret = new Set<string>();
   const monitor = new RunMonitor({
     onSentence: (s, kind) => {
-      if (kind === "opener") markActive(s);
-      // A picked-up run has already said what it's doing.
-      if (opts.pickUp && s === DEFAULT_OPENER) return;
+      if (kind === "opener") {
+        markActive(s);
+        // Already said what it's doing: the instant line, or "Picking up where I left off".
+        if (opened) return;
+        opened = true;
+      }
       speak(s, kind);
     },
     onFirstText: () => timeline.mark("firstText"),

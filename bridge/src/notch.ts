@@ -170,9 +170,9 @@ export class NotchLink {
   }
 
   /** Apple's on-device model's answer from the app, or null (not one for it, no app, or too slow). */
-  async quickAnswer(text: string, timeoutMs = 2500): Promise<string | null> {
-    const id = `q-${process.pid}-${Date.now()}`;
-    if (!(await this.send({ type: "quick_answer", id, text }))) return null;
+  async quickAnswer(text: string, timeoutMs = 2500, mode?: "ack"): Promise<string | null> {
+    const id = `q-${process.pid}-${Date.now()}${mode ? "-ack" : ""}`;
+    if (!(await this.send({ type: "quick_answer", id, text, ...(mode ? { mode } : {}) }))) return null;
     return new Promise((resolve) => {
       const finish = (a: string | null) => {
         clearTimeout(timer);

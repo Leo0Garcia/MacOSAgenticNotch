@@ -20,6 +20,7 @@ import SwiftUI
             == .runEvent(sessionId: "s", event: "denied", text: "no", keep: nil, summary: nil, rule: "no-money"))
         #expect(try NotchProtocol.decode(#"{"type":"play","id":"p","file":"/tmp/jarvis-say-1.wav"}"#) == .play(id: "p", file: "/tmp/jarvis-say-1.wav"))
         #expect(try NotchProtocol.decode(#"{"type":"quick_answer","id":"q","text":"hi there"}"#) == .quickAnswer(id: "q", text: "hi there"))
+        #expect(try NotchProtocol.decode(#"{"type":"quick_answer","id":"q","text":"do it","mode":"ack"}"#) == .acknowledge(id: "q", text: "do it"))
         #expect(try NotchProtocol.decode(#"{"type":"something_new","x":1}"#) == .unknown(type: "something_new"))
     }
 
