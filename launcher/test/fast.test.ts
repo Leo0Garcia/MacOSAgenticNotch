@@ -50,6 +50,8 @@ test("only short, impersonal, timeless asks try Apple's on-device model first", 
 
 test("thanks in its everyday forms is small talk", () => {
   const { smallTalk } = require("../src/fast");
-  for (const r of ["Great, thank you mate.", "thanks mate", "perfect, cheers", "thank you so much", "cheers jarvis", "Thanks a lot mate"]) expect(smallTalk(r)).toBe("You're welcome.");
+  for (const r of ["Great, thank you mate.", "thanks mate", "perfect, cheers", "thank you so much", "cheers jarvis", "Thanks a lot mate", "Oh, okay, got it, got it, thank you.", "alright cool, thanks for that", "yeah that's perfect thank you"]) expect(smallTalk(r)).toBe("You're welcome.");
+  // No thanks word: could be an answer to a question ("okay" = go ahead), so it goes to Claude.
+  for (const r of ["okay", "got it", "alright cool"]) expect(smallTalk(r)).toBeNull();
   for (const r of ["thanks, now add milk to my kanban", "thank you for the notes, can you make flashcards"]) expect(smallTalk(r)).toBeNull();
 });

@@ -111,11 +111,15 @@ export function lightsConfig(repo: string): LightsConfig | null {
 }
 
 /** "Thanks" and friends: answered instantly, like a person would. */
+const THANKS = new Set(["thanks", "thank", "cheers", "ta", "thx"]);
+const ACK_FILLER = new Set("oh ah ok okay alright right got it you yeah yep great perfect brilliant awesome amazing lovely cool nice one that's thats sound legend sweet fab wonderful good sounds very much so a lot loads mate man bro buddy pal again for that".split(" "));
+
 export function smallTalk(request: string): string | null {
   const r = request.toLowerCase().replace(/[^a-z' ]+/g, " ").replace(/\s+/g, " ").trim().replace(/^jarvis /, "").replace(/ jarvis$/, "");
-  // "thanks", "great, thank you mate", "perfect cheers jarvis", "thank you so much"…
-  const thanks = /^(?:(?:great|perfect|brilliant|awesome|amazing|lovely|cool|nice|nice one|ok|okay|that's great|that's perfect|sound|legend)\s+)?(?:thanks|thank you|cheers|ta|nice one)(?:\s+(?:a lot|so much|very much|loads|mate|man|bro|buddy|pal|again|for that))*$/;
-  if (thanks.test(r)) return "You're welcome.";
+  // "thanks", "great, thank you mate", "oh okay, got it, got it, thank you" (Leo,
+  // 2026-11-10): only thanks and filler, with at least one thanks word.
+  const words = r.split(" ");
+  if (words.some((w) => THANKS.has(w)) && words.every((w) => THANKS.has(w) || ACK_FILLER.has(w))) return "You're welcome.";
   if (/^(good morning|morning)$/.test(r)) return "Good morning.";
   if (/^(good night|night)$/.test(r)) return "Good night.";
   return null;

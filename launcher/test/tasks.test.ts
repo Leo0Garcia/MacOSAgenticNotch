@@ -50,6 +50,7 @@ test("a request soon after an open task's run carries on in that task's session"
   await Bun.write(join(c.claudeConfigDir, "projects", "p", `${sid}.jsonl`), "{}\n");
   const plan = planRun(c, "show me the draft", t0 + 60_000);
   expect(plan.resume).toBe(sid);
+  expect(plan.taskTitle).toBe("Make the lecture 17 notes");
   expect(plan.prompt).toContain('set `continues` to "' + sid + '"');
   // Background runs, a busy session, or a task left alone too long start fresh.
   expect(planRun(c, "show me the draft", t0 + 60_000, false).resume).toBeUndefined();

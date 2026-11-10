@@ -78,7 +78,7 @@ export interface RunOutcome {
 const FOLLOWUP = /^\s*(?:jarvis[,:]?\s+)?(?:and\s+also|and\s+then|also)\b[,:]?\s*/i;
 
 /** Works out the claude invocation, including "and also…" follow-ups (DESIGN 4.4). */
-export function planRun(c: Config, request: string, now = Date.now(), route = true): RunPlan & { runLog: string; resumed: boolean } {
+export function planRun(c: Config, request: string, now = Date.now(), route = true): RunPlan & { runLog: string; resumed: boolean; taskTitle?: string } {
   const p = paths(c);
   const last: LastRun | undefined = FOLLOWUP.test(request) ? recentRun(c, now) : undefined;
   if (last?.keep) {
@@ -89,7 +89,7 @@ export function planRun(c: Config, request: string, now = Date.now(), route = tr
   const task = route ? openTaskFor(c, now) : undefined;
   if (task) {
     const sid = task.sessions.at(-1)!;
-    return { prompt: routedPrompt(request, task), resume: sid, runLog: `${p.runs}/${sid}.followup-${now}.jsonl`, resumed: false };
+    return { prompt: routedPrompt(request, task), resume: sid, runLog: `${p.runs}/${sid}.followup-${now}.jsonl`, resumed: false, taskTitle: task.title };
   }
   const sessionId = randomUUID();
   // The last exchange (and any run still going) reaches Claude through the activity block.
@@ -229,7 +229,8 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     await sink.end();
   }
 
-  const active: ActiveRun = { sessionId, pid: process.pid, request, startedAt: opts.pickUp?.startedAt ?? now(), ...(opts.background ? { background: true } : {}) };
+  // A follow-up keeps its task's name on the dashboard tile (Leo, 2026-11-10).
+  const active: ActiveRun = { sessionId, pid: process.pid, request: plan.taskTitle ?? request, startedAt: opts.pickUp?.startedAt ?? now(), ...(opts.background ? { background: true } : {}) };
   const markActive = (doing?: string) => {
     if (doing) active.doing = doing;
     try {
