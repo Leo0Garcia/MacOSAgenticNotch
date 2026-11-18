@@ -61,6 +61,8 @@ export interface RunOptions {
   noCheck?: boolean;
   /** Check a background run too (approved queue tasks). */
   check?: boolean;
+  /** Says nothing (the checker's quiet retry). */
+  quiet?: boolean;
 }
 
 export interface RunOutcome {
@@ -241,7 +243,7 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
   link?.close();
   link = opts.background ? null : new NotchLink({ home: c.home, client: "launcher", sessionId, connectTimeoutMs: 300 });
   speaker = new Speaker({ home: c.home, link, sessionId, run: opts.speechRunner });
-  if (opts.background) hushed = true;
+  if (opts.background || opts.quiet) hushed = true;
   if (hushed) speaker.mute();
   emit({ event: "state", state: "working", sessionId });
   notch({ event: "started", text: request }, sessionId);
@@ -388,9 +390,11 @@ export async function run(c: Config, request: string, opts: RunOptions = {}): Pr
     if (v && !v.ok) {
       log(c, "checker found a problem", { sessionId, problem: v.problem });
       checkProblem = v.problem;
-      speak("Hang on, that's not quite right. Fixing it.");
+      // The fix happens quietly; Leo only hears about it if it couldn't be fixed
+      // (Leo, 2026-11-18: "hang on, that's not quite right" mid-request is annoying).
       await speaker.idle();
-      retried = await run(c, retryPrompt(v.problem!), { ...opts, pickUp: undefined, resume: sessionId, noCheck: true, finalize: async () => {} });
+      retried = await run(c, retryPrompt(v.problem!), { ...opts, pickUp: undefined, resume: sessionId, noCheck: true, quiet: true, finalize: async () => {} });
+      if (retried.reply && (retried.exitCode !== 0 || retried.resolved === false)) speak(retried.reply);
       if (retried.reply) res.reply = `${res.reply}\n${retried.reply}`.trim();
       timeline.say("jarvis", retried.reply ?? "");
     }

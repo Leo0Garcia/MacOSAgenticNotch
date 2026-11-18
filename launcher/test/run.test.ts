@@ -401,7 +401,9 @@ test("the checker: a run that did something is checked, and retried once (resume
   const outcome = JSON.parse(readFileSync(join(jarvis, "state", "outcomes.jsonl"), "utf8").trim().split("\n").at(-1)!);
   expect(outcome).toMatchObject({ sessionId: out.sessionId, type: "other", outcome: "retried", problem: "The card went into Done, not Not Started." });
   expect(checked[0]!.join(" ")).toContain("Bash {\"command\":\"bun kanban.ts add 'Buy chalk'\"} → added");
-  expect(w.said).toContain("Hang on, that's not quite right. Fixing it.");
+  // Fixed quietly: no "hang on", and the retry's (resolved) answer isn't said again.
+  expect(w.said.join(" ")).not.toContain("Hang on");
+  expect(w.said.filter((t) => t.includes("Added buy chalk")).length).toBe(1);
   const retry = w.lastCall().argv;
   expect(retry[1]).toStartWith("A check of your work found a problem: The card went into Done, not Not Started.");
   expect(retry[retry.indexOf("--resume") + 1]).toBe(out.sessionId);
