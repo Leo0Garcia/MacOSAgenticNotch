@@ -63,4 +63,4 @@ export async function checkResult(c: Config, run: Runner, request: string, reply
 }
 
 export const retryPrompt = (problem: string) =>
-  `A check of your work found a problem: ${problem} Fix it now if you can. Then tell Leo the result in one or two sentences, and say plainly if you couldn't fix it.`;
+  `A check of your work found a problem: ${problem} Fix it now if you can. Leo doesn't hear this fix: describe what you changed in one or two sentences, and if you couldn't fix it, set \`resolved\` to false and say plainly what's still wrong, since that is what he will hear.`;
